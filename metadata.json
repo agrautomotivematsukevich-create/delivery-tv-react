@@ -1,0 +1,5 @@
+{
+  "name": "Warehouse Dashboard",
+  "description": "A real-time logistics dashboard with operator terminal capabilities, featuring a Deep Glass UI design.",
+  "requestFramePermissions": []
+}
