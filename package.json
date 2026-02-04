@@ -3,26 +3,19 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  // УДАЛИТЬ строку "homepage" - она мешает Vercel
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
-    // УДАЛИТЬ "predeploy" и "deploy"
   },
   "dependencies": {
     "lucide-react": "^0.563.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
-    // gh-pages ПЕРЕМЕСТИТЬ в devDependencies ИЛИ удалить
   },
   "devDependencies": {
-    "@types/react": "^19.2.4",
-    "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "^5.8.2",
     "vite": "^6.2.0"
-    // Если используете gh-pages локально, оставьте здесь
-    // "gh-pages": "^6.3.0"
   }
 }
