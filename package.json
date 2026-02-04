@@ -1,5 +1,5 @@
 {
-  "name": "delivery-tv-react",
+  "name": "warehouse-dashboard",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,13 +10,14 @@
   },
   "dependencies": {
     "lucide-react": "^0.563.0",
-    "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "recharts": "^3.7.0"  // ← ДОБАВЬТЕ ЭТУ СТРОКУ
+    "react": "^19.2.4",
+    "recharts": "^3.7.0"
   },
   "devDependencies": {
+    "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "^5.8.2",
+    "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
 }
