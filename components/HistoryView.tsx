@@ -97,26 +97,29 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
 
       {/* Detail Modal */}
       {selectedTask && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/95 backdrop-blur-lg p-2 md:p-4 animate-in fade-in duration-200">
-            <div className="bg-[#0F0F12] border border-white/10 p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] w-full max-w-4xl max-h-[95vh] overflow-y-auto custom-scrollbar flex flex-col gap-6 shadow-2xl relative">
-               <button 
-                onClick={() => setSelectedTask(null)}
-                className="absolute top-4 right-4 md:top-6 md:right-6 p-3 rounded-full bg-white/5 hover:bg-white/20 text-white transition-colors z-[90]"
-              >
-                <X size={24} />
-              </button>
+        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="bg-[#0F0F12] border-t md:border border-white/10 p-6 md:p-8 rounded-t-[2rem] md:rounded-[2.5rem] w-full max-w-4xl h-[92vh] md:h-auto md:max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col gap-6 shadow-2xl relative">
+               
+               {/* Fixed Header in Modal */}
+               <div className="sticky top-0 bg-[#0F0F12] z-[110] pb-4 border-b border-white/10 flex justify-between items-start">
+                  <div>
+                    <h2 className="text-2xl md:text-4xl font-extrabold text-white font-mono break-all pr-12">{selectedTask.id}</h2>
+                    <div className="flex flex-wrap gap-3 mt-2">
+                       <span className="px-3 py-1 bg-white/10 rounded-lg text-xs font-bold border border-white/10 text-white/70">{selectedTask.type}</span>
+                       <span className={`px-3 py-1 rounded-lg text-xs font-bold border ${selectedTask.status === 'DONE' ? 'bg-accent-green/10 text-accent-green border-accent-green/20' : 'bg-white/10 text-white/50 border-white/10'}`}>
+                          {selectedTask.status}
+                       </span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedTask(null)}
+                    className="p-3 rounded-full bg-white/5 hover:bg-white/20 text-white transition-colors"
+                  >
+                    <X size={28} />
+                  </button>
+               </div>
 
-              <div className="border-b border-white/10 pb-6 mt-4">
-                <h2 className="text-3xl md:text-4xl font-extrabold text-white font-mono mb-2">{selectedTask.id}</h2>
-                <div className="flex flex-wrap gap-3">
-                   <span className="px-3 py-1 bg-white/10 rounded-lg text-sm font-bold border border-white/10 text-white/70">{selectedTask.type}</span>
-                   <span className={`px-3 py-1 rounded-lg text-sm font-bold border ${selectedTask.status === 'DONE' ? 'bg-accent-green/10 text-accent-green border-accent-green/20' : 'bg-white/10 text-white/50 border-white/10'}`}>
-                      {selectedTask.status}
-                   </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-10">
                  <div className="space-y-6">
                     <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
                        <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4">Info</h3>
@@ -168,7 +171,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
                        </div>
                     </div>
                  </div>
-              </div>
+               </div>
             </div>
         </div>
       )}
@@ -176,18 +179,18 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
       {/* Lightbox Overlay */}
       {lightboxImg && (
         <div 
-          className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 animate-in fade-in duration-200 cursor-zoom-out"
+          className="fixed inset-0 z-[200] bg-black flex items-center justify-center animate-in fade-in duration-200"
           onClick={() => setLightboxImg(null)}
         >
-          <div className="relative w-full max-w-5xl flex items-center justify-center">
+          <div className="relative w-full h-full flex items-center justify-center p-4">
              <img 
                src={lightboxImg} 
                alt="Full view" 
-               className="w-full h-auto max-h-[90vh] rounded-lg shadow-2xl object-contain cursor-default" 
+               className="max-w-full max-h-full object-contain" 
                onClick={(e) => e.stopPropagation()} 
              />
-             <button className="absolute -top-12 right-0 text-white/50 hover:text-white p-2 transition-colors">
-               <X size={40} />
+             <button className="absolute top-6 right-6 text-white bg-white/10 p-3 rounded-full backdrop-blur-md">
+               <X size={32} />
              </button>
           </div>
         </div>
