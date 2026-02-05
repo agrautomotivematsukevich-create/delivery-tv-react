@@ -23,7 +23,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentPhotoTarget = useRef<1 | 2>(1);
 
-  const isStart = action.type === 'start';
+  const isStart = action.type === 'start'; // Проверка: начало это или конец
   const AVAILABLE_ZONES = ['G4', 'G5', 'G7', 'G8', 'G9', 'P70'];
 
   const triggerFile = (target: 1 | 2) => {
@@ -46,8 +46,9 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           canvas.height = img.height * scale;
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           const suffix = isStart ? (currentPhotoTarget.current === 1 ? "_General" : "_Seal") : "_Empty";
-          setPhoto1(prev => currentPhotoTarget.current === 1 ? { data: canvas.toDataURL('image/jpeg', 0.8), mime: 'image/jpeg', name: `${action.id}${suffix}.jpg` } : prev);
-          if (currentPhotoTarget.current === 2) setPhoto2({ data: canvas.toDataURL('image/jpeg', 0.8), mime: 'image/jpeg', name: `${action.id}${suffix}.jpg` });
+          const photoData = { data: canvas.toDataURL('image/jpeg', 0.8), mime: 'image/jpeg', name: `${action.id}${suffix}.jpg` };
+          if (currentPhotoTarget.current === 1) setPhoto1(photoData);
+          else setPhoto2(photoData);
         };
         if (evt.target?.result) img.src = evt.target.result as string;
       };
@@ -56,7 +57,9 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   };
 
   const isFormValid = () => {
-    if (!zone) return false;
+    // Зона обязательна ТОЛЬКО при старте
+    if (isStart && !zone) return false;
+    
     if (isLocalManual) return true;
     return isStart ? (!!photo1 && !!photo2) : !!photo1;
   };
@@ -72,14 +75,13 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       if (!isStart && photo1) { urlEmpty = urlGen; urlGen = ""; }
     }
 
-    // Отправляем action.type (start/finish) с припиской времени, если включен мануал
     const actionTypeToSend = isLocalManual ? `${action.type}_manual_${manualTime}` : action.type;
 
     await api.taskAction(
       action.id,
       actionTypeToSend,
       user.name,
-      zone || "", 
+      zone || "", // Если это финиш, отправится пустота, и скрипт не перезапишет зону в таблице
       urlGen,
       urlSeal,
       urlEmpty
@@ -90,7 +92,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-[#0F0F12] border border-white/10 p-8 rounded-3xl w-full max-w-[480px] flex flex-col gap-6 shadow-2xl">
         <div className="text-center">
            <h2 className="text-2xl font-extrabold text-white mb-1 leading-tight tracking-tight">{action.id}</h2>
@@ -107,21 +109,35 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
            </button>
         </div>
 
-        {/* Зоны выгрузки (обязательно) */}
-        <div>
-          <p className="text-[10px] font-black text-white/30 mb-3 uppercase tracking-[0.2em] text-center">Выбор зоны</p>
-          <div className="grid grid-cols-3 gap-2">
-            {AVAILABLE_ZONES.map(z => (
-              <button key={z} onClick={() => setZone(z)} className={`py-4 rounded-xl font-bold text-sm border transition-all ${zone === z ? (isLocalManual ? 'bg-orange-500 border-orange-400 text-white' : 'bg-blue-600 border-blue-500 text-white') : 'bg-white/5 text-white/40 border-transparent hover:bg-white/10'}`}>{z}</button>
-            ))}
+        {/* Выбор зоны показываем ТОЛЬКО при нажатии кнопки "Начать" */}
+        {isStart && (
+          <div className="animate-in slide-in-from-top-2">
+            <p className="text-[10px] font-black text-white/30 mb-3 uppercase tracking-[0.2em] text-center">Выбор зоны выгрузки</p>
+            <div className="grid grid-cols-3 gap-2">
+              {AVAILABLE_ZONES.map(z => (
+                <button 
+                  key={z} 
+                  onClick={() => setZone(z)} 
+                  className={`py-4 rounded-xl font-bold text-sm border transition-all ${
+                    zone === z 
+                    ? (isLocalManual ? 'bg-orange-500 border-orange-400 text-white' : 'bg-blue-600 border-blue-500 text-white') 
+                    : 'bg-white/5 text-white/40 border-transparent hover:bg-white/10'
+                  }`}
+                >
+                  {z}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {isLocalManual ? (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col items-center gap-4 animate-in slide-in-from-bottom-2">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col items-center gap-4 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-2 text-orange-400">
               <Clock size={18} />
-              <span className="font-bold uppercase text-[10px] tracking-widest">Фактическое время</span>
+              <span className="font-bold uppercase text-[10px] tracking-widest">
+                {isStart ? "Время начала (Факт)" : "Время завершения (Факт)"}
+              </span>
             </div>
             <input type="time" value={manualTime} onChange={(e) => setManualTime(e.target.value)} className="bg-transparent text-white text-5xl font-mono text-center outline-none [color-scheme:dark]" />
           </div>
@@ -129,7 +145,9 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           <div className="space-y-3">
              <div onClick={() => triggerFile(1)} className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 transition-all ${photo1 ? 'border-green-500 bg-green-500/5' : 'border-white/10 hover:border-blue-500'}`}>
                {photo1 ? <CheckCircle className="text-green-500 w-8 h-8" /> : <Camera className="text-white/20 w-8 h-8" />}
-               <span className="font-bold text-white/60 text-xs uppercase">{isStart ? t.lbl_photo1 : t.lbl_photo_empty}</span>
+               <span className="font-bold text-white/60 text-xs uppercase text-center leading-tight">
+                 {isStart ? t.lbl_photo1 : t.lbl_photo_empty}
+               </span>
              </div>
              {isStart && (
                <div onClick={() => triggerFile(2)} className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 transition-all ${photo2 ? 'border-green-500 bg-green-500/5' : 'border-white/10 hover:border-blue-500'}`}>
@@ -142,7 +160,13 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         )}
 
         <div className="flex flex-col gap-3">
-           <button onClick={handleSubmit} disabled={submitting || !isFormValid()} className={`w-full py-5 font-black text-sm rounded-2xl transition-all ${isLocalManual ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'} disabled:opacity-20 uppercase tracking-widest shadow-xl`}>
+           <button 
+             onClick={handleSubmit} 
+             disabled={submitting || !isFormValid()} 
+             className={`w-full py-5 font-black text-sm rounded-2xl transition-all ${
+               isLocalManual ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'
+             } disabled:opacity-20 uppercase tracking-widest shadow-xl active:scale-95`}
+           >
              {submitting ? "Сохранение..." : "Подтвердить"}
            </button>
            <button onClick={onClose} className="text-white/20 hover:text-white py-2 text-[10px] font-bold uppercase tracking-widest transition-colors">Отмена</button>
