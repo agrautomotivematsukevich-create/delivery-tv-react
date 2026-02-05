@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Lang, TranslationSet } from '../types';
-import { Globe, User as UserIcon, LogOut, ChevronDown, ScanBarcode, LogIn, TriangleAlert, History, LayoutDashboard, Archive, Truck } from 'lucide-react';
+import { Globe, User as UserIcon, LogOut, ChevronDown, ScanBarcode, LogIn, AlertTriangle, History, LayoutDashboard, Archive, Truck } from 'lucide-react';
 
 interface HeaderProps {
   user: User | null;
@@ -108,7 +108,7 @@ const Header: React.FC<HeaderProps> = ({
                   onClick={onIssueClick}
                   className="p-2 rounded-xl text-accent-red bg-accent-red/10 md:bg-transparent border border-accent-red/20 md:border-transparent"
                >
-                 <TriangleAlert size={18} />
+                 <AlertTriangle size={18} />
                </button>
              </>
            )}
