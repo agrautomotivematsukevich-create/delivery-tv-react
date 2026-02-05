@@ -33,7 +33,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     if (!url) return '';
     
     let id = "";
-    // Извлекаем ID из разных форматов ссылок Google Drive
     const match1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
     if (match1) id = match1[1];
     if (!id) {
@@ -43,12 +42,12 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
 
     if (!id) return url;
 
-    // Формируем прямую ссылку на превью через Google API
+    // Прямая ссылка на превью
     const directLink = `https://drive.google.com/thumbnail?id=${id}&sz=w${size}`;
 
-    // Пропускаем через прокси-сервис Google, чтобы скрыть домен Drive от сетевого фильтра
-    // Это часто помогает обойти блокировки категорий "Файловые хранилища"
-    return `https://images1-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=2592000&url=${encodeURIComponent(directLink)}`;
+    // ПЛАН Б: Используем WSrv.nl - это бесплатный и быстрый сервис кеширования и проксирования изображений.
+    // Он часто не входит в списки блокировок "Хранилищ", так как считается инструментом разработчика.
+    return `https://wsrv.nl/?url=${encodeURIComponent(directLink)}&default=ssl:placehold.jp/24/1e807d/ffffff/200x200.png?text=Photo_Blocked`;
   };
 
   return (
