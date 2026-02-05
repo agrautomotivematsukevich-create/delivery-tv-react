@@ -29,7 +29,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     fetchData(date);
   }, [date]);
 
-  const getDriveImgSrc = (url: string | undefined) => {
+  const getDriveImgSrc = (url: string | undefined, size?: string) => {
     if (!url) return '';
     
     let id = "";
@@ -45,11 +45,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     // Прямая ссылка на скачивание оригинального файла из Google Drive
     const originalFileLink = `https://drive.google.com/uc?export=download&id=${id}`;
 
-    // Используем wsrv.nl только как прокси для обхода блокировки:
-    // Мы УБИРАЕМ параметры &w=... и &sz=...
-    // &q=100 — максимальное качество (без потерь)
-    // &n=-1 — отключает любое изменение размера, выдает оригинал
-    return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=100&n=-1`;
+    // Если передан размер (например w800), добавляем его в прокси
+    const sizeParam = size ? `&${size.startsWith('w') ? 'w' : 'h'}=${size.replace(/\D/g, '')}` : '&n=-1';
+
+    return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=100${sizeParam}`;
   };
 
   return (
