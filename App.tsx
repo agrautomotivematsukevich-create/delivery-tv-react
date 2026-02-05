@@ -93,24 +93,49 @@ function App() {
 
   return (
     <>
-      {/* ПРИВЕТСТВЕННЫЙ ЭКРАН ЗАГРУЗКИ (SPLASH SCREEN) */}
+      {/* ПРИВЕТСТВЕННЫЙ ЭКРАН ЗАГРУЗКИ (PROFESSIONAL SPLASH SCREEN) */}
       {!isAppReady && (
-        <div className="fixed inset-0 z-[100] bg-[#0F0F12] flex flex-col items-center justify-center">
-          <div className="relative flex flex-col items-center animate-in fade-in zoom-in duration-500">
-            <div className="w-20 h-20 mb-8 relative">
-              <div className="absolute inset-0 border-2 border-accent-blue/20 rounded-full"></div>
-              <div className="absolute inset-0 border-2 border-accent-blue rounded-full border-t-transparent animate-spin"></div>
+        <div className="fixed inset-0 z-[100] bg-[#0A0A0C] flex flex-col items-center justify-center overflow-hidden">
+          {/* Фоновые декоративные элементы для глубины */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-600/10 blur-[120px] rounded-full"></div>
+          <div className="absolute bottom-0 right-0 w-[300px] h-[300px] bg-emerald-600/5 blur-[100px] rounded-full"></div>
+
+          <div className="relative flex flex-col items-center z-10">
+            {/* Анимированный сканер/логотип */}
+            <div className="relative w-24 h-24 mb-10">
+              <div className="absolute inset-0 border-[3px] border-white/5 rounded-2xl rotate-45"></div>
+              <div className="absolute inset-0 border-[3px] border-blue-500 rounded-2xl rotate-45 animate-[spin_4s_linear_infinite] shadow-[0_0_20px_rgba(59,130,246,0.5)]"></div>
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse shadow-[0_0_10px_#fff]"></div>
               </div>
             </div>
-            <h1 className="text-white text-lg font-black uppercase tracking-[0.6em] mb-2">
-              Terminal
+
+            {/* Заголовок с градиентом */}
+            <h1 className="text-4xl md:text-5xl font-black tracking-[0.2em] mb-4 bg-gradient-to-b from-white via-white to-white/20 bg-clip-text text-transparent animate-in fade-in slide-in-from-bottom-4 duration-1000">
+              WAREHOUSE
+              <span className="block text-center text-lg tracking-[0.6em] text-blue-500 mt-2 font-light">DASHBOARD</span>
             </h1>
-            <p className="text-white/20 text-[9px] font-bold uppercase tracking-[0.3em]">
-              Developed by Vladislav_Matsukevich
-            </p>
+
+            {/* Полоса загрузки (Progress Bar) */}
+            <div className="w-48 h-[2px] bg-white/5 rounded-full mt-6 overflow-hidden">
+              <div className="h-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)] animate-[loading-bar_1.5s_ease-in-out_forwards]"></div>
+            </div>
+
+            {/* Авторство */}
+            <div className="mt-12 flex flex-col items-center gap-2 opacity-40 animate-in fade-in duration-1000 delay-500">
+              <span className="text-[8px] font-bold uppercase tracking-[0.4em] text-white/50">System Initializing</span>
+              <p className="text-[10px] font-medium tracking-[0.2em] text-white">
+                Developed by <span className="font-black text-blue-400">Vladislav_Matsukevich</span>
+              </p>
+            </div>
           </div>
+
+          <style>{`
+            @keyframes loading-bar {
+              0% { width: 0%; transform: translateX(-100%); }
+              100% { width: 100%; transform: translateX(0%); }
+            }
+          `}</style>
         </div>
       )}
 
