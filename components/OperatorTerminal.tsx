@@ -14,7 +14,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   const [loading, setLoading] = useState(true);
 
   const fetchQueue = async () => {
-    // Do not set loading(true) here to avoid flickering on refresh
+    // Получаем задачи
     const data = await api.fetchTasks('get_operator_tasks');
     setTasks(data);
     setLoading(false);
@@ -22,7 +22,6 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
   useEffect(() => {
     fetchQueue();
-    // Refresh every 5s while open to be more responsive
     const interval = setInterval(fetchQueue, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -36,6 +35,17 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     
     return <span className={`px-2 py-0.5 rounded text-xs font-bold border ${color} ml-2`}>{type}</span>;
   };
+
+  // --- ИСПРАВЛЕНИЕ НИЖЕ ---
+  // Фильтруем задачи перед рендером
+  const activeTasks = tasks.filter(task => {
+    // 1. Если есть время завершения - скрываем (Критическая логика)
+    if (task.endTime) return false;
+    // 2. Если статус DONE - скрываем
+    if (task.status === 'DONE') return false;
+    // Иначе показываем
+    return true;
+  });
 
   return (
     <div className="terminal-root fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-xl p-0 md:p-8 animate-in fade-in duration-200">
@@ -58,10 +68,11 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
              <div className="flex items-center justify-center h-full">
                <div className="text-white/50 animate-pulse">Loading tasks...</div>
              </div>
-          ) : tasks.length === 0 ? (
+          ) : activeTasks.length === 0 ? ( // Используем activeTasks вместо tasks
              <div className="text-center text-white/30 text-xl font-bold mt-20">{t.empty}</div>
           ) : (
-            tasks.map(task => {
+            // Рендерим отфильтрованный список
+            activeTasks.map(task => {
               const isWait = task.status === 'WAIT';
               return (
                 <div key={task.id} className="bg-white/5 border border-white/5 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 hover:bg-white/10 transition-colors">
