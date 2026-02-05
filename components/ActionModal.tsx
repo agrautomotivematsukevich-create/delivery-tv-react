@@ -24,6 +24,9 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   const isStart = action.type === 'start';
 
+  // Список доступных зон склада
+  const AVAILABLE_ZONES = ['G4', 'G5', 'G7', 'G8', 'G9', 'P70'];
+
   const triggerFile = (target: 1 | 2) => {
     currentPhotoTarget.current = target;
     fileInputRef.current?.click();
@@ -72,7 +75,6 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       }
       return true;
     } else {
-      // Finish
       if (!deferUpload) {
         return !!photo1;
       }
@@ -107,7 +109,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       }
     }
 
-    setUploadStatus("..."); // Finalizing
+    setUploadStatus("...");
 
     await api.taskAction(
       action.id,
@@ -136,7 +138,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           <div>
             <p className="text-xs font-bold text-white/40 mb-3 uppercase tracking-wider">ВЫБОР ЗОНЫ</p>
             <div className="grid grid-cols-3 gap-3">
-              {['G5', 'G9', 'P70'].map(z => (
+              {AVAILABLE_ZONES.map(z => (
                 <button
                   key={z}
                   onClick={() => setZone(z)}
