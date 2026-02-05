@@ -155,7 +155,14 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
                  <span className="font-bold text-white/60 text-xs uppercase">{t.lbl_photo2}</span>
                </div>
              )}
-             <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileChange} />
+             <input 
+  type="file" 
+  ref={fileInputRef} 
+  hidden 
+  accept="image/*" 
+  capture="environment" 
+  onChange={handleFileChange} 
+/>
           </div>
         )}
 
