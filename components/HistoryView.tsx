@@ -29,7 +29,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     fetchData(date);
   }, [date]);
 
-  const getDriveImgSrc = (url: string | undefined, size = '1600') => {
+  const getDriveImgSrc = (url: string | undefined) => {
     if (!url) return '';
     
     let id = "";
@@ -42,14 +42,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
 
     if (!id) return url;
 
-    // Запрашиваем у Google большое превью (w1600)
-    const directLink = `https://drive.google.com/thumbnail?id=${id}&sz=w${size}`;
+    // Прямая ссылка на скачивание оригинального файла из Google Drive
+    const originalFileLink = `https://drive.google.com/uc?export=download&id=${id}`;
 
-    // Добавляем параметры для wsrv.nl:
-    // &w=1200 — желаемая ширина выходного фото
-    // &we — разрешить увеличение (enlarge), если исходник меньше
-    // &q=85 — хороший баланс качества и веса
-    return `https://wsrv.nl/?url=${encodeURIComponent(directLink)}&w=1200&we&q=85&output=jpg`;
+    // Используем wsrv.nl только как прокси для обхода блокировки:
+    // Мы УБИРАЕМ параметры &w=... и &sz=...
+    // &q=100 — максимальное качество (без потерь)
+    // &n=-1 — отключает любое изменение размера, выдает оригинал
+    return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=100&n=-1`;
   };
 
   return (
