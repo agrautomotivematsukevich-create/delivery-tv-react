@@ -29,16 +29,26 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     fetchData(date);
   }, [date]);
 
-  const getDriveImgSrc = (url: string | undefined, size = 'w800') => {
+  const getDriveImgSrc = (url: string | undefined, size = '800') => {
     if (!url) return '';
+    
     let id = "";
+    // Извлекаем ID из разных форматов ссылок Google Drive
     const match1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
     if (match1) id = match1[1];
     if (!id) {
       const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
       if (match2) id = match2[1];
     }
-    return id ? `https://drive.google.com/thumbnail?id=${id}&sz=${size}` : url;
+
+    if (!id) return url;
+
+    // Формируем прямую ссылку на превью через Google API
+    const directLink = `https://drive.google.com/thumbnail?id=${id}&sz=w${size}`;
+
+    // Пропускаем через прокси-сервис Google, чтобы скрыть домен Drive от сетевого фильтра
+    // Это часто помогает обойти блокировки категорий "Файловые хранилища"
+    return `https://images1-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=2592000&url=${encodeURIComponent(directLink)}`;
   };
 
   return (
