@@ -7,18 +7,47 @@ interface DashboardProps {
   t: TranslationSet;
 }
 
+// Добавьте эту вспомогательную функцию внутри Dashboard.tsx (перед самим компонентом)
+const formatMinutes = (totalMinutes: number, t: TranslationSet): string => {
+  const absMinutes = Math.abs(totalMinutes);
+  const hours = Math.floor(absMinutes / 60);
+  const mins = absMinutes % 60;
+
+  let timeString = "";
+  if (hours > 0) {
+    timeString += `${hours}ч `;
+  }
+  if (mins > 0 || hours === 0) {
+    timeString += `${mins} мин`;
+  }
+
+  const prefix = totalMinutes >= 0 ? t.eta_prefix : t.delay_prefix;
+  return `${prefix}${timeString.trim()}`;
+};
+
 const calculateTimeDiff = (timeStr: string, t: TranslationSet): string => {
   if (!timeStr || !timeStr.includes(':')) return "...";
   const match = timeStr.match(/(\d{1,2}):(\d{2})/);
   if (!match) return "...";
+  
   const targetH = parseInt(match[1]);
   const targetM = parseInt(match[2]);
   const now = new Date();
   let target = new Date();
+  
   target.setHours(targetH, targetM, 0, 0);
+  
   let diffMinutes = Math.round((target.getTime() - now.getTime()) / 60000);
+  
+  // Если разница слишком большая (отрицательная), считаем, что это на следующий день
   if (diffMinutes < -720) diffMinutes += 1440;
 
+  if (diffMinutes === 0) return "NOW";
+  
+  return formatMinutes(diffMinutes, t);
+};
+
+// ... остальной код Dashboard остается прежним ...
   if (diffMinutes > 0) return `${t.eta_prefix}${diffMinutes} min`;
   if (diffMinutes < 0) return `${t.delay_prefix}${Math.abs(diffMinutes)} min`;
   return "NOW";
