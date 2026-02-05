@@ -27,16 +27,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     fetchData(date);
   }, [date]);
 
-  // Блокировка скролла основного экрана при открытии модалки
-  useEffect(() => {
-    if (selectedTask) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => { document.body.style.overflow = 'unset'; };
-  }, [selectedTask]);
-
   const getDriveImgSrc = (url: string | undefined, size?: string) => {
     if (!url) return '';
     let id = "";
@@ -54,8 +44,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
 
   return (
     <div className="flex flex-col gap-6 h-full flex-1 min-h-0">
-      {/* Controls */}
-      <div className="bg-card-bg border border-white/10 rounded-3xl p-6 flex flex-wrap items-center gap-4">
+      {/* Дата и поиск */}
+      <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl p-6 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-3">
            <Calendar className="text-accent-blue" />
            <span className="font-bold text-white/50 uppercase tracking-widest">{t.hist_select_date}:</span>
@@ -68,8 +58,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
         />
       </div>
 
-      {/* List */}
-      <div className="bg-card-bg border border-white/10 rounded-3xl flex-1 min-h-0 overflow-hidden flex flex-col">
+      {/* Список задач */}
+      <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl flex-1 min-h-0 overflow-hidden flex flex-col">
          {loading ? (
            <div className="flex-1 flex items-center justify-center text-white/30 animate-pulse">{t.msg_loading_history}</div>
          ) : tasks.length === 0 ? (
@@ -105,91 +95,59 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
          )}
       </div>
 
-      {/* DETAIL MODAL - SOLID & LOCKED */}
+      {/* Модальное окно (Центрированное, классическое) */}
       {selectedTask && (
-        <div className="fixed inset-0 z-[99999] flex flex-col bg-black">
-            {/* Header (Always Fixed) */}
-            <div className="bg-[#0F0F12] p-6 border-b border-white/10 flex justify-between items-start safe-top">
-                <div className="flex-1 pr-4">
-                    <h2 className="text-xl md:text-3xl font-bold text-white font-mono break-all leading-tight">
-                        {selectedTask.id}
-                    </h2>
-                    <div className="flex gap-2 mt-2">
-                        <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] font-bold text-white/70 uppercase">{selectedTask.type}</span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${selectedTask.status === 'DONE' ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/50'}`}>
-                            {selectedTask.status}
-                        </span>
-                    </div>
-                </div>
-                <button 
-                    onClick={() => setSelectedTask(null)}
-                    className="p-4 -mr-2 -mt-2 rounded-full bg-white/10 text-white active:bg-white/30"
-                >
-                    <X size={28} />
-                </button>
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="bg-[#1A1A1E] border border-white/10 rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar relative shadow-2xl">
+               <button 
+                 onClick={() => setSelectedTask(null)}
+                 className="absolute top-6 right-6 p-2 rounded-full bg-white/5 hover:bg-white/10 text-white z-10"
+               >
+                 <X size={24} />
+               </button>
 
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto bg-[#0F0F12] p-6 space-y-8 overscroll-contain pb-20">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-white/5 rounded-2xl p-5 border border-white/5 space-y-4">
-                        <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Информация</h3>
-                        <div className="grid gap-3">
-                            <div className="flex justify-between border-b border-white/5 pb-2">
-                                <span className="text-white/40 text-sm flex items-center gap-2"><Clock size={12}/> Начало</span>
-                                <span className="text-white font-mono">{selectedTask.start_time || '--:--'}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-white/5 pb-2">
-                                <span className="text-white/40 text-sm flex items-center gap-2"><Clock size={12}/> Конец</span>
-                                <span className="text-white font-mono">{selectedTask.end_time || '--:--'}</span>
-                            </div>
-                            <div className="flex justify-between border-b border-white/5 pb-2">
-                                <span className="text-white/40 text-sm flex items-center gap-2"><User size={12}/> Оператор</span>
-                                <span className="text-white">{selectedTask.operator || '-'}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-white/40 text-sm flex items-center gap-2"><MapPin size={12}/> Зона</span>
-                                <span className="text-white font-mono bg-white/10 px-2 rounded text-xs leading-5">{selectedTask.zone || '-'}</span>
-                            </div>
+               <div className="p-8">
+                  <h2 className="text-2xl font-bold text-white font-mono mb-6 pr-10">{selectedTask.id}</h2>
+                  
+                  <div className="grid grid-cols-1 gap-8">
+                     <div className="space-y-4">
+                        <div className="bg-white/5 rounded-2xl p-5 border border-white/5 space-y-3">
+                           <div className="flex justify-between text-sm"><span className="text-white/40">Начало:</span><span className="text-white font-mono">{selectedTask.start_time || '-'}</span></div>
+                           <div className="flex justify-between text-sm"><span className="text-white/40">Конец:</span><span className="text-white font-mono">{selectedTask.end_time || '-'}</span></div>
+                           <div className="flex justify-between text-sm"><span className="text-white/40">Оператор:</span><span className="text-white">{selectedTask.operator || '-'}</span></div>
+                           <div className="flex justify-between text-sm"><span className="text-white/40">Зона:</span><span className="text-white font-mono bg-white/10 px-2 rounded">{selectedTask.zone || '-'}</span></div>
                         </div>
-                    </div>
 
-                    <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
-                        <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                            <Camera size={14} /> Фотоотчет
-                        </h3>
-                        <div className="grid grid-cols-2 gap-3">
-                            {[selectedTask.photo_gen, selectedTask.photo_seal, selectedTask.photo_empty].map((url, i) => (
-                                url && (
-                                    <div 
-                                        key={i} 
-                                        className="aspect-square bg-black rounded-xl overflow-hidden border border-white/10 active:opacity-50"
-                                        onClick={() => setLightboxImg(getDriveImgSrc(url, 'w2000'))}
-                                    >
-                                        <img src={getDriveImgSrc(url, 'w400')} className="w-full h-full object-cover" />
-                                    </div>
-                                )
-                            ))}
+                        <div className="grid grid-cols-3 gap-3">
+                           {[selectedTask.photo_gen, selectedTask.photo_seal, selectedTask.photo_empty].map((url, i) => (
+                              url && (
+                                <div 
+                                  key={i} 
+                                  className="aspect-square bg-black rounded-xl overflow-hidden border border-white/10 cursor-pointer"
+                                  onClick={() => setLightboxImg(getDriveImgSrc(url, 'w2000'))}
+                                >
+                                   <img src={getDriveImgSrc(url, 'w300')} className="w-full h-full object-cover" />
+                                </div>
+                              )
+                           ))}
                         </div>
-                    </div>
-                </div>
+                     </div>
+                  </div>
+               </div>
             </div>
         </div>
       )}
 
-      {/* Lightbox */}
+      {/* Лайтбокс */}
       {lightboxImg && (
-        <div className="fixed inset-0 z-[100000] bg-black flex items-center justify-center p-4" onClick={() => setLightboxImg(null)}>
-          <img src={lightboxImg} className="max-w-full max-h-full object-contain" />
-          <button className="absolute top-10 right-6 text-white bg-white/20 p-3 rounded-full"><X size={32} /></button>
+        <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center p-4" onClick={() => setLightboxImg(null)}>
+          <img src={lightboxImg} className="max-w-full max-h-full object-contain shadow-2xl" />
         </div>
       )}
       
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-        .safe-top { padding-top: max(1.5rem, env(safe-area-inset-top)); }
-        .overscroll-contain { overscroll-behavior: contain; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #444; border-radius: 10px; }
       `}</style>
     </div>
   );
