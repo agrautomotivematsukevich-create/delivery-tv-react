@@ -97,52 +97,87 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
 
       {/* Detail Modal */}
       {selectedTask && (
-        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="bg-[#0F0F12] border-t md:border border-white/10 p-6 md:p-8 rounded-t-[2rem] md:rounded-[2.5rem] w-full max-w-4xl h-[92vh] md:h-auto md:max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col gap-6 shadow-2xl relative">
+        <div className="fixed inset-0 z-[9999] flex items-end md:items-center justify-center bg-black animate-in fade-in duration-200">
+            {/* Основной контейнер окна — теперь с жестким фоном и без лишней прозрачности */}
+            <div className="bg-[#0F0F12] w-full max-w-4xl h-[95vh] md:h-auto md:max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col shadow-2xl relative border-t border-white/10 md:border md:rounded-[2.5rem]">
                
-               {/* Fixed Header in Modal */}
-               <div className="sticky top-0 bg-[#0F0F12] z-[110] pb-4 border-b border-white/10 flex justify-between items-start">
-                  <div>
-                    <h2 className="text-2xl md:text-4xl font-extrabold text-white font-mono break-all pr-12">{selectedTask.id}</h2>
-                    <div className="flex flex-wrap gap-3 mt-2">
-                       <span className="px-3 py-1 bg-white/10 rounded-lg text-xs font-bold border border-white/10 text-white/70">{selectedTask.type}</span>
-                       <span className={`px-3 py-1 rounded-lg text-xs font-bold border ${selectedTask.status === 'DONE' ? 'bg-accent-green/10 text-accent-green border-accent-green/20' : 'bg-white/10 text-white/50 border-white/10'}`}>
+               {/* Шапка модального окна — теперь зафиксирована сверху */}
+               <div className="sticky top-0 bg-[#0F0F12] z-[100] p-6 border-b border-white/10 flex justify-between items-start">
+                  <div className="flex-1">
+                    <h2 className="text-xl md:text-3xl font-bold text-white font-mono leading-tight break-all pr-4">
+                        {selectedTask.id}
+                    </h2>
+                    <div className="flex gap-2 mt-2">
+                       <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] font-bold text-white/70 uppercase">
+                          {selectedTask.type}
+                       </span>
+                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${selectedTask.status === 'DONE' ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/50'}`}>
                           {selectedTask.status}
                        </span>
                     </div>
                   </div>
                   <button 
                     onClick={() => setSelectedTask(null)}
-                    className="p-3 rounded-full bg-white/5 hover:bg-white/20 text-white transition-colors"
+                    className="p-3 -mr-2 -mt-2 rounded-full bg-white/5 text-white active:bg-white/20 transition-colors"
                   >
-                    <X size={28} />
+                    <X size={24} />
                   </button>
                </div>
 
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-10">
-                 <div className="space-y-6">
-                    <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
-                       <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4">Info</h3>
-                       <div className="space-y-4">
-                          <div className="flex justify-between items-center">
-                            <span className="text-white/50 flex items-center gap-2"><Clock size={14}/> Start</span>
-                            <span className="font-mono text-white text-lg">{selectedTask.start_time || '-'}</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-white/50 flex items-center gap-2"><Clock size={14}/> End</span>
-                            <span className="font-mono text-white text-lg">{selectedTask.end_time || '-'}</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-white/50 flex items-center gap-2"><User size={14}/> {t.dtl_operator}</span>
-                            <span className="text-white font-medium">{selectedTask.operator || '-'}</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-white/50 flex items-center gap-2"><MapPin size={14}/> {t.dtl_zone}</span>
-                            <span className="text-white font-mono bg-white/10 px-2 py-0.5 rounded text-sm">{selectedTask.zone || '-'}</span>
-                          </div>
-                       </div>
-                    </div>
-                 </div>
+               {/* Контентная часть */}
+               <div className="p-6 space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                     {/* Блок INFO */}
+                     <div className="bg-white/5 rounded-2xl p-5 border border-white/5 space-y-4">
+                        <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Информация</h3>
+                        <div className="grid gap-3">
+                           <div className="flex justify-between border-b border-white/5 pb-2">
+                              <span className="text-white/40 text-sm">Начало</span>
+                              <span className="text-white font-mono">{selectedTask.start_time || '--:--'}</span>
+                           </div>
+                           <div className="flex justify-between border-b border-white/5 pb-2">
+                              <span className="text-white/40 text-sm">Конец</span>
+                              <span className="text-white font-mono">{selectedTask.end_time || '--:--'}</span>
+                           </div>
+                           <div className="flex justify-between border-b border-white/5 pb-2">
+                              <span className="text-white/40 text-sm">Оператор</span>
+                              <span className="text-white">{selectedTask.operator || '-'}</span>
+                           </div>
+                           <div className="flex justify-between">
+                              <span className="text-white/40 text-sm">Зона</span>
+                              <span className="text-white font-mono bg-white/10 px-2 rounded text-xs leading-5">{selectedTask.zone || '-'}</span>
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Блок ФОТО */}
+                     <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
+                        <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-4">Фотоотчет</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                           {[
+                             { url: selectedTask.photo_gen },
+                             { url: selectedTask.photo_seal },
+                             { url: selectedTask.photo_empty }
+                           ].map((p, i) => (
+                              p.url && (
+                                <div 
+                                  key={i} 
+                                  className="aspect-square bg-black/40 rounded-xl overflow-hidden border border-white/10 active:opacity-70 transition-opacity"
+                                  onClick={() => setLightboxImg(getDriveImgSrc(p.url, 'w2000'))}
+                                >
+                                   <img src={getDriveImgSrc(p.url, 'w400')} className="w-full h-full object-cover" loading="lazy" />
+                                </div>
+                              )
+                           ))}
+                        </div>
+                     </div>
+                  </div>
+                  {/* Отступ снизу для мобильных, чтобы контент не перекрывался браузерной панелью */}
+                  <div className="h-10 md:hidden"></div>
+               </div>
+            </div>
+        </div>
+      )}
 
                  <div className="space-y-6">
                     <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
