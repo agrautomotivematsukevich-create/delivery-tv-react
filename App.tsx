@@ -159,13 +159,13 @@ function App() {
         />
       )}
 
-      {/* FOOTER AUTHORSHIP */}
-      <footer className="relative z-10 mt-auto pt-12 pb-6 flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
-        <div className="flex flex-col items-center gap-2">
-          <div className="h-[1px] w-12 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-          <p className="text-[9px] font-medium tracking-[0.5em] text-white/40 uppercase text-center">
+      {/* FOOTER AUTHORSHIP - Теперь не занимает место в потоке */}
+      <footer className="absolute bottom-4 left-0 right-0 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700 pointer-events-none">
+        <div className="flex flex-col items-center gap-1 pointer-events-auto">
+          <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+          <p className="text-[8px] font-medium tracking-[0.5em] text-white/30 uppercase text-center">
             Developed by 
-            <span className="ml-2 text-white/70 font-black tracking-[0.3em]">
+            <span className="ml-2 text-white/50 font-black tracking-[0.2em]">
               Vladislav_Matsukevich
             </span>
           </p>
