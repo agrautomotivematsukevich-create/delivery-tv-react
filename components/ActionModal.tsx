@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { api } from '../services/api';
 import { TranslationSet, TaskAction, User } from '../types';
-import { Camera, Lock, CheckCircle, Upload, Clock } from 'lucide-react';
+import { Camera, Lock, CheckCircle, Upload, Clock, Truck } from 'lucide-react';
 
 interface ActionModalProps {
   action: TaskAction;
@@ -19,16 +19,14 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   const [deferUpload, setDeferUpload] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   
-  // --- НОВОЕ: Состояние для ручного ввода времени ---
+  // --- НОВОЕ: Ручной переключатель режима "Локальная поставка" ---
+  const [isLocalManual, setIsLocalManual] = useState(false);
   const [manualTime, setManualTime] = useState(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentPhotoTarget = useRef<1 | 2>(1);
 
   const isStart = action.type === 'start';
-  
-  // --- НОВОЕ: Определяем, является ли поставка локальной ---
-  const isLocal = action.id.includes('LOCAL') || (action as any).taskType?.includes('LOCAL');
 
   const AVAILABLE_ZONES = ['G4', 'G5', 'G7', 'G8', 'G9', 'P70'];
 
@@ -51,17 +49,12 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           canvas.width = 1600;
           canvas.height = img.height * scale;
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          
-          const suffix = isStart 
-            ? (currentPhotoTarget.current === 1 ? "_General" : "_Seal") 
-            : "_Empty";
-            
+          const suffix = isStart ? (currentPhotoTarget.current === 1 ? "_General" : "_Seal") : "_Empty";
           const photoData = {
             data: canvas.toDataURL('image/jpeg', 0.9),
             mime: 'image/jpeg',
             name: `${action.id}${suffix}.jpg`
           };
-
           if (currentPhotoTarget.current === 1) setPhoto1(photoData);
           else setPhoto2(photoData);
         };
@@ -73,58 +66,31 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   };
 
   const isFormValid = () => {
-    // --- ИЗМЕНЕНО: Для локальных поставок фото не обязательны ---
-    if (isLocal) return true; 
-
+    if (isLocalManual) return true; // В локальном режиме всё валидно
     if (isStart) {
       if (!zone) return false;
-      if (!deferUpload) {
-        return !!photo1 && !!photo2;
-      }
-      return true;
-    } else {
-      if (!deferUpload) {
-        return !!photo1;
-      }
-      return true;
+      return deferUpload || (!!photo1 && !!photo2);
     }
+    return deferUpload || !!photo1;
   };
 
   const handleSubmit = async () => {
     if (!isFormValid()) return;
-
     setSubmitting(true);
-    setUploadStatus("");
     
     let urlGen = "", urlSeal = "", urlEmpty = "";
 
-    if (!isLocal && !deferUpload) { // Не грузим фото, если локальная
-      if (photo1) {
-        if (isStart && photo2) setUploadStatus(`${t.msg_uploading} (1/2)`);
-        else setUploadStatus(`${t.msg_uploading}`);
-        urlGen = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name);
-      }
-      
-      if (photo2) {
-        setUploadStatus(`${t.msg_uploading} (2/2)`);
-        urlSeal = await api.uploadPhoto(photo2.data, photo2.mime, photo2.name);
-      }
-      
-      if (!isStart && photo1) {
-        urlEmpty = urlGen; 
-        urlGen = ""; 
-      }
+    if (!isLocalManual && !deferUpload) {
+      if (photo1) urlGen = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name);
+      if (photo2) urlSeal = await api.uploadPhoto(photo2.data, photo2.mime, photo2.name);
+      if (!isStart && photo1) { urlEmpty = urlGen; urlGen = ""; }
     }
 
-    setUploadStatus("...");
-
-    // Отправляем данные. Если локальная, можно передать manualTime в поле комментария или зоны, 
-    // но так как мы не меняем code.gs, мы просто завершаем действие.
     await api.taskAction(
       action.id,
       action.type,
       user.name,
-      isLocal ? `LOCAL: ${manualTime}` : (zone || ""), // Записываем время в поле зоны для наглядности в таблице
+      isLocalManual ? `МАНУАЛ: ${manualTime}` : (zone || ""), 
       urlGen,
       urlSeal,
       urlEmpty
@@ -139,75 +105,63 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       <div className="bg-[#0F0F12] border border-white/10 p-8 rounded-3xl w-full max-w-[480px] flex flex-col gap-6 shadow-2xl">
         
         <div className="text-center">
-           <h2 className="text-3xl font-extrabold text-white mb-1">{action.id}</h2>
-           <p className="text-white/50 uppercase tracking-widest text-sm">
-             {isLocal ? "Локальная поставка" : (isStart ? t.btn_start : t.btn_finish)}
-           </p>
+           <h2 className="text-2xl font-extrabold text-white mb-1 leading-tight">{action.id}</h2>
+           
+           {/* Кнопка-переключатель режима */}
+           <button 
+            onClick={() => setIsLocalManual(!isLocalManual)}
+            className={`mt-4 mx-auto flex items-center gap-2 px-4 py-2 rounded-full border transition-all ${
+              isLocalManual 
+              ? 'bg-orange-500/20 border-orange-500 text-orange-500' 
+              : 'bg-white/5 border-white/10 text-white/40 hover:text-white'
+            }`}
+           >
+             <Truck size={16} />
+             <span className="text-xs font-bold uppercase tracking-wider">
+               {isLocalManual ? "Режим: Локальная (Ручной ввод)" : "Переключить на локальную"}
+             </span>
+           </button>
         </div>
 
-        {/* --- НОВОЕ: Интерфейс для локальной поставки --- */}
-        {isLocal ? (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col items-center gap-4">
-            <div className="flex items-center gap-3 text-accent-blue mb-2">
+        {isLocalManual ? (
+          /* Интерфейс ручного ввода времени */
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col items-center gap-4 animate-in slide-in-from-top-2">
+            <div className="flex items-center gap-3 text-orange-500">
               <Clock size={24} />
-              <span className="font-bold uppercase tracking-tighter">Укажите время поставки</span>
+              <span className="font-bold uppercase text-sm">Фактическое время</span>
             </div>
             <input 
               type="time" 
               value={manualTime}
               onChange={(e) => setManualTime(e.target.value)}
-              className="bg-white/10 border border-white/20 rounded-xl px-6 py-4 text-4xl font-mono text-white outline-none focus:border-accent-blue transition-all w-full text-center [color-scheme:dark]"
+              className="bg-white/10 border border-white/20 rounded-xl px-6 py-4 text-4xl font-mono text-white outline-none focus:border-orange-500 transition-all w-full text-center [color-scheme:dark]"
             />
-            <p className="text-white/30 text-xs text-center">Время будет записано в таблицу автоматически</p>
           </div>
         ) : (
+          /* Стандартный интерфейс с фото */
           <>
             {isStart && (
               <div>
-                <p className="text-xs font-bold text-white/40 mb-3 uppercase tracking-wider">ВЫБОР ЗОНЫ</p>
+                <p className="text-xs font-bold text-white/40 mb-3 uppercase tracking-wider text-center">Выберите зону</p>
                 <div className="grid grid-cols-3 gap-3">
                   {AVAILABLE_ZONES.map(z => (
-                    <button
-                      key={z}
-                      onClick={() => setZone(z)}
-                      className={`py-4 rounded-xl font-bold border transition-all ${
-                        zone === z 
-                        ? 'bg-accent-blue text-white border-accent-blue shadow-[0_0_15px_rgba(30,128,125,0.4)]' 
-                        : 'bg-white/5 text-white/50 border-transparent hover:bg-white/10'
-                      }`}
-                    >
-                      {z}
-                    </button>
+                    <button key={z} onClick={() => setZone(z)} className={`py-4 rounded-xl font-bold border transition-all ${zone === z ? 'bg-accent-blue text-white border-accent-blue' : 'bg-white/5 text-white/50 border-transparent'}`}>{z}</button>
                   ))}
                 </div>
               </div>
             )}
-
             <div className="space-y-3">
-               <div 
-                 onClick={() => triggerFile(1)}
-                 className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 transition-colors ${photo1 ? 'border-accent-green bg-accent-green/5' : 'border-white/20 hover:border-accent-blue hover:bg-accent-blue/5'}`}
-               >
+               <div onClick={() => triggerFile(1)} className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 ${photo1 ? 'border-accent-green' : 'border-white/20'}`}>
                  {photo1 ? <CheckCircle className="text-accent-green w-8 h-8" /> : <Camera className="text-white/50 w-8 h-8" />}
-                 <span className="font-semibold text-white/80">{isStart ? t.lbl_photo1 : t.lbl_photo_empty}</span>
+                 <span className="font-semibold text-white/80 text-center">{isStart ? t.lbl_photo1 : t.lbl_photo_empty}</span>
                </div>
-
                {isStart && (
-                 <div 
-                   onClick={() => triggerFile(2)}
-                   className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 transition-colors ${photo2 ? 'border-accent-green bg-accent-green/5' : 'border-white/20 hover:border-accent-blue hover:bg-accent-blue/5'}`}
-                 >
+                 <div onClick={() => triggerFile(2)} className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 ${photo2 ? 'border-accent-green' : 'border-white/20'}`}>
                    {photo2 ? <CheckCircle className="text-accent-green w-8 h-8" /> : <Lock className="text-white/50 w-8 h-8" />}
-                   <span className="font-semibold text-white/80">{t.lbl_photo2}</span>
+                   <span className="font-semibold text-white/80 text-center">{t.lbl_photo2}</span>
                  </div>
                )}
-               
                <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileChange} />
-               
-               <label className="flex items-center justify-center gap-2 text-white/50 text-sm cursor-pointer hover:text-white transition-colors mt-2">
-                 <input type="checkbox" checked={deferUpload} onChange={e => setDeferUpload(e.target.checked)} className="rounded bg-white/10 border-white/20" />
-                 Загрузить фото позже (Оффлайн)
-               </label>
             </div>
           </>
         )}
@@ -216,10 +170,11 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
            <button 
              onClick={handleSubmit}
              disabled={submitting || !isFormValid()}
-             className="w-full py-4 bg-accent-blue hover:bg-accent-blue/90 text-white font-bold rounded-2xl shadow-lg shadow-accent-blue/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+             className={`w-full py-4 font-bold rounded-2xl shadow-lg transition-all active:scale-[0.98] ${
+               isLocalManual ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-accent-blue hover:bg-accent-blue/90 text-white'
+             } disabled:opacity-50`}
            >
-             {submitting ? <Upload className="animate-bounce w-5 h-5" /> : null}
-             {submitting ? (uploadStatus || t.msg_uploading) : "ПОДТВЕРДИТЬ"}
+             {submitting ? "СОХРАНЕНИЕ..." : "ПОДТВЕРДИТЬ"}
            </button>
            <button onClick={onClose} className="text-white/40 hover:text-white py-2 transition-colors">{t.btn_cancel}</button>
         </div>
