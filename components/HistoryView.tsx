@@ -194,15 +194,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
           className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 animate-in fade-in duration-200 cursor-zoom-out"
           onClick={() => setLightboxImg(null)}
         >
-          <img 
-            src={lightboxImg} 
-            alt="Full view" 
-            className="max-w-full max-h-full rounded-lg shadow-2xl object-contain cursor-default" 
-            onClick={(e) => e.stopPropagation()} 
-          />
-          <button className="absolute top-4 right-4 text-white/50 hover:text-white p-2 transition-colors">
-            <X size={32} />
-          </button>
+          <div className="relative w-full max-w-5xl flex items-center justify-center">
+             <img 
+               src={lightboxImg} 
+               alt="Full view" 
+               className="w-full h-auto max-h-[90vh] rounded-lg shadow-2xl object-contain cursor-default" 
+               onClick={(e) => e.stopPropagation()} 
+             />
+             <button className="absolute -top-12 right-0 text-white/50 hover:text-white p-2 transition-colors">
+               <X size={40} />
+             </button>
+          </div>
         </div>
       )}
       
