@@ -106,17 +106,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
 
       {/* Detail Modal */}
       {selectedTask && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
-           <div className="bg-[#0F0F12] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col gap-6 shadow-2xl relative">
-              <button 
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/95 backdrop-blur-lg p-2 md:p-4 animate-in fade-in duration-200">
+            <div className="bg-[#0F0F12] border border-white/10 p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] w-full max-w-4xl max-h-[95vh] overflow-y-auto custom-scrollbar flex flex-col gap-6 shadow-2xl relative">
+               <button 
                 onClick={() => setSelectedTask(null)}
-                className="absolute top-6 right-6 p-2 rounded-full bg-white/5 hover:bg-white/20 text-white transition-colors"
+                className="absolute top-4 right-4 md:top-6 md:right-6 p-3 rounded-full bg-white/5 hover:bg-white/20 text-white transition-colors z-[90]"
               >
-                <X />
+                <X size={24} />
               </button>
 
-              <div className="border-b border-white/10 pb-6">
-                <h2 className="text-4xl font-extrabold text-white font-mono mb-2">{selectedTask.id}</h2>
+              <div className="border-b border-white/10 pb-6 mt-4">
+                <h2 className="text-3xl md:text-4xl font-extrabold text-white font-mono mb-2">{selectedTask.id}</h2>
                 <div className="flex flex-wrap gap-3">
                    <span className="px-3 py-1 bg-white/10 rounded-lg text-sm font-bold border border-white/10 text-white/70">{selectedTask.type}</span>
                    <span className={`px-3 py-1 rounded-lg text-sm font-bold border ${selectedTask.status === 'DONE' ? 'bg-accent-green/10 text-accent-green border-accent-green/20' : 'bg-white/10 text-white/50 border-white/10'}`}>
@@ -125,30 +125,62 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                  <div className="space-y-6">
                     <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
                        <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4">Info</h3>
-                       <div className="space-y-3">
-                          <div className="flex justify-between">
+                       <div className="space-y-4">
+                          <div className="flex justify-between items-center">
                             <span className="text-white/50 flex items-center gap-2"><Clock size={14}/> Start</span>
-                            <span className="font-mono text-white">{selectedTask.start_time || '-'}</span>
+                            <span className="font-mono text-white text-lg">{selectedTask.start_time || '-'}</span>
                           </div>
-                          <div className="flex justify-between">
+                          <div className="flex justify-between items-center">
                             <span className="text-white/50 flex items-center gap-2"><Clock size={14}/> End</span>
-                            <span className="font-mono text-white">{selectedTask.end_time || '-'}</span>
+                            <span className="font-mono text-white text-lg">{selectedTask.end_time || '-'}</span>
                           </div>
-                          <div className="flex justify-between">
+                          <div className="flex justify-between items-center">
                             <span className="text-white/50 flex items-center gap-2"><User size={14}/> {t.dtl_operator}</span>
                             <span className="text-white font-medium">{selectedTask.operator || '-'}</span>
                           </div>
-                          <div className="flex justify-between">
+                          <div className="flex justify-between items-center">
                             <span className="text-white/50 flex items-center gap-2"><MapPin size={14}/> {t.dtl_zone}</span>
-                            <span className="text-white font-medium">{selectedTask.zone || '-'}</span>
+                            <span className="text-white font-mono bg-white/10 px-2 py-0.5 rounded text-sm">{selectedTask.zone || '-'}</span>
                           </div>
                        </div>
                     </div>
                  </div>
+
+                 <div className="space-y-6">
+                    <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
+                       <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4 flex items-center gap-2">
+                         <Camera size={14} /> {t.dtl_photos}
+                       </h3>
+                       <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { title: t.lbl_photo1, url: selectedTask.photo_gen },
+                            { title: t.lbl_photo2, url: selectedTask.photo_seal },
+                            { title: t.lbl_photo_empty, url: selectedTask.photo_empty }
+                          ].map((p, i) => (
+                             p.url && (
+                               <div 
+                                 key={i} 
+                                 className="group relative aspect-square bg-black/50 rounded-xl overflow-hidden border border-white/10 cursor-pointer active:scale-95 transition-transform"
+                                 onClick={() => setLightboxImg(getDriveImgSrc(p.url, 'w2000'))}
+                               >
+                                  <img src={getDriveImgSrc(p.url, 'w400')} className="w-full h-full object-cover" loading="lazy" />
+                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <ZoomIn className="text-white" />
+                                  </div>
+                               </div>
+                             )
+                          ))}
+                       </div>
+                    </div>
+                 </div>
+              </div>
+            </div>
+        </div>
+      )}
 
                  <div className="space-y-6">
                     <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
