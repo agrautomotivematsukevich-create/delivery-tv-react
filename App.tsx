@@ -31,7 +31,7 @@ function App() {
   const [showTerminal, setShowTerminal] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showIssue, setShowIssue] = useState(false);
-  const [showIssueHistory, setShowIssueHistory] = useState(false); // Renamed from showHistory to avoid confusion with new View
+  const [showIssueHistory, setShowIssueHistory] = useState(false); 
   const [currentAction, setCurrentAction] = useState<TaskAction | null>(null);
 
   // Constants
@@ -39,7 +39,6 @@ function App() {
 
   // Polling
   const refreshDashboard = useCallback(async () => {
-    // Only poll if on dashboard view
     if (view === 'dashboard') {
       const data = await api.fetchDashboard();
       if (data) setDashboardData(data);
@@ -68,7 +67,7 @@ function App() {
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('warehouse_user');
-    setView('dashboard'); // Reset view on logout
+    setView('dashboard'); 
     setShowTerminal(false);
   };
 
@@ -159,13 +158,12 @@ function App() {
           onSuccess={handleActionSuccess}
         />
       )}
-    {/* ... здесь заканчиваются вызовы модалок (ActionModal и т.д.) ... */}
 
       {/* FOOTER AUTHORSHIP */}
       <footer className="relative z-10 mt-auto pt-12 pb-6 flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
         <div className="flex flex-col items-center gap-2">
           <div className="h-[1px] w-12 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-          <p className="text-[9px] font-medium tracking-[0.5em] text-white/40 uppercase">
+          <p className="text-[9px] font-medium tracking-[0.5em] text-white/40 uppercase text-center">
             Developed by 
             <span className="ml-2 text-white/70 font-black tracking-[0.3em]">
               Vladislav_Matsukevich
@@ -173,10 +171,7 @@ function App() {
           </p>
         </div>
       </footer>
-    </div> // Самый последний тег div в файле App.tsx
-  );
-}
-</div>
+    </div>
   );
 }
 
