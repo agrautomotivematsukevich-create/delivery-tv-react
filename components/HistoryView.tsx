@@ -42,15 +42,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
 
     if (!id) return url;
 
-    // Запрашиваем у Google миниатюру высокого разрешения (w1600 или w2000)
-    // Это всё еще не "оригинал", но качество будет отличным для экрана
+    // Запрашиваем у Google большое превью (w1600)
     const directLink = `https://drive.google.com/thumbnail?id=${id}&sz=w${size}`;
 
-    // Используем wsrv.nl с параметрами сохранения качества:
-    // &q=90 — качество JPEG 90%
-    // &output=jpg — принудительный вывод в JPG
-    // &il — чересстрочная загрузка (появляется плавно)
-    return `https://wsrv.nl/?url=${encodeURIComponent(directLink)}&q=90&output=jpg&il&default=ssl:placehold.jp/24/1e807d/ffffff/200x200.png?text=Photo_Blocked`;
+    // Добавляем параметры для wsrv.nl:
+    // &w=1200 — желаемая ширина выходного фото
+    // &we — разрешить увеличение (enlarge), если исходник меньше
+    // &q=85 — хороший баланс качества и веса
+    return `https://wsrv.nl/?url=${encodeURIComponent(directLink)}&w=1200&we&q=85&output=jpg`;
   };
 
   return (
