@@ -29,7 +29,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     fetchData(date);
   }, [date]);
 
-  const getDriveImgSrc = (url: string | undefined, size = '800') => {
+  const getDriveImgSrc = (url: string | undefined, size = '1600') => {
     if (!url) return '';
     
     let id = "";
@@ -42,12 +42,15 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
 
     if (!id) return url;
 
-    // Прямая ссылка на превью
+    // Запрашиваем у Google миниатюру высокого разрешения (w1600 или w2000)
+    // Это всё еще не "оригинал", но качество будет отличным для экрана
     const directLink = `https://drive.google.com/thumbnail?id=${id}&sz=w${size}`;
 
-    // ПЛАН Б: Используем WSrv.nl - это бесплатный и быстрый сервис кеширования и проксирования изображений.
-    // Он часто не входит в списки блокировок "Хранилищ", так как считается инструментом разработчика.
-    return `https://wsrv.nl/?url=${encodeURIComponent(directLink)}&default=ssl:placehold.jp/24/1e807d/ffffff/200x200.png?text=Photo_Blocked`;
+    // Используем wsrv.nl с параметрами сохранения качества:
+    // &q=90 — качество JPEG 90%
+    // &output=jpg — принудительный вывод в JPG
+    // &il — чересстрочная загрузка (появляется плавно)
+    return `https://wsrv.nl/?url=${encodeURIComponent(directLink)}&q=90&output=jpg&il&default=ssl:placehold.jp/24/1e807d/ffffff/200x200.png?text=Photo_Blocked`;
   };
 
   return (
