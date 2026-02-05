@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Analytics } from '@vercel/analytics/react'; // Добавлена библиотека аналитики
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import AuthModal from './components/AuthModal';
@@ -184,6 +185,9 @@ function App() {
           </div>
         </footer>
       </div>
+
+      {/* Интеграция аналитики в DOM */}
+      <Analytics />
     </>
   );
 }
