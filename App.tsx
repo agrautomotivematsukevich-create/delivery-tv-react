@@ -14,7 +14,6 @@ import { TRANSLATIONS } from './constants';
 import { DashboardData, Lang, User, Task, TaskAction } from './types';
 
 function App() {
-  // State
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('warehouse_lang') as Lang) || 'RU');
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('warehouse_user');
@@ -25,7 +24,6 @@ function App() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isAppReady, setIsAppReady] = useState(false);
 
-  // Modals
   const [showAuth, setShowAuth] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [showStats, setShowStats] = useState(false);
@@ -89,13 +87,12 @@ function App() {
 
   return (
     <>
-      {/* ПРИВЕТСТВЕННЫЙ ЭКРАН ЗАГРУЗКИ */}
       {!isAppReady && (
         <div className="fixed inset-0 z-[100] bg-[#0A0A0C] flex flex-col items-center justify-center overflow-hidden">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-600/10 blur-[120px] rounded-full"></div>
           <div className="absolute bottom-0 right-0 w-[300px] h-[300px] bg-emerald-600/5 blur-[100px] rounded-full"></div>
-          <div className="relative flex flex-col items-center z-10">
-            <div className="relative w-24 h-24 mb-10">
+          <div className="relative flex flex-col items-center z-10 text-center">
+            <div className="relative w-24 h-24 mb-10 mx-auto">
               <div className="absolute inset-0 border-[3px] border-white/5 rounded-2xl rotate-45"></div>
               <div className="absolute inset-0 border-[3px] border-blue-500 rounded-2xl rotate-45 animate-[spin_4s_linear_infinite] shadow-[0_0_20px_rgba(59,130,246,0.5)]"></div>
               <div className="absolute inset-0 flex items-center justify-center">
@@ -106,7 +103,7 @@ function App() {
               WAREHOUSE
               <span className="block text-center text-lg tracking-[0.6em] text-blue-500 mt-2 font-light">DASHBOARD</span>
             </h1>
-            <div className="w-48 h-[2px] bg-white/5 rounded-full mt-6 overflow-hidden">
+            <div className="w-48 h-[2px] bg-white/5 rounded-full mt-6 overflow-hidden mx-auto">
               <div className="h-full bg-blue-500 animate-[loading-bar_1.5s_ease-in-out_forwards]"></div>
             </div>
           </div>
@@ -119,10 +116,8 @@ function App() {
         </div>
       )}
 
-      {/* ОСНОВНОЙ ИНТЕРФЕЙС */}
       <div className={`relative min-h-screen w-full flex flex-col p-4 md:p-8 bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
         <div className="relative z-20 flex-1 flex flex-col max-w-[1920px] mx-auto w-full">
-          {/* Header с переданными пропсами */}
           <div className="relative z-50"> 
             <Header 
               user={user} 
@@ -146,7 +141,6 @@ function App() {
           </main>
         </div>
 
-        {/* Modals */}
         {showAuth && (
           <AuthModal t={t} onClose={() => setShowAuth(false)} onLoginSuccess={handleLogin} />
         )}
@@ -166,7 +160,6 @@ function App() {
           <ActionModal action={currentAction} user={user} t={t} onClose={() => setCurrentAction(null)} onSuccess={handleActionSuccess} />
         )}
 
-        {/* FOOTER */}
         <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
           <div className="flex flex-col items-center gap-1">
             <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
