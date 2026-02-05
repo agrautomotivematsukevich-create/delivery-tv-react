@@ -19,7 +19,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   const [deferUpload, setDeferUpload] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   
-  // --- НОВОЕ: Ручной переключатель режима "Локальная поставка" ---
+  // Состояние для ручного ввода режима и времени
   const [isLocalManual, setIsLocalManual] = useState(false);
   const [manualTime, setManualTime] = useState(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
   
@@ -27,7 +27,6 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   const currentPhotoTarget = useRef<1 | 2>(1);
 
   const isStart = action.type === 'start';
-
   const AVAILABLE_ZONES = ['G4', 'G5', 'G7', 'G8', 'G9', 'P70'];
 
   const triggerFile = (target: 1 | 2) => {
@@ -66,9 +65,12 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   };
 
   const isFormValid = () => {
-    if (isLocalManual) return true; // В локальном режиме всё валидно
+    // В обоих режимах зона теперь обязательна
+    if (!zone) return false;
+    
+    if (isLocalManual) return true; 
+    
     if (isStart) {
-      if (!zone) return false;
       return deferUpload || (!!photo1 && !!photo2);
     }
     return deferUpload || !!photo1;
@@ -80,17 +82,19 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
     
     let urlGen = "", urlSeal = "", urlEmpty = "";
 
+    // Загружаем фото только если НЕ локальный режим
     if (!isLocalManual && !deferUpload) {
       if (photo1) urlGen = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name);
       if (photo2) urlSeal = await api.uploadPhoto(photo2.data, photo2.mime, photo2.name);
       if (!isStart && photo1) { urlEmpty = urlGen; urlGen = ""; }
     }
 
+    // Передаем данные: если мануал, добавляем время в поле ТИП
     await api.taskAction(
       action.id,
-      action.type,
+      isLocalManual ? `${action.type}_manual_${manualTime}` : action.type,
       user.name,
-      isLocalManual ? `МАНУАЛ: ${manualTime}` : (zone || ""), 
+      zone || "", 
       urlGen,
       urlSeal,
       urlEmpty
@@ -107,7 +111,6 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         <div className="text-center">
            <h2 className="text-2xl font-extrabold text-white mb-1 leading-tight">{action.id}</h2>
            
-           {/* Кнопка-переключатель режима */}
            <button 
             onClick={() => setIsLocalManual(!isLocalManual)}
             className={`mt-4 mx-auto flex items-center gap-2 px-4 py-2 rounded-full border transition-all ${
@@ -118,17 +121,37 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
            >
              <Truck size={16} />
              <span className="text-xs font-bold uppercase tracking-wider">
-               {isLocalManual ? "Режим: Локальная (Ручной ввод)" : "Переключить на локальную"}
+               {isLocalManual ? "Режим: Ручной ввод" : "Переключить на локальную"}
              </span>
            </button>
         </div>
 
+        {/* Секция выбора зоны (Всегда видна) */}
+        <div>
+          <p className="text-xs font-bold text-white/40 mb-3 uppercase tracking-wider text-center">Выберите зону выгрузки</p>
+          <div className="grid grid-cols-3 gap-3">
+            {AVAILABLE_ZONES.map(z => (
+              <button 
+                key={z} 
+                onClick={() => setZone(z)} 
+                className={`py-4 rounded-xl font-bold border transition-all ${
+                  zone === z 
+                  ? (isLocalManual ? 'bg-orange-500 border-orange-500 text-white' : 'bg-accent-blue border-accent-blue text-white')
+                  : 'bg-white/5 text-white/50 border-transparent hover:bg-white/10'
+                }`}
+              >
+                {z}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {isLocalManual ? (
-          /* Интерфейс ручного ввода времени */
+          /* Поле ввода времени */
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col items-center gap-4 animate-in slide-in-from-top-2">
             <div className="flex items-center gap-3 text-orange-500">
-              <Clock size={24} />
-              <span className="font-bold uppercase text-sm">Фактическое время</span>
+              <Clock size={20} />
+              <span className="font-bold uppercase text-xs tracking-widest">Время начала (Факт)</span>
             </div>
             <input 
               type="time" 
@@ -138,32 +161,20 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
             />
           </div>
         ) : (
-          /* Стандартный интерфейс с фото */
-          <>
-            {isStart && (
-              <div>
-                <p className="text-xs font-bold text-white/40 mb-3 uppercase tracking-wider text-center">Выберите зону</p>
-                <div className="grid grid-cols-3 gap-3">
-                  {AVAILABLE_ZONES.map(z => (
-                    <button key={z} onClick={() => setZone(z)} className={`py-4 rounded-xl font-bold border transition-all ${zone === z ? 'bg-accent-blue text-white border-accent-blue' : 'bg-white/5 text-white/50 border-transparent'}`}>{z}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="space-y-3">
-               <div onClick={() => triggerFile(1)} className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 ${photo1 ? 'border-accent-green' : 'border-white/20'}`}>
-                 {photo1 ? <CheckCircle className="text-accent-green w-8 h-8" /> : <Camera className="text-white/50 w-8 h-8" />}
-                 <span className="font-semibold text-white/80 text-center">{isStart ? t.lbl_photo1 : t.lbl_photo_empty}</span>
+          /* Блок с фото */
+          <div className="space-y-3">
+             <div onClick={() => triggerFile(1)} className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 transition-all ${photo1 ? 'border-accent-green bg-accent-green/5' : 'border-white/20 hover:border-accent-blue'}`}>
+               {photo1 ? <CheckCircle className="text-accent-green w-8 h-8" /> : <Camera className="text-white/50 w-8 h-8" />}
+               <span className="font-semibold text-white/80 text-center text-sm">{isStart ? t.lbl_photo1 : t.lbl_photo_empty}</span>
+             </div>
+             {isStart && (
+               <div onClick={() => triggerFile(2)} className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 transition-all ${photo2 ? 'border-accent-green bg-accent-green/5' : 'border-white/20 hover:border-accent-blue'}`}>
+                 {photo2 ? <CheckCircle className="text-accent-green w-8 h-8" /> : <Lock className="text-white/50 w-8 h-8" />}
+                 <span className="font-semibold text-white/80 text-center text-sm">{t.lbl_photo2}</span>
                </div>
-               {isStart && (
-                 <div onClick={() => triggerFile(2)} className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 ${photo2 ? 'border-accent-green' : 'border-white/20'}`}>
-                   {photo2 ? <CheckCircle className="text-accent-green w-8 h-8" /> : <Lock className="text-white/50 w-8 h-8" />}
-                   <span className="font-semibold text-white/80 text-center">{t.lbl_photo2}</span>
-                 </div>
-               )}
-               <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileChange} />
-            </div>
-          </>
+             )}
+             <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileChange} />
+          </div>
         )}
 
         <div className="flex flex-col gap-3 mt-2">
@@ -172,11 +183,11 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
              disabled={submitting || !isFormValid()}
              className={`w-full py-4 font-bold rounded-2xl shadow-lg transition-all active:scale-[0.98] ${
                isLocalManual ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-accent-blue hover:bg-accent-blue/90 text-white'
-             } disabled:opacity-50`}
+             } disabled:opacity-50 disabled:cursor-not-allowed`}
            >
              {submitting ? "СОХРАНЕНИЕ..." : "ПОДТВЕРДИТЬ"}
            </button>
-           <button onClick={onClose} className="text-white/40 hover:text-white py-2 transition-colors">{t.btn_cancel}</button>
+           <button onClick={onClose} className="text-white/40 hover:text-white py-2 transition-colors text-sm font-medium">{t.btn_cancel}</button>
         </div>
       </div>
     </div>
