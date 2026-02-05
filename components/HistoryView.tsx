@@ -16,10 +16,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
 
   const fetchData = async (d: string) => {
     setLoading(true);
-    // Convert YYYY-MM-DD to DD.MM
     const [y, m, day] = d.split('-');
     const formattedDate = `${day}.${m}`;
-    
     const data = await api.fetchHistory(formattedDate);
     setTasks(data);
     setLoading(false);
@@ -31,7 +29,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
 
   const getDriveImgSrc = (url: string | undefined, size?: string) => {
     if (!url) return '';
-    
     let id = "";
     const match1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
     if (match1) id = match1[1];
@@ -39,15 +36,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
       const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
       if (match2) id = match2[1];
     }
-
     if (!id) return url;
-
-    // Прямая ссылка на скачивание оригинального файла из Google Drive
     const originalFileLink = `https://drive.google.com/uc?export=download&id=${id}`;
-
-    // Если передан размер (например w800), добавляем его в прокси
     const sizeParam = size ? `&${size.startsWith('w') ? 'w' : 'h'}=${size.replace(/\D/g, '')}` : '&n=-1';
-
     return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=100${sizeParam}`;
   };
 
@@ -182,43 +173,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
         </div>
       )}
 
-                 <div className="space-y-6">
-                    <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
-                       <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4 flex items-center gap-2">
-                         <Camera size={14} /> {t.dtl_photos}
-                       </h3>
-                       <div className="grid grid-cols-2 gap-3">
-                          {[
-                            { title: t.lbl_photo1, url: selectedTask.photo_gen },
-                            { title: t.lbl_photo2, url: selectedTask.photo_seal },
-                            { title: t.lbl_photo_empty, url: selectedTask.photo_empty }
-                          ].map((p, i) => (
-                             p.url && (
-                               <div 
-                                 key={i} 
-                                 className="group relative aspect-square bg-black/50 rounded-xl overflow-hidden border border-white/10 cursor-pointer"
-                                 onClick={() => setLightboxImg(getDriveImgSrc(p.url, 'w2000'))}
-                               >
-                                  <img src={getDriveImgSrc(p.url, 'w800')} className="w-full h-full object-cover" />
-                                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <ZoomIn className="text-white mb-2" />
-                                    <span className="text-[10px] uppercase font-bold text-white/70">{p.title}</span>
-                                  </div>
-                               </div>
-                             )
-                          ))}
-                          {(!selectedTask.photo_gen && !selectedTask.photo_seal && !selectedTask.photo_empty) && (
-                            <div className="col-span-2 text-center text-white/30 text-sm py-8">No photos uploaded</div>
-                          )}
-                       </div>
-                    </div>
-                 </div>
-              </div>
-
-           </div>
-        </div>
-      )}
-      
       {/* Lightbox Overlay */}
       {lightboxImg && (
         <div 
