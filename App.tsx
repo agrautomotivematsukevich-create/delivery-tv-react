@@ -140,26 +140,23 @@ function App() {
       )}
 
       {/* ОСНОВНОЙ ИНТЕРФЕЙС */}
-      <div className={`relative min-h-screen w-full overflow-hidden flex flex-col p-4 md:p-8 bg-transparent font-sans selection:bg-accent-blue/30 selection:text-white transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="relative z-10 flex-1 flex flex-col min-h-0 max-w-[1920px] mx-auto w-full">
-          <Header 
-            user={user} 
-            lang={lang} 
-            t={t}
-            view={view}
-            setView={setView}
-            title={t.title}
-            onToggleLang={handleLangToggle}
-            onLoginClick={() => setShowAuth(true)}
-            onLogoutClick={handleLogout}
-            onTerminalClick={() => setShowTerminal(true)}
-            onStatsClick={() => setShowStats(true)}
-            onIssueClick={() => setShowIssue(true)}
-            onHistoryClick={() => setShowIssueHistory(true)}
-          />
+<div className={`relative min-h-screen w-full flex flex-col p-4 md:p-8 bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+  <div className="relative z-20 flex-1 flex flex-col max-w-[1920px] mx-auto w-full">
+    {/* Header с повышенным z-index */}
+    <div className="relative z-50"> 
+      <Header 
+        // ... пропсы
+      />
+    </div>
 
-          {renderContent()}
-        </div>
+    {/* Контент под хедером */}
+    <main className="relative z-10 flex-1 mt-4">
+      {renderContent()}
+    </main>
+  </div>
+  
+  {/* Footer и Modals остаются без изменений */}
+</div>
 
         {/* Modals */}
         {showAuth && (
