@@ -40,7 +40,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   // Фильтруем задачи перед рендером
   const activeTasks = tasks.filter(task => {
     // 1. Если есть время завершения - скрываем (Критическая логика)
-    if (task.endTime) return false;
+    if (task.end_time) return false;
     // 2. Если статус DONE - скрываем
     if (task.status === 'DONE') return false;
     // Иначе показываем
