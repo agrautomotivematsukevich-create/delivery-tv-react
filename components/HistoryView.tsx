@@ -27,6 +27,16 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     fetchData(date);
   }, [date]);
 
+  // Блокировка скролла основного экрана при открытии модалки
+  useEffect(() => {
+    if (selectedTask) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [selectedTask]);
+
   const getDriveImgSrc = (url: string | undefined, size?: string) => {
     if (!url) return '';
     let id = "";
@@ -73,7 +83,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
                <div 
                  key={task.id} 
                  onClick={() => setSelectedTask(task)}
-                 className="bg-white/5 border border-white/5 rounded-2xl p-4 flex items-center justify-between hover:bg-white/10 cursor-pointer active:scale-[0.99]"
+                 className="bg-white/5 border border-white/5 rounded-2xl p-4 flex items-center justify-between hover:bg-white/10 cursor-pointer transition-all active:scale-[0.99]"
                >
                  <div className="flex items-center gap-4">
                     <div className={`w-2 h-12 rounded-full ${task.status === 'DONE' ? 'bg-accent-green' : 'bg-white/20'}`}></div>
@@ -95,95 +105,91 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
          )}
       </div>
 
-      {/* Detail Modal */}
+      {/* DETAIL MODAL - SOLID & LOCKED */}
       {selectedTask && (
-        <div className="fixed inset-0 z-[9999] flex items-end md:items-center justify-center bg-black">
-            <div className="bg-[#0F0F12] w-full max-w-4xl h-[95vh] md:h-auto md:max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col relative border-t border-white/10 md:border md:rounded-[2.5rem]">
-               
-               {/* Fixed Header */}
-               <div className="sticky top-0 bg-[#0F0F12] z-[100] p-6 border-b border-white/10 flex justify-between items-start">
-                  <div className="flex-1 pr-4">
+        <div className="fixed inset-0 z-[99999] flex flex-col bg-black">
+            {/* Header (Always Fixed) */}
+            <div className="bg-[#0F0F12] p-6 border-b border-white/10 flex justify-between items-start safe-top">
+                <div className="flex-1 pr-4">
                     <h2 className="text-xl md:text-3xl font-bold text-white font-mono break-all leading-tight">
                         {selectedTask.id}
                     </h2>
                     <div className="flex gap-2 mt-2">
-                       <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] font-bold text-white/70 uppercase">{selectedTask.type}</span>
-                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${selectedTask.status === 'DONE' ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/50'}`}>
-                          {selectedTask.status}
-                       </span>
+                        <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] font-bold text-white/70 uppercase">{selectedTask.type}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${selectedTask.status === 'DONE' ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/50'}`}>
+                            {selectedTask.status}
+                        </span>
                     </div>
-                  </div>
-                  <button 
+                </div>
+                <button 
                     onClick={() => setSelectedTask(null)}
-                    className="p-3 -mr-2 -mt-2 rounded-full bg-white/5 text-white active:bg-white/20 transition-colors"
-                  >
-                    <X size={24} />
-                  </button>
-               </div>
+                    className="p-4 -mr-2 -mt-2 rounded-full bg-white/10 text-white active:bg-white/30"
+                >
+                    <X size={28} />
+                </button>
+            </div>
 
-               {/* Content */}
-               <div className="p-6 space-y-8 pb-20">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                     <div className="bg-white/5 rounded-2xl p-5 border border-white/5 space-y-4">
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto bg-[#0F0F12] p-6 space-y-8 overscroll-contain pb-20">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-white/5 rounded-2xl p-5 border border-white/5 space-y-4">
                         <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Информация</h3>
                         <div className="grid gap-3">
-                           <div className="flex justify-between border-b border-white/5 pb-2">
-                              <span className="text-white/40 text-sm flex items-center gap-2"><Clock size={12}/> Начало</span>
-                              <span className="text-white font-mono">{selectedTask.start_time || '--:--'}</span>
-                           </div>
-                           <div className="flex justify-between border-b border-white/5 pb-2">
-                              <span className="text-white/40 text-sm flex items-center gap-2"><Clock size={12}/> Конец</span>
-                              <span className="text-white font-mono">{selectedTask.end_time || '--:--'}</span>
-                           </div>
-                           <div className="flex justify-between border-b border-white/5 pb-2">
-                              <span className="text-white/40 text-sm flex items-center gap-2"><User size={12}/> Оператор</span>
-                              <span className="text-white">{selectedTask.operator || '-'}</span>
-                           </div>
-                           <div className="flex justify-between">
-                              <span className="text-white/40 text-sm flex items-center gap-2"><MapPin size={12}/> Зона</span>
-                              <span className="text-white font-mono bg-white/10 px-2 rounded text-xs leading-5">{selectedTask.zone || '-'}</span>
-                           </div>
+                            <div className="flex justify-between border-b border-white/5 pb-2">
+                                <span className="text-white/40 text-sm flex items-center gap-2"><Clock size={12}/> Начало</span>
+                                <span className="text-white font-mono">{selectedTask.start_time || '--:--'}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-white/5 pb-2">
+                                <span className="text-white/40 text-sm flex items-center gap-2"><Clock size={12}/> Конец</span>
+                                <span className="text-white font-mono">{selectedTask.end_time || '--:--'}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-white/5 pb-2">
+                                <span className="text-white/40 text-sm flex items-center gap-2"><User size={12}/> Оператор</span>
+                                <span className="text-white">{selectedTask.operator || '-'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-white/40 text-sm flex items-center gap-2"><MapPin size={12}/> Зона</span>
+                                <span className="text-white font-mono bg-white/10 px-2 rounded text-xs leading-5">{selectedTask.zone || '-'}</span>
+                            </div>
                         </div>
-                     </div>
+                    </div>
 
-                     <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
+                    <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
                         <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                           <Camera size={14} /> Фотоотчет
+                            <Camera size={14} /> Фотоотчет
                         </h3>
                         <div className="grid grid-cols-2 gap-3">
-                           {[selectedTask.photo_gen, selectedTask.photo_seal, selectedTask.photo_empty].map((url, i) => (
-                              url && (
-                                <div 
-                                  key={i} 
-                                  className="aspect-square bg-black/40 rounded-xl overflow-hidden border border-white/10 active:scale-95 transition-transform"
-                                  onClick={() => setLightboxImg(getDriveImgSrc(url, 'w2000'))}
-                                >
-                                   <img src={getDriveImgSrc(url, 'w400')} className="w-full h-full object-cover" loading="lazy" />
-                                </div>
-                              )
-                           ))}
+                            {[selectedTask.photo_gen, selectedTask.photo_seal, selectedTask.photo_empty].map((url, i) => (
+                                url && (
+                                    <div 
+                                        key={i} 
+                                        className="aspect-square bg-black rounded-xl overflow-hidden border border-white/10 active:opacity-50"
+                                        onClick={() => setLightboxImg(getDriveImgSrc(url, 'w2000'))}
+                                    >
+                                        <img src={getDriveImgSrc(url, 'w400')} className="w-full h-full object-cover" />
+                                    </div>
+                                )
+                            ))}
                         </div>
-                     </div>
-                  </div>
-               </div>
+                    </div>
+                </div>
             </div>
         </div>
       )}
 
       {/* Lightbox */}
       {lightboxImg && (
-        <div 
-          className="fixed inset-0 z-[10000] bg-black flex items-center justify-center p-4"
-          onClick={() => setLightboxImg(null)}
-        >
+        <div className="fixed inset-0 z-[100000] bg-black flex items-center justify-center p-4" onClick={() => setLightboxImg(null)}>
           <img src={lightboxImg} className="max-w-full max-h-full object-contain" />
-          <button className="absolute top-6 right-6 text-white bg-white/10 p-3 rounded-full"><X size={32} /></button>
+          <button className="absolute top-10 right-6 text-white bg-white/20 p-3 rounded-full"><X size={32} /></button>
         </div>
       )}
       
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        .safe-top { padding-top: max(1.5rem, env(safe-area-inset-top)); }
+        .overscroll-contain { overscroll-behavior: contain; }
       `}</style>
     </div>
   );
