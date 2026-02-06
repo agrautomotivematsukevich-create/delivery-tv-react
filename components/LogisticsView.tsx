@@ -33,25 +33,50 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
 
     const rows = pasteText.trim().split(/\r?\n/);
     const newTasks: TaskInput[] = rows.map(line => {
-      const cols = line.split('\t').map(c => c.trim());
+      const data = line.split('\t').map(c => c.trim());
       
-      // Если колонок мало, возможно разделитель другой (например точка с запятой)
-      const data = cols.length > 1 ? cols : line.split(';').map(c => c.trim());
+      // 1. Проверяем, есть ли в начале колонка с номером (1, 2, 3...)
+      // Если первая колонка — это число, а вторая — похожа на Лот, значит есть смещение
+      const isFirstColIndex = /^\d+$/.test(data[0]) && data.length > 5;
+      const offset = isFirstColIndex ? 1 : 0;
 
-      // Простая логика распределения (можно подстроить под структуру их Excel)
-      // Допустим порядок: Лот, W/S, Паллеты, ID, Телефон, ETA
+      let lot = data[offset] || '';
+      let ws = data[offset + 1] || 'BS';
+      let pallets = data[offset + 2] || '';
+      let id = data[offset + 3] || '';
+      let phone = data[offset + 4] || '';
+      let eta = data[offset + 5] || '09:00';
+
+      // 2. Обработка спец-строк "хранение LCLU..."
+      if (lot.toLowerCase().includes('хранение')) {
+        const match = lot.match(/[A-Z]{4}\s?\d{7}/i); // Ищем номер контейнера в тексте
+        if (match) {
+          id = match[0].replace(/\s/g, ''); // Записываем найденный номер в ID
+          lot = 'STORAGE'; // Помечаем как хранение
+        }
+      }
+
+      // 3. Валидация W/S (только разрешенные значения)
+      const validWS = ['BS', 'AS', 'PS'].find(v => v === ws.toUpperCase()) || 'BS';
+
+      // 4. Нормализация времени (из "9:00" в "09:00")
+      if (eta && eta.includes(':')) {
+        const [h, m] = eta.split(':');
+        eta = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+      }
+
       return {
-        lot: data[0] || '',
-        ws: (['BS', 'AS', 'PS'].includes(data[1]?.toUpperCase()) ? data[1].toUpperCase() : 'BS') as any,
-        pallets: data[2] || '',
-        id: data[3]?.toUpperCase() || '',
-        phone: data[4] || '',
-        eta: data[5] || '09:00'
+        lot: lot,
+        ws: validWS as any,
+        pallets: pallets,
+        id: id.toUpperCase().replace(/\s/g, ''), // Чистим ID от пробелов
+        phone: phone,
+        eta: eta
       };
-    }).filter(task => task.id || task.lot); // Убираем совсем пустые строки
+    }).filter(task => task.id || task.lot); 
 
     if (newTasks.length > 0) {
-      // Если в таблице была только одна пустая строка, заменяем её
+      // Если в таблице была только одна дефолтная строка, заменяем её
       if (createRows.length === 1 && !createRows[0].id && !createRows[0].lot) {
         setCreateRows(newTasks);
       } else {
