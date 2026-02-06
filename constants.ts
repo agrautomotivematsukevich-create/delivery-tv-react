@@ -114,3 +114,30 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     dtl_photos: "Report Photos / 报告照片"
   }
 };
+
+/**
+ * Универсальная функция для формирования ссылки mailto
+ * Собирает текстовые данные и ссылки на фото в тело письма
+ */
+export const generateMailto = (subject: string, details: Record<string, any>, photos: (string | undefined)[]) => {
+  let body = "ОТЧЕТ ИЗ СИСТЕМЫ МОНИТОРИНГА\n";
+  body += "================================\n\n";
+  
+  // Перебираем детали (ID, ФИО, Описание и т.д.)
+  Object.entries(details).forEach(([key, value]) => {
+    if (value) body += `${key}: ${value}\n`;
+  });
+
+  // Добавляем ссылки на фото, если они есть
+  const validPhotos = photos.filter(url => url && url.length > 0);
+  if (validPhotos.length > 0) {
+    body += "\nССЫЛКИ НА ФОТО (Google Drive):\n";
+    validPhotos.forEach((url, i) => {
+      body += `Фото ${i + 1}: ${url}\n`;
+    });
+  }
+
+  body += "\n\n================================\nAG-Dashboard System Report";
+  
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+};
