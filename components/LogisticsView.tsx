@@ -106,22 +106,39 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
   };
 
   const handleSubmitCreate = async () => {
-    if (createRows.some(r => !r.id)) {
-      alert("Заполните ID контейнеров во всех строках");
+  // Фильтруем пустые или явно некорректные строки перед отправкой
+  const validTasks = createRows.filter(r => r.id && r.id.length > 3 && r.lot);
+
+  if (validTasks.length === 0) {
+    alert("Нет данных для сохранения или в строках не заполнены Лот/ID");
+    return;
+  }
+
+  if (validTasks.length !== createRows.length) {
+    if (!window.confirm(`Будет отправлено ${validTasks.length} строк из ${createRows.length}. Остальные некорректны. Продолжить?`)) {
       return;
     }
-    setSubmitting(true);
-    const [y, m, day] = date.split('-');
-    const formattedDate = `${day}.${m}`;
-    const success = await api.createPlan(formattedDate, createRows);
-    setSubmitting(false);
+  }
+
+  setSubmitting(true);
+  try {
+    const [y, m, d] = date.split('-');
+    const formattedDate = `${d}.${m}`; 
+    
+    // Отправляем только валидные данные
+    const success = await api.createPlan(formattedDate, validTasks);
+    
     if (success) {
-      alert(t.log_success);
+      alert("План успешно сохранен!");
       setCreateRows([{ ...emptyRow }]);
-    } else {
-      alert("Ошибка при создании плана");
     }
-  };
+  } catch (err) {
+    console.error("Критическая ошибка:", err);
+    alert("Ошибка связи с сервером. Проверьте, что в таблице нет пустых ячеек Лот или ID.");
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   // === EDIT MODE LOGIC ===
   const loadPlan = async () => {
