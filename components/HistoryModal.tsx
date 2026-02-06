@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { Issue, TranslationSet } from '../types';
-import { ArrowLeft, User, Calendar, X, ImageIcon, AlertCircle, ExternalLink } from 'lucide-react';
+import { ArrowLeft, User, Calendar, X, ImageIcon, AlertCircle, ExternalLink, Camera } from 'lucide-react';
 
 interface HistoryModalProps {
   onClose: () => void;
@@ -31,27 +31,29 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
     setSelectedIssue(null);
   };
 
-  // Convert Drive Viewer URL to a direct Thumbnail URL for <img> tags
-  const getDriveImgSrc = (url: string) => {
+  // --- ОБНОВЛЕННЫЙ МЕТОД: ОБХОД ЧЕРЕЗ WSRV.NL ---
+  const getDriveImgSrc = (url: string, size?: string) => {
     if (!url) return '';
     let id = "";
     
-    // Pattern 1: https://drive.google.com/file/d/ID/view...
     const match1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
     if (match1) id = match1[1];
     
-    // Pattern 2: https://drive.google.com/open?id=ID
     if (!id) {
       const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
       if (match2) id = match2[1];
     }
 
-    if (id) {
-      // Use Google Drive thumbnail API which is CORS friendly for <img> tags
-      // sz=w1000 requests a large thumbnail
-      return `https://drive.google.com/thumbnail?id=${id}&sz=w1000`;
-    }
-    return url;
+    if (!id) return url;
+
+    // Прямая ссылка на скачивание из Drive
+    const originalFileLink = `https://drive.google.com/uc?export=download&id=${id}`;
+    
+    // Параметры размера для wsrv.nl (по аналогии с вашим архивом)
+    const sizeParam = size ? `&${size.startsWith('w') ? 'w' : 'h'}=${size.replace(/\D/g, '')}` : '&n=-1';
+    
+    // Возвращаем через прокси wsrv.nl (обходит CORS и улучшает загрузку)
+    return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=80${sizeParam}`;
   };
 
   return (
@@ -154,12 +156,15 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
                     <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4">{t.lbl_photos_list}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                        {selectedIssue.photos.map((url, idx) => {
-                         const imgSrc = getDriveImgSrc(url);
+                         // Используем прокси для превью и большого фото
+                         const thumbSrc = getDriveImgSrc(url, 'w600');
+                         const fullSrc = getDriveImgSrc(url, 'w2000');
+                         
                          return (
                            <div key={idx} className="relative rounded-2xl overflow-hidden border border-white/10 bg-black/50 aspect-video group">
                               <img 
-                                src={imgSrc} 
-                                onClick={() => setLightboxImg(imgSrc)}
+                                src={thumbSrc} 
+                                onClick={() => setLightboxImg(fullSrc)}
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).style.display = 'none';
                                   (e.target as HTMLElement).nextElementSibling?.classList.remove('hidden');
@@ -193,7 +198,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
             src={lightboxImg} 
             alt="Full view" 
             className="max-w-full max-h-full rounded-lg shadow-2xl object-contain cursor-default" 
-            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking image
+            onClick={(e) => e.stopPropagation()} 
           />
           <button className="absolute top-4 right-4 text-white/50 hover:text-white p-2 transition-colors">
             <X size={32} />
