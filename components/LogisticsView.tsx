@@ -31,57 +31,60 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
   const handleProcessPaste = () => {
     if (!pasteText.trim()) return;
 
-    const rows = pasteText.trim().split(/\r?\n/);
-    const newTasks: TaskInput[] = rows.map(line => {
-      const data = line.split('\t').map(c => c.trim());
+    const lines = pasteText.trim().split(/\r?\n/);
+    const newTasks: TaskInput[] = lines.map(line => {
+      // Убираем кавычки и лишние пробелы сразу из всей строки
+      const cleanLine = line.replace(/"/g, '').trim();
+      const parts = cleanLine.split('\t').map(p => p.trim()).filter(p => p !== '');
       
-      // 1. Проверяем, есть ли в начале колонка с номером (1, 2, 3...)
-      // Если первая колонка — это число, а вторая — похожа на Лот, значит есть смещение
-      const isFirstColIndex = /^\d+$/.test(data[0]) && data.length > 5;
-      const offset = isFirstColIndex ? 1 : 0;
+      if (parts.length < 2) return null;
 
-      let lot = data[offset] || '';
-      let ws = data[offset + 1] || 'BS';
-      let pallets = data[offset + 2] || '';
-      let id = data[offset + 3] || '';
-      let phone = data[offset + 4] || '';
-      let eta = data[offset + 5] || '09:00';
-
-      // 2. Обработка спец-строк "хранение LCLU..."
-      if (lot.toLowerCase().includes('хранение')) {
-        const match = lot.match(/[A-Z]{4}\s?\d{7}/i); // Ищем номер контейнера в тексте
-        if (match) {
-          id = match[0].replace(/\s/g, ''); // Записываем найденный номер в ID
-          lot = 'STORAGE'; // Помечаем как хранение
-        }
-      }
-
-      // 3. Валидация W/S (только разрешенные значения)
-      const validWS = ['BS', 'AS', 'PS'].find(v => v === ws.toUpperCase()) || 'BS';
-
-      // 4. Нормализация времени (из "9:00" в "09:00")
-      if (eta && eta.includes(':')) {
-        const [h, m] = eta.split(':');
-        eta = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
-      }
-
-      return {
-        lot: lot,
-        ws: validWS as any,
-        pallets: pallets,
-        id: id.toUpperCase().replace(/\s/g, ''), // Чистим ID от пробелов
-        phone: phone,
-        eta: eta
+      let task: TaskInput = { 
+        lot: '', ws: 'BS', pallets: '', id: '', phone: '', eta: '09:00' 
       };
-    }).filter(task => task.id || task.lot); 
+
+      const containerRegex = /[A-Z]{4}\d{7}/i;
+      const timeRegex = /\b\d{1,2}:\d{2}\b/;
+      const phoneRegex = /(\+?\d[\s-]?){10,12}/;
+
+      // Обработка хранения
+      if (cleanLine.toLowerCase().includes('хранение')) {
+        const match = cleanLine.match(containerRegex);
+        task.lot = 'STORAGE';
+        task.id = match ? match[0].toUpperCase() : 'UNKNOWN';
+        const tMatch = cleanLine.match(timeRegex);
+        if (tMatch) task.eta = tMatch[0].padStart(5, '0');
+        return task;
+      }
+
+      parts.forEach(part => {
+        if (containerRegex.test(part)) {
+          task.id = part.match(containerRegex)![0].toUpperCase();
+        } else if (timeRegex.test(part)) {
+          task.eta = part.match(timeRegex)![0].padStart(5, '0');
+        } else if (['AS', 'BS', 'PS'].includes(part.toUpperCase())) {
+          task.ws = part.toUpperCase() as any;
+        } else if (part.length > 8 && (part.includes('-') || part.startsWith('43115'))) {
+          task.lot = part;
+        } else if (part.includes('/') || (parseInt(part) < 100 && part.length < 5)) {
+          task.pallets = part;
+        } else if (phoneRegex.test(part)) {
+          task.phone = part.replace(/[^\d+]/g, '');
+        } else if (!task.id && part.length > 6) {
+          // Если это не контейнер, но похоже на госномер (как ГАЗУ...)
+          task.id = part.toUpperCase();
+        }
+      });
+
+      // Финальная проверка: если ID пустой, берем хоть что-то из строки или пропускаем
+      if (!task.id && task.lot) task.id = "CHECK LOT";
+      
+      return task.id ? task : null;
+    }).filter((t): t is TaskInput => t !== null);
 
     if (newTasks.length > 0) {
-      // Если в таблице была только одна дефолтная строка, заменяем её
-      if (createRows.length === 1 && !createRows[0].id && !createRows[0].lot) {
-        setCreateRows(newTasks);
-      } else {
-        setCreateRows([...createRows, ...newTasks]);
-      }
+      const currentRows = (createRows.length === 1 && !createRows[0].id) ? [] : createRows;
+      setCreateRows([...currentRows, ...newTasks]);
     }
 
     setPasteText('');
