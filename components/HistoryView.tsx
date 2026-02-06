@@ -7,20 +7,39 @@ interface HistoryViewProps {
   t: any; 
 }
 
-const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
+const handleCopyTask = async (task: Task) => {
+    const photoUrls = [task.photo_gen, task.photo_seal, task.photo_empty].filter(Boolean);
+    let photosHtml = "";
+    
+    photoUrls.forEach((url, i) => {
+      const id = url?.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || url?.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1];
+      const proxyUrl = id ? `https://wsrv.nl/?url=${encodeURIComponent(`https://drive.google.com/uc?export=download&id=${id}`)}&w=400` : url;
+      photosHtml += `<img src="${proxyUrl}" width="300" style="margin-right: 10px; border: 1px solid #ccc;">`;
+    });
 
-  const fetchData = async (d: string) => {
-    setLoading(true);
-    const [y, m, day] = d.split('-');
-    const formattedDate = `${day}.${m}`;
-    const data = await api.fetchHistory(formattedDate);
-    setTasks(data);
-    setLoading(false);
+    const htmlContent = `
+      <div style="font-family: Calibri, sans-serif;">
+        <h2 style="color: #2563eb;">ОТЧЕТ ПО ПОСТАВКЕ: ${task.id}</h2>
+        <table border="0">
+          <tr><td><b>Оператор:</b></td><td>${task.operator || '-'}</td></tr>
+          <tr><td><b>Зона:</b></td><td>${task.zone || '-'}</td></tr>
+          <tr><td><b>Время:</b></td><td>${task.start_time || '-'} — ${task.end_time || '-'}</td></tr>
+        </table>
+        <p><b>Фотоотчет:</b></p>
+        ${photosHtml}
+      </div>
+    `;
+
+    const blob = new Blob([htmlContent], { type: "text/html" });
+    const data = [new ClipboardItem({ "text/html": blob, "text/plain": new Blob([task.id], { type: "text/plain" }) })];
+
+    try {
+      await navigator.clipboard.write(data);
+      alert("Данные и фото скопированы! Вставьте в Outlook.");
+    } catch (err) {
+      console.error(err);
+      alert("Не удалось скопировать фото автоматически.");
+    }
   };
 
   useEffect(() => {
