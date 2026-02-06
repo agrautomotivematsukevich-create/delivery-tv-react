@@ -67,7 +67,6 @@ export const api = {
   },
 
   fetchHistory: async (dateStr: string): Promise<Task[]> => {
-    // dateStr in DD.MM format expected by backend
     try {
       const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
       const data = await res.json();
@@ -78,7 +77,6 @@ export const api = {
     }
   },
 
-  // Logistics: Get full plan for editing
   fetchFullPlan: async (dateStr: string): Promise<PlanRow[]> => {
     try {
        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_full_plan&date=${encodeURIComponent(dateStr)}`);
@@ -90,37 +88,48 @@ export const api = {
     }
   },
 
-  // Logistics: Create new plan
+  // ИСПРАВЛЕНО: Переход на POST для создания плана
   createPlan: async (dateStr: string, tasks: TaskInput[]): Promise<boolean> => {
     try {
-       const payload = JSON.stringify(tasks);
-       await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=create_plan&date=${encodeURIComponent(dateStr)}&tasks=${encodeURIComponent(payload)}`);
-       return true;
+      const res = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        // Мы не устанавливаем заголовок Content-Type: application/json, 
+        // чтобы избежать лишних CORS "preflight" запросов, которые GAS иногда не любит.
+        body: JSON.stringify({
+          mode: 'create_plan',
+          date: dateStr,
+          tasks: tasks
+        })
+      });
+      const txt = await res.text();
+      return txt.includes("CREATED");
     } catch(e) {
-      console.error(e);
+      console.error("Create Plan Error:", e);
       return false;
     }
   },
   
-  // Logistics: Update specific row
+  // ИСПРАВЛЕНО: Переход на POST для обновления строки
   updatePlanRow: async (dateStr: string, row: PlanRow): Promise<boolean> => {
     try {
-       const params = new URLSearchParams({
-         mode: 'update_container_row',
-         date: dateStr,
-         row: row.rowIndex.toString(),
-         lot: row.lot,
-         ws: row.ws,
-         pallets: row.pallets,
-         id: row.id,
-         phone: row.phone,
-         eta: row.eta
+       const res = await fetch(SCRIPT_URL, {
+         method: 'POST',
+         body: JSON.stringify({
+           mode: 'update_container_row',
+           date: dateStr,
+           row: row.rowIndex.toString(),
+           lot: row.lot,
+           ws: row.ws,
+           pallets: row.pallets,
+           id: row.id,
+           phone: row.phone,
+           eta: row.eta
+         })
        });
-       const res = await fetch(`${SCRIPT_URL}?${params.toString()}`);
        const txt = await res.text();
        return txt.includes("UPDATED");
     } catch(e) {
-      console.error(e);
+      console.error("Update Row Error:", e);
       return false;
     }
   },
@@ -153,7 +162,6 @@ export const api = {
     const txt = await res.text();
     if (txt.includes("CORRECT")) {
       const parts = txt.split('|');
-      // Format: CORRECT|NAME|ROLE
       return { 
         success: true, 
         name: parts.length > 1 ? parts[1] : user,
@@ -173,7 +181,6 @@ export const api = {
     try {
       const res = await fetch(SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename })
       });
       const data = await res.json();
