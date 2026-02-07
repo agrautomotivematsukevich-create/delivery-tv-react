@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Analytics } from '@vercel/analytics/react'; // Добавлена библиотека аналитики
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import AuthModal from './components/AuthModal';
@@ -9,56 +10,48 @@ import IssueModal from './components/IssueModal';
 import HistoryModal from './components/HistoryModal';
 import HistoryView from './components/HistoryView';
 import LogisticsView from './components/LogisticsView';
-import AdminPanel from './components/AdminPanel';
-import Messenger from './components/Messenger';
 import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
 import { DashboardData, Lang, User, Task, TaskAction } from './types';
 
 function App() {
-  // State
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('warehouse_lang') as Lang) || 'RU');
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('warehouse_user');
     return saved ? JSON.parse(saved) : null;
   });
   
-  // Navigation View State
-  const [view, setView] = useState<'dashboard' | 'history' | 'logistics' | 'admin'>('dashboard');
-
+  const [view, setView] = useState<'dashboard' | 'history' | 'logistics'>('dashboard');
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  
-  // Modals
+  const [isAppReady, setIsAppReady] = useState(false);
+
   const [showAuth, setShowAuth] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showIssue, setShowIssue] = useState(false);
-  const [showIssueHistory, setShowIssueHistory] = useState(false);
-  const [showMessenger, setShowMessenger] = useState(false);
+  const [showIssueHistory, setShowIssueHistory] = useState(false); 
   const [currentAction, setCurrentAction] = useState<TaskAction | null>(null);
-  
-  // Trigger to force components to refresh data
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // Constants
   const t = TRANSLATIONS[lang];
 
-  // Polling
   const refreshDashboard = useCallback(async () => {
-    // Only poll if on dashboard view
-    if (view === 'dashboard') {
-      const data = await api.fetchDashboard();
-      if (data) setDashboardData(data);
-    }
-  }, [view]);
+    const data = await api.fetchDashboard();
+    if (data) setDashboardData(data);
+    return data;
+  }, []);
 
   useEffect(() => {
-    refreshDashboard();
-    const interval = setInterval(refreshDashboard, 5000);
-    return () => clearInterval(interval);
-  }, [refreshDashboard]);
+    refreshDashboard().then(() => {
+      setTimeout(() => setIsAppReady(true), 1200);
+    });
 
-  // Handlers
+    const interval = setInterval(() => {
+      if (view === 'dashboard') refreshDashboard();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [refreshDashboard, view]);
+
   const handleLangToggle = () => {
     const newLang = lang === 'RU' ? 'EN_CN' : 'RU';
     setLang(newLang);
@@ -74,9 +67,8 @@ function App() {
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('warehouse_user');
-    setView('dashboard'); // Reset view on logout
+    setView('dashboard'); 
     setShowTerminal(false);
-    setShowMessenger(false);
   };
 
   const handleTaskActionRequest = (task: Task, actionType: 'start' | 'finish') => {
@@ -85,101 +77,118 @@ function App() {
 
   const handleActionSuccess = () => {
     setCurrentAction(null);
-    // Force refresh of terminal data
-    setRefreshTrigger(prev => prev + 1);
     refreshDashboard();
   };
 
-  // Render Content based on View
   const renderContent = () => {
     if (view === 'history') return <HistoryView t={t} />;
     if (view === 'logistics') return <LogisticsView t={t} />;
-    if (view === 'admin' && user?.role === 'ADMIN') return <AdminPanel t={t} currentUser={user} />;
     return <Dashboard data={dashboardData} t={t} />;
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden flex flex-col p-4 md:p-8 bg-transparent font-sans selection:bg-accent-blue/30 selection:text-white">
-      {/* Main Content */}
-      <div className="relative z-10 flex-1 flex flex-col min-h-0 max-w-[1920px] mx-auto w-full">
-        <Header 
-          user={user} 
-          lang={lang} 
-          t={t}
-          view={view}
-          setView={setView}
-          title={t.title}
-          onToggleLang={handleLangToggle}
-          onLoginClick={() => setShowAuth(true)}
-          onLogoutClick={handleLogout}
-          onTerminalClick={() => setShowTerminal(true)}
-          onStatsClick={() => setShowStats(true)}
-          onIssueClick={() => setShowIssue(true)}
-          onHistoryClick={() => setShowIssueHistory(true)}
-          onMessengerClick={() => setShowMessenger(true)}
-        />
+    <>
+      {/* ПРИВЕТСТВЕННЫЙ ЭКРАН ЗАГРУЗКИ */}
+      {!isAppReady && (
+        <div className="fixed inset-0 z-[100] bg-[#0A0A0C] flex flex-col items-center justify-center overflow-hidden">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-600/10 blur-[120px] rounded-full"></div>
+          
+          <div className="relative flex flex-col items-center z-10 text-center">
+            {/* Логотип */}
+            <div className="relative w-24 h-24 mb-10 mx-auto">
+              <div className="absolute inset-0 border-[3px] border-white/5 rounded-2xl rotate-45"></div>
+              <div className="absolute inset-0 border-[3px] border-blue-500 rounded-2xl rotate-45 animate-spin shadow-[0_0_20px_rgba(59,130,246,0.5)]"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+              </div>
+            </div>
 
-        {renderContent()}
+            {/* Заголовок */}
+            <h1 className="text-4xl md:text-5xl font-black tracking-[0.2em] mb-4 bg-gradient-to-b from-white via-white to-white/20 bg-clip-text text-transparent">
+              WAREHOUSE
+              <span className="block text-center text-lg tracking-[0.6em] text-blue-500 mt-2 font-light">DASHBOARD</span>
+            </h1>
+
+            {/* Прогресс-бар */}
+            <div className="w-48 h-[2px] bg-white/5 rounded-full mt-6 overflow-hidden mx-auto">
+              <div className="h-full bg-blue-500 animate-[loading-bar_1.5s_ease-in-out_forwards]"></div>
+            </div>
+
+            {/* Блок авторства (тот самый Developer) */}
+            <div className="mt-12 flex flex-col items-center gap-2 transition-opacity duration-1000 opacity-60">
+              <span className="text-[8px] font-bold uppercase tracking-[0.4em] text-white/50">System Initializing</span>
+              <p className="text-[10px] font-medium tracking-[0.2em] text-white">
+                Developed by <span className="font-black text-blue-400">Vladislav_Matsukevich</span>
+              </p>
+            </div>
+          </div>
+
+          <style>{`
+            @keyframes loading-bar {
+              0% { width: 0%; transform: translateX(-100%); }
+              100% { width: 100%; transform: translateX(0%); }
+            }
+          `}</style>
+        </div>
+      )}
+
+      <div className={`relative min-h-screen w-full flex flex-col p-4 md:p-8 bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="relative z-20 flex-1 flex flex-col max-w-[1920px] mx-auto w-full">
+          <div className="relative z-50"> 
+            <Header 
+              user={user} 
+              lang={lang} 
+              t={t}
+              view={view}
+              setView={setView}
+              title={t.title}
+              onToggleLang={handleLangToggle}
+              onLoginClick={() => setShowAuth(true)}
+              onLogoutClick={handleLogout}
+              onTerminalClick={() => setShowTerminal(true)}
+              onStatsClick={() => setShowStats(true)}
+              onIssueClick={() => setShowIssue(true)}
+              onHistoryClick={() => setShowIssueHistory(true)}
+            />
+          </div>
+
+          <main className="relative z-10 flex-1 mt-4 flex flex-col min-h-0">
+            {renderContent()}
+          </main>
+        </div>
+
+        {showAuth && (
+          <AuthModal t={t} onClose={() => setShowAuth(false)} onLoginSuccess={handleLogin} />
+        )}
+        {showTerminal && (
+          <OperatorTerminal t={t} onClose={() => setShowTerminal(false)} onTaskAction={handleTaskActionRequest} />
+        )}
+        {showStats && (
+          <StatsModal t={t} onClose={() => setShowStats(false)} />
+        )}
+        {showIssue && (
+          <IssueModal t={t} user={user} onClose={() => setShowIssue(false)} />
+        )}
+        {showIssueHistory && (
+          <HistoryModal t={t} onClose={() => setShowIssueHistory(false)} />
+        )}
+        {currentAction && user && (
+          <ActionModal action={currentAction} user={user} t={t} onClose={() => setCurrentAction(null)} onSuccess={handleActionSuccess} />
+        )}
+
+        <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
+          <div className="flex flex-col items-center gap-1">
+            <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+            <p className="text-[8px] font-medium tracking-[0.5em] text-white/30 uppercase text-center">
+              Developed by <span className="ml-2 text-white/50 font-black tracking-[0.2em]">Vladislav_Matsukevich</span>
+            </p>
+          </div>
+        </footer>
       </div>
 
-      {/* Modals */}
-      {showAuth && (
-        <AuthModal 
-          t={t} 
-          onClose={() => setShowAuth(false)} 
-          onLoginSuccess={handleLogin} 
-        />
-      )}
-
-      {showTerminal && (
-        <OperatorTerminal 
-          t={t} 
-          onClose={() => setShowTerminal(false)} 
-          onTaskAction={handleTaskActionRequest}
-          refreshTrigger={refreshTrigger}
-        />
-      )}
-
-      {showStats && (
-        <StatsModal 
-          t={t} 
-          onClose={() => setShowStats(false)} 
-        />
-      )}
-
-      {showIssue && (
-        <IssueModal 
-          t={t}
-          user={user}
-          onClose={() => setShowIssue(false)}
-        />
-      )}
-
-      {showIssueHistory && (
-        <HistoryModal 
-          t={t}
-          onClose={() => setShowIssueHistory(false)}
-        />
-      )}
-
-      {showMessenger && user && (
-        <Messenger
-          t={t}
-          user={user}
-          onClose={() => setShowMessenger(false)}
-        />
-      )}
-
-      {currentAction && user && (
-        <ActionModal 
-          action={currentAction}
-          user={user}
-          t={t}
-          onClose={() => setCurrentAction(null)}
-          onSuccess={handleActionSuccess}
-        />
-      )}
-    </div>
+      {/* Интеграция аналитики в DOM */}
+      <Analytics />
+    </>
   );
 }
 

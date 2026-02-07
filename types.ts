@@ -4,21 +4,6 @@ export interface User {
   role: 'OPERATOR' | 'LOGISTIC' | 'ADMIN';
 }
 
-export interface UserAccount {
-  user: string; // Login
-  name: string;
-  role: string;
-  status: 'PENDING' | 'APPROVED';
-  rowIndex: number;
-}
-
-export interface Message {
-  id: string;
-  timestamp: string;
-  user: string;
-  text: string;
-}
-
 export interface Task {
   id: string;
   type?: string;
@@ -35,7 +20,6 @@ export interface Task {
   photo_gen?: string;
   photo_seal?: string;
   photo_empty?: string;
-  photo_inspect?: string;
 }
 
 export interface Issue {
@@ -101,7 +85,6 @@ export interface TranslationSet {
   lbl_photo1: string;
   lbl_photo2: string;
   lbl_photo_empty: string;
-  lbl_photo_inspection: string;
   msg_uploading: string;
   msg_success: string;
   login_title: string;
@@ -123,7 +106,6 @@ export interface TranslationSet {
   // New additions
   menu_history: string;
   menu_logout: string;
-  menu_messenger: string;
   lbl_description: string;
   lbl_photos_list: string;
   btn_open_drive: string;
@@ -133,7 +115,6 @@ export interface TranslationSet {
   nav_dashboard: string;
   nav_history: string;
   nav_plan: string;
-  nav_admin: string;
   
   log_title: string;
   log_date: string;
@@ -162,18 +143,6 @@ export interface TranslationSet {
   dtl_operator: string;
   dtl_zone: string;
   dtl_photos: string;
-
-  // Admin
-  admin_title: string;
-  admin_user: string;
-  admin_role: string;
-  admin_status: string;
-  admin_actions: string;
-  
-  // Messenger
-  msg_title: string;
-  msg_placeholder: string;
-  msg_send: string;
 }
 
 export interface TaskAction {

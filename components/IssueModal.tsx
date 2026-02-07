@@ -52,7 +52,7 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           if (!ctx) return;
-          // Slightly smaller scale for issue photos to save bandwidth
+          
           const scale = 1200 / img.width;
           canvas.width = 1200;
           canvas.height = img.height * scale;
@@ -63,7 +63,7 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
             data: canvas.toDataURL('image/jpeg', 0.8),
             mime: 'image/jpeg',
             name: `issue_${Date.now()}_${activePhotoIndex.current}.jpg`,
-            preview: canvas.toDataURL('image/jpeg', 0.1) // Low quality for preview
+            preview: canvas.toDataURL('image/jpeg', 0.1)
           };
           setPhotos(newPhotos);
         };
@@ -89,7 +89,6 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
 
     const uploadedUrls: string[] = [];
 
-    // Upload photos sequentially
     for (let i = 0; i < photos.length; i++) {
       const p = photos[i];
       if (p) {
@@ -182,7 +181,15 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
                 </div>
               ))}
            </div>
-           <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileChange} />
+           {/* ИСПРАВЛЕННЫЙ ИНПУТ: добавлен capture="environment" */}
+           <input 
+             type="file" 
+             ref={fileInputRef} 
+             hidden 
+             accept="image/*" 
+             capture="environment" 
+             onChange={handleFileChange} 
+           />
         </div>
 
         {/* Submit */}

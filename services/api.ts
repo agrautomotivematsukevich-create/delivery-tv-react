@@ -1,5 +1,5 @@
 import { SCRIPT_URL } from "../constants";
-import { DashboardData, Task, Issue, TaskInput, PlanRow, UserAccount, Message } from "../types";
+import { DashboardData, Task, Issue, TaskInput, PlanRow } from "../types";
 
 export const hashPassword = async (p: string): Promise<string> => {
   const msgBuffer = new TextEncoder().encode(p);
@@ -67,7 +67,6 @@ export const api = {
   },
 
   fetchHistory: async (dateStr: string): Promise<Task[]> => {
-    // dateStr in DD.MM format expected by backend
     try {
       const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
       const data = await res.json();
@@ -78,7 +77,6 @@ export const api = {
     }
   },
 
-  // Logistics: Get full plan for editing
   fetchFullPlan: async (dateStr: string): Promise<PlanRow[]> => {
     try {
        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_full_plan&date=${encodeURIComponent(dateStr)}`);
@@ -90,37 +88,48 @@ export const api = {
     }
   },
 
-  // Logistics: Create new plan
+  // ИСПРАВЛЕНО: Переход на POST для создания плана
   createPlan: async (dateStr: string, tasks: TaskInput[]): Promise<boolean> => {
     try {
-       const payload = JSON.stringify(tasks);
-       await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=create_plan&date=${encodeURIComponent(dateStr)}&tasks=${encodeURIComponent(payload)}`);
-       return true;
+      const res = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        // Мы не устанавливаем заголовок Content-Type: application/json, 
+        // чтобы избежать лишних CORS "preflight" запросов, которые GAS иногда не любит.
+        body: JSON.stringify({
+          mode: 'create_plan',
+          date: dateStr,
+          tasks: tasks
+        })
+      });
+      const txt = await res.text();
+      return txt.includes("CREATED");
     } catch(e) {
-      console.error(e);
+      console.error("Create Plan Error:", e);
       return false;
     }
   },
   
-  // Logistics: Update specific row
+  // ИСПРАВЛЕНО: Переход на POST для обновления строки
   updatePlanRow: async (dateStr: string, row: PlanRow): Promise<boolean> => {
     try {
-       const params = new URLSearchParams({
-         mode: 'update_container_row',
-         date: dateStr,
-         row: row.rowIndex.toString(),
-         lot: row.lot,
-         ws: row.ws,
-         pallets: row.pallets,
-         id: row.id,
-         phone: row.phone,
-         eta: row.eta
+       const res = await fetch(SCRIPT_URL, {
+         method: 'POST',
+         body: JSON.stringify({
+           mode: 'update_container_row',
+           date: dateStr,
+           row: row.rowIndex.toString(),
+           lot: row.lot,
+           ws: row.ws,
+           pallets: row.pallets,
+           id: row.id,
+           phone: row.phone,
+           eta: row.eta
+         })
        });
-       const res = await fetch(`${SCRIPT_URL}?${params.toString()}`);
        const txt = await res.text();
        return txt.includes("UPDATED");
     } catch(e) {
-      console.error(e);
+      console.error("Update Row Error:", e);
       return false;
     }
   },
@@ -153,7 +162,6 @@ export const api = {
     const txt = await res.text();
     if (txt.includes("CORRECT")) {
       const parts = txt.split('|');
-      // Format: CORRECT|NAME|ROLE
       return { 
         success: true, 
         name: parts.length > 1 ? parts[1] : user,
@@ -173,7 +181,6 @@ export const api = {
     try {
       const res = await fetch(SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename })
       });
       const data = await res.json();
@@ -184,8 +191,8 @@ export const api = {
     }
   },
 
-  taskAction: async (id: string, act: string, user: string, zone: string = '', pGen: string = '', pSeal: string = '', pEmpty: string = '', pInspect: string = ''): Promise<void> => {
-    const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${zone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}&pInspect=${encodeURIComponent(pInspect)}`;
+  taskAction: async (id: string, act: string, user: string, zone: string = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
+    const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${zone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
     await fetch(url);
   },
 
@@ -195,47 +202,5 @@ export const api = {
     const p3 = photos[2] ? encodeURIComponent(photos[2]) : "";
     const url = `${SCRIPT_URL}?mode=report_issue&id=${encodeURIComponent(id)}&desc=${encodeURIComponent(desc)}&p1=${p1}&p2=${p2}&p3=${p3}&author=${encodeURIComponent(author)}`;
     await fetch(url);
-  },
-
-  // --- ADMIN & MESSENGER ---
-
-  fetchUsers: async (): Promise<UserAccount[]> => {
-    try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_users`);
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch (e) {
-      console.error(e);
-      return [];
-    }
-  },
-
-  updateUser: async (row: number, role: string, status: string): Promise<boolean> => {
-    try {
-       await fetch(`${SCRIPT_URL}?mode=update_user&row=${row}&role=${encodeURIComponent(role)}&status=${encodeURIComponent(status)}`);
-       return true;
-    } catch (e) { return false; }
-  },
-
-  deleteUser: async (row: number): Promise<boolean> => {
-    try {
-      await fetch(`${SCRIPT_URL}?mode=delete_user&row=${row}`);
-      return true;
-    } catch (e) { return false; }
-  },
-
-  fetchMessages: async (): Promise<Message[]> => {
-    try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_messages`);
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch (e) { return []; }
-  },
-
-  sendMessage: async (user: string, text: string): Promise<boolean> => {
-    try {
-      await fetch(`${SCRIPT_URL}?mode=send_message&user=${encodeURIComponent(user)}&text=${encodeURIComponent(text)}`);
-      return true;
-    } catch (e) { return false; }
   }
 };

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { TaskInput, PlanRow, TranslationSet } from '../types';
-import { Truck, Plus, Trash2, Save, Calendar, Pencil, X, Check } from 'lucide-react';
+import { Truck, Plus, Trash2, Save, Calendar, Pencil, X, Check, Clipboard } from 'lucide-react';
 
 interface LogisticsViewProps {
   t: TranslationSet;
@@ -19,17 +19,84 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
   const emptyRow: TaskInput = { id: '', lot: '', ws: 'BS', pallets: '', phone: '', eta: '09:00' };
   const [createRows, setCreateRows] = useState<TaskInput[]>([emptyRow]);
   const [submitting, setSubmitting] = useState(false);
+  const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
 
   // EDIT MODE State
   const [planRows, setPlanRows] = useState<PlanRow[]>([]);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [editingItem, setEditingItem] = useState<PlanRow | null>(null);
 
+  // === SMART PASTE LOGIC ===
+  const handleProcessPaste = () => {
+    if (!pasteText.trim()) return;
+
+    const lines = pasteText.trim().split(/\r?\n/);
+    const newTasks: TaskInput[] = lines.map(line => {
+      // Убираем кавычки и лишние пробелы сразу из всей строки
+      const cleanLine = line.replace(/"/g, '').trim();
+      const parts = cleanLine.split('\t').map(p => p.trim()).filter(p => p !== '');
+      
+      if (parts.length < 2) return null;
+
+      let task: TaskInput = { 
+        lot: '', ws: 'BS', pallets: '', id: '', phone: '', eta: '09:00' 
+      };
+
+      const containerRegex = /[A-Z]{4}\d{7}/i;
+      const timeRegex = /\b\d{1,2}:\d{2}\b/;
+      const phoneRegex = /(\+?\d[\s-]?){10,12}/;
+
+      // Обработка хранения
+      if (cleanLine.toLowerCase().includes('хранение')) {
+        const match = cleanLine.match(containerRegex);
+        task.lot = 'STORAGE';
+        task.id = match ? match[0].toUpperCase() : 'UNKNOWN';
+        const tMatch = cleanLine.match(timeRegex);
+        if (tMatch) task.eta = tMatch[0].padStart(5, '0');
+        return task;
+      }
+
+      parts.forEach(part => {
+        if (containerRegex.test(part)) {
+          task.id = part.match(containerRegex)![0].toUpperCase();
+        } else if (timeRegex.test(part)) {
+          task.eta = part.match(timeRegex)![0].padStart(5, '0');
+        } else if (['AS', 'BS', 'PS'].includes(part.toUpperCase())) {
+          task.ws = part.toUpperCase() as any;
+        } else if (part.length > 8 && (part.includes('-') || part.startsWith('43115'))) {
+          task.lot = part;
+        } else if (part.includes('/') || (parseInt(part) < 100 && part.length < 5)) {
+          task.pallets = part;
+        } else if (phoneRegex.test(part)) {
+          task.phone = part.replace(/[^\d+]/g, '');
+        } else if (!task.id && part.length > 6) {
+          // Если это не контейнер, но похоже на госномер (как ГАЗУ...)
+          task.id = part.toUpperCase();
+        }
+      });
+
+      // Финальная проверка: если ID пустой, берем хоть что-то из строки или пропускаем
+      if (!task.id && task.lot) task.id = "CHECK LOT";
+      
+      return task.id ? task : null;
+    }).filter((t): t is TaskInput => t !== null);
+
+    if (newTasks.length > 0) {
+      const currentRows = (createRows.length === 1 && !createRows[0].id) ? [] : createRows;
+      setCreateRows([...currentRows, ...newTasks]);
+    }
+
+    setPasteText('');
+    setIsPasteModalOpen(false);
+  };
+
   // === CREATE MODE LOGIC ===
   const addCreateRow = () => setCreateRows([...createRows, { ...emptyRow }]);
   
   const removeCreateRow = (idx: number) => {
     if (createRows.length > 1) setCreateRows(createRows.filter((_, i) => i !== idx));
+    else setCreateRows([emptyRow]);
   };
 
   const updateCreateRow = (idx: number, field: keyof TaskInput, value: string) => {
@@ -39,22 +106,39 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
   };
 
   const handleSubmitCreate = async () => {
-    if (createRows.some(r => !r.id)) {
-      alert("Please fill all Container IDs");
+  // Фильтруем пустые или явно некорректные строки перед отправкой
+  const validTasks = createRows.filter(r => r.id && r.id.length > 3 && r.lot);
+
+  if (validTasks.length === 0) {
+    alert("Нет данных для сохранения или в строках не заполнены Лот/ID");
+    return;
+  }
+
+  if (validTasks.length !== createRows.length) {
+    if (!window.confirm(`Будет отправлено ${validTasks.length} строк из ${createRows.length}. Остальные некорректны. Продолжить?`)) {
       return;
     }
-    setSubmitting(true);
-    const [y, m, day] = date.split('-');
-    const formattedDate = `${day}.${m}`;
-    const success = await api.createPlan(formattedDate, createRows);
-    setSubmitting(false);
+  }
+
+  setSubmitting(true);
+  try {
+    const [y, m, d] = date.split('-');
+    const formattedDate = `${d}.${m}`; 
+    
+    // Отправляем только валидные данные
+    const success = await api.createPlan(formattedDate, validTasks);
+    
     if (success) {
-      alert(t.log_success);
+      alert("План успешно сохранен!");
       setCreateRows([{ ...emptyRow }]);
-    } else {
-      alert("Error creating plan");
     }
-  };
+  } catch (err) {
+    console.error("Критическая ошибка:", err);
+    alert("Ошибка связи с сервером. Проверьте, что в таблице нет пустых ячеек Лот или ID.");
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   // === EDIT MODE LOGIC ===
   const loadPlan = async () => {
@@ -66,7 +150,6 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
     setLoadingPlan(false);
   };
 
-  // Reload plan when switching to edit mode or changing date in edit mode
   useEffect(() => {
     if (mode === 'edit') {
       loadPlan();
@@ -84,16 +167,16 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
     
     if (success) {
       setEditingItem(null);
-      loadPlan(); // Refresh table
+      loadPlan();
     } else {
-      alert("Error updating row");
+      alert("Ошибка при обновлении");
     }
   };
 
   return (
     <div className="flex flex-col gap-6 h-full flex-1 min-h-0">
       
-      {/* Top Card: Controls & Title */}
+      {/* Top Card */}
       <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl shrink-0">
          <div className="flex flex-col lg:flex-row justify-between items-center gap-6">
             <div className="flex items-center gap-4">
@@ -102,7 +185,6 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
                  {t.log_title}
                </h2>
                
-               {/* Mode Toggles */}
                <div className="bg-white/5 rounded-full p-1 border border-white/10 flex">
                   <button 
                     onClick={() => setMode('create')}
@@ -131,12 +213,21 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
          </div>
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl p-8 flex-1 min-h-0 flex flex-col shadow-2xl relative overflow-hidden">
         
-        {/* === CREATE VIEW === */}
         {mode === 'create' && (
           <>
+            <div className="flex justify-between items-center mb-6">
+              <div className="text-xs font-bold text-white/30 uppercase tracking-[2px]">Список новых поставок</div>
+              <button 
+                onClick={() => setIsPasteModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-accent-purple text-sm font-bold transition-all"
+              >
+                <Clipboard size={16} /> Импорт из таблицы
+              </button>
+            </div>
+
             <div className="flex-1 overflow-y-auto custom-scrollbar -mr-4 pr-4">
               <div className="grid grid-cols-[40px_100px_80px_100px_1fr_120px_80px_40px] gap-4 mb-2 text-[10px] font-bold text-white/30 uppercase tracking-widest px-2 min-w-[800px]">
                   <div className="flex items-center justify-center">#</div>
@@ -153,7 +244,7 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
                 {createRows.map((row, idx) => (
                   <div key={idx} className="grid grid-cols-[40px_100px_80px_100px_1fr_120px_80px_40px] gap-4 items-center bg-white/5 border border-white/5 rounded-xl p-3 hover:bg-white/10 transition-colors">
                       <div className="text-white/30 font-mono text-center">{idx + 1}</div>
-                      <input type="text" value={row.lot} onChange={(e) => updateCreateRow(idx, 'lot', e.target.value)} placeholder="Lot..." className="bg-transparent border-b border-white/10 text-white text-sm focus:border-accent-purple outline-none w-full" />
+                      <input type="text" value={row.lot} onChange={(e) => updateCreateRow(idx, 'lot', e.target.value)} placeholder="Лот..." className="bg-transparent border-b border-white/10 text-white text-sm focus:border-accent-purple outline-none w-full" />
                       <div className="relative">
                         <input list={`ws-options-${idx}`} value={row.ws} onChange={(e) => updateCreateRow(idx, 'ws', e.target.value)} className="bg-black/20 border border-white/10 rounded text-white text-sm p-1 w-full text-center uppercase font-bold" />
                         <datalist id={`ws-options-${idx}`}><option value="BS" /><option value="AS" /><option value="PS" /></datalist>
@@ -180,11 +271,10 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
           </>
         )}
 
-        {/* === EDIT / VIEW MODE === */}
         {mode === 'edit' && (
           <div className="flex-1 flex flex-col min-h-0">
              {loadingPlan ? (
-               <div className="flex-1 flex items-center justify-center text-white/30 animate-pulse">Loading plan...</div>
+               <div className="flex-1 flex items-center justify-center text-white/30 animate-pulse">Загрузка...</div>
              ) : planRows.length === 0 ? (
                <div className="flex-1 flex items-center justify-center text-white/30">{t.log_no_data}</div>
              ) : (
@@ -223,58 +313,94 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
              )}
           </div>
         )}
-
       </div>
 
-      {/* EDIT MODAL OVERLAY */}
-      {editingItem && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-           <div className="bg-[#0F0F12] border border-white/10 p-8 rounded-3xl w-full max-w-lg shadow-2xl flex flex-col gap-6">
-              <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                 <h3 className="text-xl font-extrabold text-white">{t.log_edit_title}</h3>
-                 <button onClick={() => setEditingItem(null)} className="text-white/50 hover:text-white"><X /></button>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                 <div className="col-span-1">
-                    <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_lot}</label>
-                    <input type="text" value={editingItem.lot} onChange={e => setEditingItem({...editingItem, lot: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none" />
-                 </div>
-                 <div className="col-span-1">
-                    <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_ws}</label>
-                    <input type="text" value={editingItem.ws} onChange={e => setEditingItem({...editingItem, ws: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none uppercase" />
-                 </div>
-                 <div className="col-span-2">
-                    <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_id}</label>
-                    <input type="text" value={editingItem.id} onChange={e => setEditingItem({...editingItem, id: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white font-mono font-bold focus:border-accent-purple outline-none uppercase" />
-                 </div>
-                 <div className="col-span-1">
-                    <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_pallets}</label>
-                    <input type="text" value={editingItem.pallets} onChange={e => setEditingItem({...editingItem, pallets: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none" />
-                 </div>
-                 <div className="col-span-1">
-                    <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_eta}</label>
-                    <input type="time" value={editingItem.eta} onChange={e => setEditingItem({...editingItem, eta: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none [color-scheme:dark]" />
-                 </div>
-                 <div className="col-span-2">
-                    <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_phone}</label>
-                    <input type="text" value={editingItem.phone} onChange={e => setEditingItem({...editingItem, phone: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none" />
-                 </div>
-              </div>
+      {/* PASTE MODAL */}
+      {isPasteModalOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+          <div className="bg-[#121217] border border-white/10 p-8 rounded-3xl w-full max-w-2xl shadow-2xl">
+             <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h3 className="text-xl font-extrabold text-white">Умный импорт</h3>
+                  <p className="text-sm text-white/40 mt-1">Скопируйте таблицу в Excel и вставьте её сюда (Ctrl+V)</p>
+                </div>
+                <button onClick={() => setIsPasteModalOpen(false)} className="text-white/50 hover:text-white"><X /></button>
+             </div>
+             
+             <textarea 
+               value={pasteText}
+               onChange={(e) => setPasteText(e.target.value)}
+               placeholder="Вставьте данные здесь..."
+               className="w-full h-64 bg-black/40 border border-white/5 rounded-2xl p-4 text-white font-mono text-sm focus:border-accent-purple outline-none resize-none custom-scrollbar"
+             />
 
-              <div className="flex gap-3 mt-2">
-                 <button 
-                   onClick={handleEditSave}
-                   disabled={submitting}
-                   className="flex-1 py-3 bg-accent-purple hover:bg-accent-purple/90 text-white font-bold rounded-xl flex items-center justify-center gap-2"
-                 >
-                   {submitting ? '...' : <><Check size={18} /> {t.log_btn_save}</>}
-                 </button>
-                 <button onClick={() => setEditingItem(null)} className="px-6 py-3 border border-white/10 rounded-xl text-white/70 hover:text-white hover:bg-white/5">
-                   {t.btn_cancel}
-                 </button>
-              </div>
-           </div>
+             <div className="flex gap-4 mt-6">
+                <button 
+                  onClick={handleProcessPaste}
+                  className="flex-1 py-4 bg-accent-purple text-white font-bold rounded-2xl hover:bg-accent-purple/90 transition-all flex items-center justify-center gap-2"
+                >
+                  <Check size={20} /> Распознать и добавить
+                </button>
+                <button 
+                  onClick={() => setIsPasteModalOpen(false)}
+                  className="px-8 py-4 border border-white/10 text-white/70 rounded-2xl hover:bg-white/5"
+                >
+                  Отмена
+                </button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT MODAL */}
+      {editingItem && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0F0F12] border border-white/10 p-8 rounded-3xl w-full max-w-lg shadow-2xl flex flex-col gap-6">
+               <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                  <h3 className="text-xl font-extrabold text-white">{t.log_edit_title}</h3>
+                  <button onClick={() => setEditingItem(null)} className="text-white/50 hover:text-white"><X /></button>
+               </div>
+               
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-1">
+                     <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_lot}</label>
+                     <input type="text" value={editingItem.lot} onChange={e => setEditingItem({...editingItem, lot: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none" />
+                  </div>
+                  <div className="col-span-1">
+                     <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_ws}</label>
+                     <input type="text" value={editingItem.ws} onChange={e => setEditingItem({...editingItem, ws: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none uppercase" />
+                  </div>
+                  <div className="col-span-2">
+                     <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_id}</label>
+                     <input type="text" value={editingItem.id} onChange={e => setEditingItem({...editingItem, id: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white font-mono font-bold focus:border-accent-purple outline-none uppercase" />
+                  </div>
+                  <div className="col-span-1">
+                     <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_pallets}</label>
+                     <input type="text" value={editingItem.pallets} onChange={e => setEditingItem({...editingItem, pallets: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none" />
+                  </div>
+                  <div className="col-span-1">
+                     <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_eta}</label>
+                     <input type="time" value={editingItem.eta} onChange={e => setEditingItem({...editingItem, eta: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none [color-scheme:dark]" />
+                  </div>
+                  <div className="col-span-2">
+                     <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_phone}</label>
+                     <input type="text" value={editingItem.phone} onChange={e => setEditingItem({...editingItem, phone: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none" />
+                  </div>
+               </div>
+
+               <div className="flex gap-3 mt-2">
+                  <button 
+                    onClick={handleEditSave}
+                    disabled={submitting}
+                    className="flex-1 py-3 bg-accent-purple hover:bg-accent-purple/90 text-white font-bold rounded-xl flex items-center justify-center gap-2"
+                  >
+                    {submitting ? '...' : <><Check size={18} /> {t.log_btn_save}</>}
+                  </button>
+                  <button onClick={() => setEditingItem(null)} className="px-6 py-3 border border-white/10 rounded-xl text-white/70 hover:text-white hover:bg-white/5">
+                    {t.btn_cancel}
+                  </button>
+               </div>
+            </div>
         </div>
       )}
 

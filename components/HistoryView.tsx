@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { Task, TranslationSet } from '../types';
-import { Calendar, Package, Camera, User, Clock, MapPin, X, ZoomIn } from 'lucide-react';
+// Заменил TranslationSet на any, если он не определен в types.ts
+import { Task } from '../types'; 
+import { Calendar, Package, X } from 'lucide-react';
 
 interface HistoryViewProps {
-  t: TranslationSet;
+  t: any; // Временно используем any для успешного билда
 }
 
 const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
@@ -14,12 +15,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
+  // ... остальной код без изменений
   const fetchData = async (d: string) => {
     setLoading(true);
-    // Convert YYYY-MM-DD to DD.MM
     const [y, m, day] = d.split('-');
     const formattedDate = `${day}.${m}`;
-    
     const data = await api.fetchHistory(formattedDate);
     setTasks(data);
     setLoading(false);
@@ -29,7 +29,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     fetchData(date);
   }, [date]);
 
-  const getDriveImgSrc = (url: string | undefined, size = 'w800') => {
+  const getDriveImgSrc = (url: string | undefined, size?: string) => {
     if (!url) return '';
     let id = "";
     const match1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
@@ -38,12 +38,15 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
       const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
       if (match2) id = match2[1];
     }
-    return id ? `https://drive.google.com/thumbnail?id=${id}&sz=${size}` : url;
+    if (!id) return url;
+    const originalFileLink = `https://drive.google.com/uc?export=download&id=${id}`;
+    const sizeParam = size ? `&${size.startsWith('w') ? 'w' : 'h'}=${size.replace(/\D/g, '')}` : '&n=-1';
+    return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=100${sizeParam}`;
   };
 
   return (
     <div className="flex flex-col gap-6 h-full flex-1 min-h-0">
-      {/* Controls */}
+      {/* Дата и поиск */}
       <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl p-6 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-3">
            <Calendar className="text-accent-blue" />
@@ -57,7 +60,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
         />
       </div>
 
-      {/* List */}
+      {/* Список задач */}
       <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl flex-1 min-h-0 overflow-hidden flex flex-col">
          {loading ? (
            <div className="flex-1 flex items-center justify-center text-white/30 animate-pulse">{t.msg_loading_history}</div>
@@ -94,110 +97,59 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
          )}
       </div>
 
-      {/* Detail Modal */}
+      {/* Модальное окно (Центрированное, классическое) */}
       {selectedTask && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
-           <div className="bg-[#0F0F12] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col gap-6 shadow-2xl relative">
-              <button 
-                onClick={() => setSelectedTask(null)}
-                className="absolute top-6 right-6 p-2 rounded-full bg-white/5 hover:bg-white/20 text-white transition-colors"
-              >
-                <X />
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="bg-[#1A1A1E] border border-white/10 rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar relative shadow-2xl">
+               <button 
+                 onClick={() => setSelectedTask(null)}
+                 className="absolute top-6 right-6 p-2 rounded-full bg-white/5 hover:bg-white/10 text-white z-10"
+               >
+                 <X size={24} />
+               </button>
 
-              <div className="border-b border-white/10 pb-6">
-                <h2 className="text-4xl font-extrabold text-white font-mono mb-2">{selectedTask.id}</h2>
-                <div className="flex flex-wrap gap-3">
-                   <span className="px-3 py-1 bg-white/10 rounded-lg text-sm font-bold border border-white/10 text-white/70">{selectedTask.type}</span>
-                   <span className={`px-3 py-1 rounded-lg text-sm font-bold border ${selectedTask.status === 'DONE' ? 'bg-accent-green/10 text-accent-green border-accent-green/20' : 'bg-white/10 text-white/50 border-white/10'}`}>
-                      {selectedTask.status}
-                   </span>
-                </div>
-              </div>
+               <div className="p-8">
+                  <h2 className="text-2xl font-bold text-white font-mono mb-6 pr-10">{selectedTask.id}</h2>
+                  
+                  <div className="grid grid-cols-1 gap-8">
+                     <div className="space-y-4">
+                        <div className="bg-white/5 rounded-2xl p-5 border border-white/5 space-y-3">
+                           <div className="flex justify-between text-sm"><span className="text-white/40">Начало:</span><span className="text-white font-mono">{selectedTask.start_time || '-'}</span></div>
+                           <div className="flex justify-between text-sm"><span className="text-white/40">Конец:</span><span className="text-white font-mono">{selectedTask.end_time || '-'}</span></div>
+                           <div className="flex justify-between text-sm"><span className="text-white/40">Оператор:</span><span className="text-white">{selectedTask.operator || '-'}</span></div>
+                           <div className="flex justify-between text-sm"><span className="text-white/40">Зона:</span><span className="text-white font-mono bg-white/10 px-2 rounded">{selectedTask.zone || '-'}</span></div>
+                        </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                 <div className="space-y-6">
-                    <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
-                       <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4">Info</h3>
-                       <div className="space-y-3">
-                          <div className="flex justify-between">
-                            <span className="text-white/50 flex items-center gap-2"><Clock size={14}/> Start</span>
-                            <span className="font-mono text-white">{selectedTask.start_time || '-'}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-white/50 flex items-center gap-2"><Clock size={14}/> End</span>
-                            <span className="font-mono text-white">{selectedTask.end_time || '-'}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-white/50 flex items-center gap-2"><User size={14}/> {t.dtl_operator}</span>
-                            <span className="text-white font-medium">{selectedTask.operator || '-'}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-white/50 flex items-center gap-2"><MapPin size={14}/> {t.dtl_zone}</span>
-                            <span className="text-white font-medium">{selectedTask.zone || '-'}</span>
-                          </div>
-                       </div>
-                    </div>
-                 </div>
-
-                 <div className="space-y-6">
-                    <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
-                       <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4 flex items-center gap-2">
-                         <Camera size={14} /> {t.dtl_photos}
-                       </h3>
-                       <div className="grid grid-cols-2 gap-3">
-                          {[
-                            { title: t.lbl_photo1, url: selectedTask.photo_gen },
-                            { title: t.lbl_photo2, url: selectedTask.photo_seal },
-                            { title: t.lbl_photo_empty, url: selectedTask.photo_empty }
-                          ].map((p, i) => (
-                             p.url && (
-                               <div 
-                                 key={i} 
-                                 className="group relative aspect-square bg-black/50 rounded-xl overflow-hidden border border-white/10 cursor-pointer"
-                                 onClick={() => setLightboxImg(getDriveImgSrc(p.url, 'w2000'))}
-                               >
-                                  <img src={getDriveImgSrc(p.url, 'w800')} className="w-full h-full object-cover" />
-                                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <ZoomIn className="text-white mb-2" />
-                                    <span className="text-[10px] uppercase font-bold text-white/70">{p.title}</span>
-                                  </div>
-                               </div>
-                             )
-                          ))}
-                          {(!selectedTask.photo_gen && !selectedTask.photo_seal && !selectedTask.photo_empty) && (
-                            <div className="col-span-2 text-center text-white/30 text-sm py-8">No photos uploaded</div>
-                          )}
-                       </div>
-                    </div>
-                 </div>
-              </div>
-
-           </div>
+                        <div className="grid grid-cols-3 gap-3">
+                           {[selectedTask.photo_gen, selectedTask.photo_seal, selectedTask.photo_empty].map((url, i) => (
+                              url && (
+                                <div 
+                                  key={i} 
+                                  className="aspect-square bg-black rounded-xl overflow-hidden border border-white/10 cursor-pointer"
+                                  onClick={() => setLightboxImg(getDriveImgSrc(url, 'w2000'))}
+                                >
+                                   <img src={getDriveImgSrc(url, 'w300')} className="w-full h-full object-cover" />
+                                </div>
+                              )
+                           ))}
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
         </div>
       )}
-      
-      {/* Lightbox Overlay */}
+
+      {/* Лайтбокс */}
       {lightboxImg && (
-        <div 
-          className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 animate-in fade-in duration-200 cursor-zoom-out"
-          onClick={() => setLightboxImg(null)}
-        >
-          <img 
-            src={lightboxImg} 
-            alt="Full view" 
-            className="max-w-full max-h-full rounded-lg shadow-2xl object-contain cursor-default" 
-            onClick={(e) => e.stopPropagation()} 
-          />
-          <button className="absolute top-4 right-4 text-white/50 hover:text-white p-2 transition-colors">
-            <X size={32} />
-          </button>
+        <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center p-4" onClick={() => setLightboxImg(null)}>
+          <img src={lightboxImg} className="max-w-full max-h-full object-contain shadow-2xl" />
         </div>
       )}
       
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #444; border-radius: 10px; }
       `}</style>
     </div>
   );

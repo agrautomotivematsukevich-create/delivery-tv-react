@@ -1,6 +1,6 @@
 import { Lang, TranslationSet } from "./types";
 
-export const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwtvr-V97tV6OIS96aNLtUYPWs-A48za5vcqp29UJA4r8iPBuQsny0-avra2ejTBbq8uQ/exec';
+export const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyXtTFgAuWV2VdLu9Dt0fPYOAnA4_7t8jE-4zq1qWYiByoERpnYRySmSY4tgkEsS3KXgg/exec';
 
 export const TRANSLATIONS: Record<Lang, TranslationSet> = {
   RU: {
@@ -12,7 +12,7 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     stats_title: "СТАТИСТИКА", stat_done: "ГОТОВО", stat_queue: "ОЧЕРЕДЬ",
     list_done: "ВЫГРУЖЕНО", list_wait: "В ОЧЕРЕДИ",
     drv_title: "Терминал", btn_login: "Войти", btn_start: "НАЧАТЬ", btn_finish: "ЗАВЕРШИТЬ",
-    lbl_photo1: "Общее фото (Сзади)", lbl_photo2: "Фото пломбы", lbl_photo_empty: "Фото пустого", lbl_photo_inspection: "Фото осмотра",
+    lbl_photo1: "Общее фото (Сзади)", lbl_photo2: "Фото пломбы", lbl_photo_empty: "Фото пустого",
     msg_uploading: "Загрузка...", msg_success: "Успешно!",
     login_title: "Вход", reg_title: "Регистрация", empty: "Нет задач",
     btn_reg: "Отправить", btn_cancel: "Отмена",
@@ -22,7 +22,6 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     // New
     menu_history: "История",
     menu_logout: "Выйти",
-    menu_messenger: "Чат команды",
     lbl_description: "Описание",
     lbl_photos_list: "Фотографии",
     btn_open_drive: "Открыть оригинал",
@@ -31,7 +30,6 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     nav_dashboard: "Дашборд",
     nav_history: "Архив",
     nav_plan: "Поставки",
-    nav_admin: "Пользователи",
     
     log_title: "План поставок",
     log_date: "Дата поставки",
@@ -58,17 +56,7 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     
     dtl_operator: "Оператор",
     dtl_zone: "Зона",
-    dtl_photos: "Фотоотчет",
-
-    admin_title: "Управление доступом",
-    admin_user: "Пользователь",
-    admin_role: "Роль",
-    admin_status: "Статус",
-    admin_actions: "Действия",
-    
-    msg_title: "Чат",
-    msg_placeholder: "Сообщение...",
-    msg_send: "Отправить"
+    dtl_photos: "Фотоотчет"
   },
   EN_CN: {
     title: "Warehouse Monitor / 仓库监控", progress: "PROGRESS / 进度", next: "NEXT / 下一个", list: "ACTIVE TASKS / 任务",
@@ -79,7 +67,7 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     stats_title: "STATISTICS / 统计", stat_done: "DONE / 完成", stat_queue: "QUEUE / 排队",
     list_done: "UNLOADED / 已卸载", list_wait: "QUEUE / 等待中",
     drv_title: "Terminal / 终端", btn_login: "Login / 登录", btn_start: "START / 开始", btn_finish: "FINISH / 完成",
-    lbl_photo1: "General Photo / 照片", lbl_photo2: "Seal Photo / 封条", lbl_photo_empty: "Empty Photo / 空箱", lbl_photo_inspection: "Inspection Photo / 检查照片",
+    lbl_photo1: "General Photo / 照片", lbl_photo2: "Seal Photo / 封条", lbl_photo_empty: "Empty Photo / 空箱",
     msg_uploading: "Uploading... / 上传中", msg_success: "Success! / 成功",
     login_title: "Login / 登录", reg_title: "Register / 注册", empty: "No tasks / 无任务",
     btn_reg: "Send / 发送", btn_cancel: "Cancel / 取消",
@@ -89,7 +77,6 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     // New
     menu_history: "History / 历史",
     menu_logout: "Logout / 退出",
-    menu_messenger: "Team Chat / 团队聊天",
     lbl_description: "Description / 描述",
     lbl_photos_list: "Photos / 照片",
     btn_open_drive: "Open Original / 打开原图",
@@ -98,7 +85,6 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     nav_dashboard: "Dashboard / 仪表板",
     nav_history: "Archive / 档案",
     nav_plan: "Logistics / 物流",
-    nav_admin: "Users / 用户",
     
     log_title: "Delivery Plan / 交付计划",
     log_date: "Delivery Date / 交货日期",
@@ -125,16 +111,6 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     
     dtl_operator: "Operator / 操作员",
     dtl_zone: "Zone / 区域",
-    dtl_photos: "Report Photos / 报告照片",
-
-    admin_title: "Access Control / 访问控制",
-    admin_user: "User / 用户",
-    admin_role: "Role / 角色",
-    admin_status: "Status / 状态",
-    admin_actions: "Actions / 操作",
-    
-    msg_title: "Chat / 聊天",
-    msg_placeholder: "Message... / 消息...",
-    msg_send: "Send / 发送"
+    dtl_photos: "Report Photos / 报告照片"
   }
 };
