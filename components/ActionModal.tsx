@@ -77,7 +77,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
     const actionTypeToSend = isLocalManual ? `${action.type}_manual_${manualTime}` : action.type;
 
-    await api.taskAction(
+    const result = await api.taskAction(
       action.id,
       actionTypeToSend,
       user.name,
@@ -88,6 +88,11 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
     );
 
     setSubmitting(false);
+    if (!result.ok) {
+      alert(`Не удалось сохранить действие: ${result.error || "UNKNOWN"}`);
+      return;
+    }
+
     onSuccess();
   };
 

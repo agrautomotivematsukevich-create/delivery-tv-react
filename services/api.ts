@@ -7,6 +7,28 @@ export const hashPassword = async (p: string): Promise<string> => {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
+
+export interface ApiMutationResult {
+  ok: boolean;
+  error?: string;
+}
+
+const parseMutationResponse = (txt: string, successCode: string): ApiMutationResult => {
+  const raw = (txt || '').trim();
+  if (!raw) return { ok: false, error: 'EMPTY_RESPONSE' };
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed?.status === 'OK') return { ok: true };
+    if (typeof parsed?.error === 'string' && parsed.error) return { ok: false, error: parsed.error };
+  } catch {
+    // Backward compatibility with legacy plain-text GAS responses
+  }
+
+  if (raw.includes(successCode)) return { ok: true };
+  return { ok: false, error: raw };
+};
+
 export const parseDashboardData = (text: string): DashboardData | null => {
   try {
     if (!text || text.includes("DOCTYPE")) return null;
@@ -44,6 +66,36 @@ export const parseDashboardData = (text: string): DashboardData | null => {
 };
 
 export const api = {
+  getProxyImage: async (sourceUrl: string): Promise<string> => {
+    try {
+      if (!sourceUrl) return "";
+      const driveIdMatch = sourceUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || sourceUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      const driveId = driveIdMatch?.[1];
+      if (!driveId) return "";
+
+      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_photo&id=${encodeURIComponent(driveId)}`);
+      const text = (await res.text()).trim();
+
+      if (!text) return "";
+      if (text.startsWith('data:image/')) return text;
+
+      try {
+        const parsed = JSON.parse(text);
+        if (typeof parsed?.data === 'string' && parsed.data) {
+          const mime = parsed.mime || 'image/jpeg';
+          return `data:${mime};base64,${parsed.data}`;
+        }
+      } catch {
+        // ignore json parse errors and continue as raw base64
+      }
+
+      return `data:image/jpeg;base64,${text}`;
+    } catch (e) {
+      console.error(e);
+      return "";
+    }
+  },
+
   fetchDashboard: async (): Promise<DashboardData | null> => {
     try {
       const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}`);
@@ -89,7 +141,7 @@ export const api = {
   },
 
   // ИСПРАВЛЕНО: Переход на POST для создания плана
-  createPlan: async (dateStr: string, tasks: TaskInput[]): Promise<boolean> => {
+  createPlan: async (dateStr: string, tasks: TaskInput[]): Promise<ApiMutationResult> => {
     try {
       const res = await fetch(SCRIPT_URL, {
         method: 'POST',
@@ -102,15 +154,15 @@ export const api = {
         })
       });
       const txt = await res.text();
-      return txt.includes("CREATED");
+      return parseMutationResponse(txt, "CREATED");
     } catch(e) {
       console.error("Create Plan Error:", e);
-      return false;
+      return { ok: false, error: "NETWORK_ERROR" };
     }
   },
   
   // ИСПРАВЛЕНО: Переход на POST для обновления строки
-  updatePlanRow: async (dateStr: string, row: PlanRow): Promise<boolean> => {
+  updatePlanRow: async (dateStr: string, row: PlanRow): Promise<ApiMutationResult> => {
     try {
        const res = await fetch(SCRIPT_URL, {
          method: 'POST',
@@ -127,10 +179,10 @@ export const api = {
          })
        });
        const txt = await res.text();
-       return txt.includes("UPDATED");
+       return parseMutationResponse(txt, "UPDATED");
     } catch(e) {
       console.error("Update Row Error:", e);
-      return false;
+      return { ok: false, error: "NETWORK_ERROR" };
     }
   },
 
@@ -191,9 +243,16 @@ export const api = {
     }
   },
 
-  taskAction: async (id: string, act: string, user: string, zone: string = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
+  taskAction: async (id: string, act: string, user: string, zone: string = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<ApiMutationResult> => {
     const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${zone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
-    await fetch(url);
+    try {
+      const res = await fetch(url);
+      const txt = await res.text();
+      return parseMutationResponse(txt, "UPDATED");
+    } catch (e) {
+      console.error(e);
+      return { ok: false, error: "NETWORK_ERROR" };
+    }
   },
 
   reportIssue: async (id: string, desc: string, photos: string[], author: string): Promise<void> => {

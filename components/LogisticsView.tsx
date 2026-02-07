@@ -126,11 +126,13 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
     const formattedDate = `${d}.${m}`; 
     
     // Отправляем только валидные данные
-    const success = await api.createPlan(formattedDate, validTasks);
-    
-    if (success) {
+    const result = await api.createPlan(formattedDate, validTasks);
+
+    if (result.ok) {
       alert("План успешно сохранен!");
       setCreateRows([{ ...emptyRow }]);
+    } else {
+      alert(`Ошибка сохранения плана: ${result.error || "UNKNOWN"}`);
     }
   } catch (err) {
     console.error("Критическая ошибка:", err);
@@ -162,14 +164,14 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
     const [y, m, day] = date.split('-');
     const formattedDate = `${day}.${m}`;
     
-    const success = await api.updatePlanRow(formattedDate, editingItem);
+    const result = await api.updatePlanRow(formattedDate, editingItem);
     setSubmitting(false);
-    
-    if (success) {
+
+    if (result.ok) {
       setEditingItem(null);
       loadPlan();
     } else {
-      alert("Ошибка при обновлении");
+      alert(`Ошибка при обновлении: ${result.error || "UNKNOWN"}`);
     }
   };
 
