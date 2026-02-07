@@ -44,6 +44,36 @@ export const parseDashboardData = (text: string): DashboardData | null => {
 };
 
 export const api = {
+  getProxyImage: async (sourceUrl: string): Promise<string> => {
+    try {
+      if (!sourceUrl) return "";
+      const driveIdMatch = sourceUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || sourceUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      const driveId = driveIdMatch?.[1];
+      if (!driveId) return "";
+
+      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_photo&id=${encodeURIComponent(driveId)}`);
+      const text = (await res.text()).trim();
+
+      if (!text) return "";
+      if (text.startsWith('data:image/')) return text;
+
+      try {
+        const parsed = JSON.parse(text);
+        if (typeof parsed?.data === 'string' && parsed.data) {
+          const mime = parsed.mime || 'image/jpeg';
+          return `data:${mime};base64,${parsed.data}`;
+        }
+      } catch {
+        // ignore json parse errors and continue as raw base64
+      }
+
+      return `data:image/jpeg;base64,${text}`;
+    } catch (e) {
+      console.error(e);
+      return "";
+    }
+  },
+
   fetchDashboard: async (): Promise<DashboardData | null> => {
     try {
       const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}`);
