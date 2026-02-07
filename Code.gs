@@ -178,7 +178,13 @@ function doPost(e) {
 
 function handleGetPhoto(e) {
   var fileId = e.parameter.id;
-  if (!fileId) return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
+  if (!isValidDriveFileId_(fileId)) {
+    return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
+  }
+
+  if (!isFileIdAllowedForProxy_(fileId)) {
+    return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
+  }
 
   try {
     var file = DriveApp.getFileById(fileId);
@@ -192,6 +198,74 @@ function handleGetPhoto(e) {
   } catch (err) {
     return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
   }
+}
+
+function isValidDriveFileId_(fileId) {
+  if (!fileId) return false;
+  return /^[a-zA-Z0-9_-]{20,}$/.test(fileId);
+}
+
+function isFileIdAllowedForProxy_(fileId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return false;
+
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    var sheet = sheets[i];
+    var name = sheet.getName();
+
+    if (name === "PROBLEMS") {
+      if (sheetContainsFileId_(sheet, 2, 4, 3, fileId)) return true;
+      continue;
+    }
+
+    if (/^\d{2}\.\d{2}$/.test(name)) {
+      if (sheetContainsFileId_(sheet, 5, 13, 3, fileId)) return true;
+    }
+  }
+
+  return false;
+}
+
+function sheetContainsFileId_(sheet, startRow, startColumn, width, targetFileId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < startRow) return false;
+
+  var values = sheet.getRange(startRow, startColumn, lastRow - startRow + 1, width).getDisplayValues();
+  for (var r = 0; r < values.length; r++) {
+    for (var c = 0; c < width; c++) {
+      var candidate = extractDriveFileId_(values[r][c]);
+      if (candidate === targetFileId) return true;
+    }
+  }
+
+  return false;
+}
+
+function extractDriveFileId_(value) {
+  if (!value) return "";
+  var v = value.toString().trim();
+  if (!v) return "";
+
+  var directMatch = v.match(/[-\w]{20,}/);
+  if (isValidDriveFileId_(v) && directMatch && directMatch[0] === v) {
+    return v;
+  }
+
+  var patterns = [
+    /[?&]id=([-\w]{20,})/,
+    /\/d\/([-\w]{20,})/,
+    /\/file\/d\/([-\w]{20,})/
+  ];
+
+  for (var i = 0; i < patterns.length; i++) {
+    var match = v.match(patterns[i]);
+    if (match && isValidDriveFileId_(match[1])) {
+      return match[1];
+    }
+  }
+
+  return "";
 }
 
 function handleGetHistory(ss, e) {
