@@ -41,6 +41,15 @@ function doGet(e) {
     }
   }
   
+  // 4aa. PROXY PHOTO (Base64)
+  if (e.parameter.mode === "get_photo") {
+    try {
+      return handleGetPhoto(e);
+    } catch (err) {
+      return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
+    }
+  }
+
   // 4a. GET FULL PLAN (For Logistics Editor)
   if (e.parameter.mode === "get_full_plan") {
     try {
@@ -117,20 +126,73 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  var lock = LockService.getScriptLock();
   try {
     var data = JSON.parse(e.postData.contents);
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
     if (data.mode === "upload_photo") {
-      var imageStr = data.image.split(",")[1]; 
+      var imageStr = data.image.split(",")[1];
       var blob = Utilities.newBlob(Utilities.base64Decode(imageStr), data.mimeType, data.filename);
       var file = DriveApp.createFile(blob);
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       return ContentService.createTextOutput(JSON.stringify({ status: "SUCCESS", url: file.getUrl() })).setMimeType(ContentService.MimeType.JSON);
     }
+
+    if (data.mode === "create_plan") {
+      if (!lock.tryLock(10000)) return ContentService.createTextOutput("BUSY");
+      try {
+        var eventObj = { parameter: { date: data.date, tasks: JSON.stringify(data.tasks || []) } };
+        return handleCreatePlan(eventObj, ss);
+      } finally {
+        lock.releaseLock();
+      }
+    }
+
+    if (data.mode === "update_container_row") {
+      if (!lock.tryLock(10000)) return ContentService.createTextOutput("BUSY");
+      try {
+        var updEvent = { parameter: {
+          date: data.date,
+          row: data.row,
+          lot: data.lot,
+          ws: data.ws,
+          pallets: data.pallets,
+          id: data.id,
+          phone: data.phone,
+          eta: data.eta
+        } };
+        return handleUpdateContainerRow(updEvent, ss);
+      } finally {
+        lock.releaseLock();
+      }
+    }
+
     return ContentService.createTextOutput("UNKNOWN_MODE");
-  } catch (e) { return ContentService.createTextOutput("POST_ERROR"); }
+  } catch (error) {
+    return ContentService.createTextOutput("POST_ERROR");
+  }
 }
 
 // === HELPER FUNCTIONS ===
+
+function handleGetPhoto(e) {
+  var fileId = e.parameter.id;
+  if (!fileId) return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
+
+  try {
+    var file = DriveApp.getFileById(fileId);
+    var blob = file.getBlob();
+    var b64 = Utilities.base64Encode(blob.getBytes());
+    var payload = {
+      data: b64,
+      mime: blob.getContentType() || "image/jpeg"
+    };
+    return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
+  }
+}
 
 function handleGetHistory(ss, e) {
   var dateStr = e.parameter.date; // Expecting "DD.MM"
