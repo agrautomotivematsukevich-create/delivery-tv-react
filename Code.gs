@@ -136,6 +136,7 @@ function doPost(e) {
       var blob = Utilities.newBlob(Utilities.base64Decode(imageStr), data.mimeType, data.filename);
       var file = DriveApp.createFile(blob);
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      registerProxyFileId_(file.getId());
       return ContentService.createTextOutput(JSON.stringify({ status: "SUCCESS", url: file.getUrl() })).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -178,7 +179,13 @@ function doPost(e) {
 
 function handleGetPhoto(e) {
   var fileId = e.parameter.id;
-  if (!fileId) return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
+  if (!isValidDriveFileId_(fileId)) {
+    return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
+  }
+
+  if (!isFileIdAllowedForProxy_(fileId)) {
+    return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
+  }
 
   try {
     var file = DriveApp.getFileById(fileId);
@@ -192,6 +199,52 @@ function handleGetPhoto(e) {
   } catch (err) {
     return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
   }
+}
+
+function isValidDriveFileId_(fileId) {
+  if (!fileId) return false;
+  return /^[a-zA-Z0-9_-]{20,}$/.test(fileId);
+}
+
+function isFileIdAllowedForProxy_(fileId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return false;
+
+  var registrySheet = ss.getSheetByName("PHOTO_UPLOADS");
+  if (!registrySheet) return false;
+
+  var lastRow = registrySheet.getLastRow();
+  if (lastRow < 2) return false;
+
+  var values = registrySheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
+  for (var i = 0; i < values.length; i++) {
+    if (values[i][0] === fileId) return true;
+  }
+
+  return false;
+}
+
+function registerProxyFileId_(fileId) {
+  if (!isValidDriveFileId_(fileId)) return;
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return;
+
+  var registrySheet = ss.getSheetByName("PHOTO_UPLOADS");
+  if (!registrySheet) {
+    registrySheet = ss.insertSheet("PHOTO_UPLOADS");
+    registrySheet.getRange("A1:B1").setValues([["File ID", "Uploaded At"]]).setFontWeight("bold");
+  }
+
+  var lastRow = registrySheet.getLastRow();
+  if (lastRow >= 2) {
+    var ids = registrySheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
+    for (var i = 0; i < ids.length; i++) {
+      if (ids[i][0] === fileId) return;
+    }
+  }
+
+  registrySheet.appendRow([fileId, new Date()]);
 }
 
 function handleGetHistory(ss, e) {
