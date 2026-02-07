@@ -12,6 +12,7 @@ interface OperatorTerminalProps {
 const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskAction, t }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lockedTaskId, setLockedTaskId] = useState<string | null>(null);
 
   const fetchQueue = async () => {
     // Получаем задачи
@@ -38,6 +39,14 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
   // --- ИСПРАВЛЕНИЕ НИЖЕ ---
   // Фильтруем задачи перед рендером
+
+  const handleTaskClick = (task: Task, action: 'start' | 'finish') => {
+    if (lockedTaskId === task.id) return;
+    setLockedTaskId(task.id);
+    onTaskAction(task, action);
+    setTimeout(() => setLockedTaskId((current) => (current === task.id ? null : current)), 1000);
+  };
+
   const activeTasks = tasks.filter(task => {
     // 1. Если есть время завершения - скрываем (Критическая логика)
     if (task.end_time) return false;
@@ -96,8 +105,9 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                     )}
                     
                     <button
-                      onClick={() => onTaskAction(task, isWait ? 'start' : 'finish')}
-                      className={`h-12 px-6 rounded-xl font-bold text-sm tracking-wide shadow-lg transition-transform active:scale-95 flex items-center gap-2
+                      onClick={() => handleTaskClick(task, isWait ? 'start' : 'finish')}
+                      disabled={lockedTaskId === task.id}
+                      className={`h-12 px-6 rounded-xl font-bold text-sm tracking-wide shadow-lg transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2
                         ${isWait 
                           ? 'bg-accent-blue text-white shadow-accent-blue/20 hover:bg-accent-blue/90' 
                           : 'bg-accent-green text-black shadow-accent-green/20 hover:bg-accent-green/90'

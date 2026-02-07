@@ -65,7 +65,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   };
 
   const handleSubmit = async () => {
-    if (!isFormValid()) return;
+    if (submitting || !isFormValid()) return;
     setSubmitting(true);
     
     let urlGen = "", urlSeal = "", urlEmpty = "";
