@@ -1,5 +1,5 @@
-import { SCRIPT_URL } from "./constants";
-import { DashboardData, Task, Issue, TaskInput, PlanRow } from "./types";
+import { SCRIPT_URL } from '../constants';  // ← исправлено: ../constants
+import { DashboardData, Task, Issue, TaskInput, PlanRow } from '../types'; // ← исправлено: ../types
 
 export const hashPassword = async (p: string): Promise<string> => {
   const msgBuffer = new TextEncoder().encode(p);
@@ -188,7 +188,6 @@ export const api = {
     return true;
   },
 
-  // УНИВЕРСАЛЬНАЯ ЗАГРУЗКА ФОТО – с XMLHttpRequest и прогрессом
   uploadPhoto: async (
     image: string, 
     mimeType: string, 
@@ -196,7 +195,6 @@ export const api = {
     onProgress?: (progress: number) => void
   ): Promise<string> => {
     return new Promise((resolve, reject) => {
-      // Если нет onProgress – используем fetch (без прогресса)
       if (!onProgress) {
         fetch(SCRIPT_URL, {
           method: 'POST',
@@ -208,7 +206,6 @@ export const api = {
         return;
       }
 
-      // С прогрессом – XMLHttpRequest
       const base64Data = image.includes('base64,') ? image.split('base64,')[1] : image;
       const byteCharacters = atob(base64Data);
       const byteNumbers = new Array(byteCharacters.length);
