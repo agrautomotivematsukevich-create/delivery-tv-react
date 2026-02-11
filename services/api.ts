@@ -1,5 +1,5 @@
-import { SCRIPT_URL } from "../constants";
-import { DashboardData, Task, Issue, TaskInput, PlanRow } from "../types";
+import { SCRIPT_URL } from "./constants";
+import { DashboardData, Task, Issue, TaskInput, PlanRow } from "./types";
 
 export const hashPassword = async (p: string): Promise<string> => {
   const msgBuffer = new TextEncoder().encode(p);
@@ -10,25 +10,20 @@ export const hashPassword = async (p: string): Promise<string> => {
 export const parseDashboardData = (text: string): DashboardData | null => {
   try {
     if (!text || text.includes("DOCTYPE")) return null;
-    
     const parts = text.split("###MSG###");
     const lines = parts[0].split('\n');
     const r1 = lines[0].split(';');
-
     if (r1.length < 3) return null;
-
     const counts = r1[1].split('|');
     const done = parseInt(counts[0]) || 0;
     const total = parseInt(counts[1]) || 0;
     const activeList = [];
-
     for (let i = 1; i < lines.length; i++) {
       if (lines[i].includes('|')) {
         const p = lines[i].split('|');
         activeList.push({ id: p[0], start: p[1], zone: p[4] });
       }
     }
-
     return {
       status: r1[0].trim(),
       done,
@@ -50,23 +45,17 @@ export const api = {
       const driveIdMatch = sourceUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || sourceUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
       const driveId = driveIdMatch?.[1];
       if (!driveId) return "";
-
       const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_photo&id=${encodeURIComponent(driveId)}`);
       const text = (await res.text()).trim();
-
       if (!text) return "";
       if (text.startsWith('data:image/')) return text;
-
       try {
         const parsed = JSON.parse(text);
         if (typeof parsed?.data === 'string' && parsed.data) {
           const mime = parsed.mime || 'image/jpeg';
           return `data:${mime};base64,${parsed.data}`;
         }
-      } catch {
-        // ignore json parse errors and continue as raw base64
-      }
-
+      } catch {}
       return `data:image/jpeg;base64,${text}`;
     } catch (e) {
       console.error(e);
@@ -109,9 +98,9 @@ export const api = {
 
   fetchFullPlan: async (dateStr: string): Promise<PlanRow[]> => {
     try {
-       const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_full_plan&date=${encodeURIComponent(dateStr)}`);
-       const data = await res.json();
-       return Array.isArray(data) ? data : [];
+      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_full_plan&date=${encodeURIComponent(dateStr)}`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
     } catch (e) {
       console.error(e);
       return [];
@@ -122,11 +111,7 @@ export const api = {
     try {
       const res = await fetch(SCRIPT_URL, {
         method: 'POST',
-        body: JSON.stringify({
-          mode: 'create_plan',
-          date: dateStr,
-          tasks: tasks
-        })
+        body: JSON.stringify({ mode: 'create_plan', date: dateStr, tasks })
       });
       const txt = await res.text();
       return txt.includes("CREATED");
@@ -138,22 +123,22 @@ export const api = {
   
   updatePlanRow: async (dateStr: string, row: PlanRow): Promise<boolean> => {
     try {
-       const res = await fetch(SCRIPT_URL, {
-         method: 'POST',
-         body: JSON.stringify({
-           mode: 'update_container_row',
-           date: dateStr,
-           row: row.rowIndex.toString(),
-           lot: row.lot,
-           ws: row.ws,
-           pallets: row.pallets,
-           id: row.id,
-           phone: row.phone,
-           eta: row.eta
-         })
-       });
-       const txt = await res.text();
-       return txt.includes("UPDATED");
+      const res = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          mode: 'update_container_row',
+          date: dateStr,
+          row: row.rowIndex.toString(),
+          lot: row.lot,
+          ws: row.ws,
+          pallets: row.pallets,
+          id: row.id,
+          phone: row.phone,
+          eta: row.eta
+        })
+      });
+      const txt = await res.text();
+      return txt.includes("UPDATED");
     } catch(e) {
       console.error("Update Row Error:", e);
       return false;
@@ -203,7 +188,7 @@ export const api = {
     return true;
   },
 
-  // ОБНОВЛЕННАЯ ФУНКЦИЯ uploadPhoto с прогрессом и XMLHttpRequest
+  // УНИВЕРСАЛЬНАЯ ЗАГРУЗКА ФОТО – с XMLHttpRequest и прогрессом
   uploadPhoto: async (
     image: string, 
     mimeType: string, 
@@ -211,7 +196,19 @@ export const api = {
     onProgress?: (progress: number) => void
   ): Promise<string> => {
     return new Promise((resolve, reject) => {
-      // Преобразуем base64 в Blob для отправки как файл
+      // Если нет onProgress – используем fetch (без прогресса)
+      if (!onProgress) {
+        fetch(SCRIPT_URL, {
+          method: 'POST',
+          body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename })
+        })
+          .then(res => res.json())
+          .then(data => resolve(data.status === "SUCCESS" ? data.url : ""))
+          .catch(reject);
+        return;
+      }
+
+      // С прогрессом – XMLHttpRequest
       const base64Data = image.includes('base64,') ? image.split('base64,')[1] : image;
       const byteCharacters = atob(base64Data);
       const byteNumbers = new Array(byteCharacters.length);
@@ -229,7 +226,6 @@ export const api = {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', SCRIPT_URL, true);
 
-      // Отслеживаем прогресс загрузки
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable && onProgress) {
           const progress = Math.round((event.loaded / event.total) * 100);
@@ -242,7 +238,7 @@ export const api = {
           try {
             const response = JSON.parse(xhr.responseText);
             resolve(response.status === "SUCCESS" ? response.url : "");
-          } catch (e) {
+          } catch {
             reject(new Error('Invalid JSON response'));
           }
         } else {
@@ -250,12 +246,9 @@ export const api = {
         }
       };
 
-      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.onerror = () => reject(new Error('Network error during upload'));
       xhr.ontimeout = () => reject(new Error('Request timeout'));
-
-      // Устанавливаем таймаут 60 секунд
       xhr.timeout = 60000;
-
       xhr.send(formData);
     });
   },
