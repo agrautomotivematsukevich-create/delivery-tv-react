@@ -24,7 +24,9 @@ const ActionModal: React.FC<ActionModalProps> = ({
   const [photo1, setPhoto1] = useState<{data: string, mime: string, name: string} | null>(null);
   const [photo2, setPhoto2] = useState<{data: string, mime: string, name: string} | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadTimeout, setUploadTimeout] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [isLocalManual, setIsLocalManual] = useState(false);
   const [manualTime, setManualTime] = useState(
     new Date().toLocaleTimeString('ru-RU', { 
@@ -36,15 +38,17 @@ const ActionModal: React.FC<ActionModalProps> = ({
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentPhotoTarget = useRef<1 | 2>(1);
-  const submitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const uploadTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const isStart = action.type === 'start';
   const AVAILABLE_ZONES = ['G4', 'G5', 'G7', 'G8', 'G9', 'P70'];
 
-  // Очистка таймера при размонтировании
+  // Очистка ресурсов при размонтировании
   useEffect(() => {
     return () => {
-      if (submitTimeoutRef.current) clearTimeout(submitTimeoutRef.current);
+      if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
     };
   }, []);
 
@@ -87,7 +91,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
         
         if (currentPhotoTarget.current === 1) setPhoto1(photoData);
         else setPhoto2(photoData);
-        setError(null);
+        setUploadError(null);
       };
       img.src = evt.target?.result as string;
     };
@@ -104,33 +108,62 @@ const ActionModal: React.FC<ActionModalProps> = ({
     if (!isFormValid()) return;
     
     setSubmitting(true);
-    setError(null);
+    setUploadProgress(0);
+    setUploadTimeout(false);
+    setUploadError(null);
+    
+    // Создаём AbortController для отмены запросов
+    abortControllerRef.current = new AbortController();
     
     // Таймаут 60 секунд на всю операцию
-    submitTimeoutRef.current = setTimeout(() => {
-      setSubmitting(false);
-      setError('Превышено время ожидания. Попробуйте снова.');
+    uploadTimerRef.current = setTimeout(() => {
+      setUploadTimeout(true);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     }, 60000);
     
     let urlGen = "", urlSeal = "", urlEmpty = "";
     
     try {
       if (!isLocalManual) {
-        // Загружаем фото через JSON (без CORS)
+        // Загружаем первое фото (прогресс 0–50%)
         if (photo1) {
-          urlGen = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name);
+          urlGen = await api.uploadPhoto(
+            photo1.data,
+            photo1.mime,
+            photo1.name,
+            (progress) => {
+              setUploadProgress(Math.floor(progress * 0.5));
+            },
+            abortControllerRef.current.signal
+          );
         }
+        
+        // Загружаем второе фото (прогресс 50–100%)
         if (photo2) {
-          urlSeal = await api.uploadPhoto(photo2.data, photo2.mime, photo2.name);
+          urlSeal = await api.uploadPhoto(
+            photo2.data,
+            photo2.mime,
+            photo2.name,
+            (progress) => {
+              setUploadProgress(50 + Math.floor(progress * 0.5));
+            },
+            abortControllerRef.current.signal
+          );
+        } else {
+          // Если второго фото нет, сразу 100%
+          setUploadProgress(100);
         }
-        if (!isStart && photo1) {
-          urlEmpty = urlGen;
-          urlGen = "";
+        
+        if (!isStart && photo1) { 
+          urlEmpty = urlGen; 
+          urlGen = ""; 
         }
       }
       
-      // Очищаем таймаут после успеха
-      if (submitTimeoutRef.current) clearTimeout(submitTimeoutRef.current);
+      // Очищаем таймер при успехе
+      if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current);
       
       const actionType = isLocalManual 
         ? `${action.type}_manual_${manualTime.replace(':', '')}` 
@@ -150,14 +183,23 @@ const ActionModal: React.FC<ActionModalProps> = ({
       onSuccess();
     } catch (err) {
       console.error('Action error:', err);
-      if (submitTimeoutRef.current) clearTimeout(submitTimeoutRef.current);
+      if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current);
       setSubmitting(false);
-      setError('Ошибка при отправке. Проверьте соединение и попробуйте снова.');
+      
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setUploadError('Загрузка отменена');
+      } else if (err instanceof Error && err.message.includes('Timeout')) {
+        setUploadTimeout(true);
+        setUploadError('Таймаут загрузки');
+      } else {
+        setUploadError('Ошибка при отправке. Проверьте соединение и попробуйте снова.');
+      }
     }
   };
 
   const handleRefresh = () => {
-    if (submitTimeoutRef.current) clearTimeout(submitTimeoutRef.current);
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current);
     onRefresh?.();
     onClose();
   };
@@ -189,13 +231,13 @@ const ActionModal: React.FC<ActionModalProps> = ({
           </button>
         </div>
 
-        {/* Ошибка / Таймаут */}
-        {error && (
+        {/* Таймаут / Ошибка */}
+        {uploadTimeout && (
           <div className="animate-in slide-in-from-top-2 bg-red-500/10 border border-red-500/20 rounded-xl p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <AlertTriangle size={16} className="text-red-400" />
-                <span className="text-sm text-red-300">{error}</span>
+                <span className="text-sm text-red-300">Загрузка заняла более 60 секунд</span>
               </div>
               <button
                 onClick={handleRefresh}
@@ -203,6 +245,31 @@ const ActionModal: React.FC<ActionModalProps> = ({
               >
                 <RefreshCw size={14} /> Обновить экран
               </button>
+            </div>
+          </div>
+        )}
+
+        {uploadError && !uploadTimeout && (
+          <div className="animate-in slide-in-from-top-2 bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={16} className="text-red-400" />
+              <span className="text-sm text-red-300">{uploadError}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Прогресс-бар */}
+        {submitting && !isLocalManual && uploadProgress > 0 && uploadProgress < 100 && (
+          <div className="animate-in slide-in-from-top-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-white/50 uppercase tracking-wider">Загрузка фото</span>
+              <span className="text-sm font-bold text-white">{uploadProgress}%</span>
+            </div>
+            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-blue-500 to-green-500 rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${uploadProgress}%` }}
+              />
             </div>
           </div>
         )}
@@ -352,7 +419,9 @@ const ActionModal: React.FC<ActionModalProps> = ({
             {submitting ? (
               <div className="flex items-center justify-center gap-3">
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Отправка...</span>
+                <span>
+                  {isLocalManual ? "Сохранение..." : `Загрузка ${uploadProgress}%`}
+                </span>
               </div>
             ) : (
               "Подтвердить"
