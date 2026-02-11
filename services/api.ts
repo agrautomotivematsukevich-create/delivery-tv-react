@@ -189,24 +189,79 @@ export const api = {
   },
 
   /**
-   * Загрузка фото через JSON POST (без CORS preflight)
-   * Совместимо с макросом, который НЕ поддерживает OPTIONS.
-   * Прогресс недоступен, но можно показывать общий спиннер.
+   * Загрузка фото с поддержкой прогресса и отмены.
+   * Использует XHR с Content-Type: text/plain (нет preflight).
+   * @param image dataURL
+   * @param mimeType MIME-тип
+   * @param filename Имя файла
+   * @param onProgress Колбэк прогресса (0-100)
+   * @param signal AbortSignal для отмены
+   * @returns URL загруженного фото или пустую строку
    */
-  uploadPhoto: async (image: string, mimeType: string, filename: string): Promise<string> => {
-  try {
-    const res = await fetch(SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // КЛЮЧЕВОЙ МОМЕНТ
-      body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename })
+  uploadPhoto: async (
+    image: string,
+    mimeType: string,
+    filename: string,
+    onProgress?: (progress: number) => void,
+    signal?: AbortSignal
+  ): Promise<string> => {
+    // Если прогресс не нужен и нет сигнала — используем быстрый fetch
+    if (!onProgress && !signal) {
+      try {
+        const res = await fetch(SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename })
+        });
+        const data = await res.json();
+        return data.status === "SUCCESS" ? data.url : "";
+      } catch (e) {
+        console.error('Upload error:', e);
+        return "";
+      }
+    }
+
+    // С прогрессом и/или отменой — XHR
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', SCRIPT_URL, true);
+      xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
+      xhr.timeout = 60000;
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          const percent = Math.round((e.loaded / e.total) * 100);
+          onProgress(percent);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve(data.status === "SUCCESS" ? data.url : "");
+          } catch {
+            reject(new Error('Invalid JSON response'));
+          }
+        } else {
+          reject(new Error(`HTTP ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.ontimeout = () => reject(new Error('Timeout'));
+
+      // Поддержка отмены через AbortSignal
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          xhr.abort();
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      }
+
+      xhr.send(JSON.stringify({ mode: 'upload_photo', image, mimeType, filename }));
     });
-    const data = await res.json();
-    return data.status === "SUCCESS" ? data.url : "";
-  } catch (e) {
-    console.error('Upload error:', e);
-    return "";
-  }
-},
+  },
 
   taskAction: async (id: string, act: string, user: string, zone: string = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
     const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${zone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
