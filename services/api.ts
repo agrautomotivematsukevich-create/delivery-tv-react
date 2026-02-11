@@ -1,5 +1,5 @@
-import { SCRIPT_URL } from '../constants';  // ← исправлено: ../constants
-import { DashboardData, Task, Issue, TaskInput, PlanRow } from '../types'; // ← исправлено: ../types
+import { SCRIPT_URL } from '../constants';
+import { DashboardData, Task, Issue, TaskInput, PlanRow } from '../types';
 
 export const hashPassword = async (p: string): Promise<string> => {
   const msgBuffer = new TextEncoder().encode(p);
@@ -188,66 +188,34 @@ export const api = {
     return true;
   },
 
+  /**
+   * Загрузка фото через JSON POST (без CORS preflight)
+   * Совместимо с макросом, который НЕ поддерживает OPTIONS.
+   * Прогресс недоступен, но можно показывать общий спиннер.
+   */
   uploadPhoto: async (
-    image: string, 
-    mimeType: string, 
-    filename: string, 
-    onProgress?: (progress: number) => void
+    image: string,
+    mimeType: string,
+    filename: string
   ): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      if (!onProgress) {
-        fetch(SCRIPT_URL, {
-          method: 'POST',
-          body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename })
+    try {
+      // image уже в формате data:image/jpeg;base64,...
+      const res = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'upload_photo',
+          image: image,          // передаём полную строку data:...;base64,...
+          mimeType,
+          filename
         })
-          .then(res => res.json())
-          .then(data => resolve(data.status === "SUCCESS" ? data.url : ""))
-          .catch(reject);
-        return;
-      }
-
-      const base64Data = image.includes('base64,') ? image.split('base64,')[1] : image;
-      const byteCharacters = atob(base64Data);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: mimeType });
-
-      const formData = new FormData();
-      formData.append('mode', 'upload_photo');
-      formData.append('photo', blob, filename);
-      formData.append('mimeType', mimeType);
-
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', SCRIPT_URL, true);
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable && onProgress) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          onProgress(progress);
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            resolve(response.status === "SUCCESS" ? response.url : "");
-          } catch {
-            reject(new Error('Invalid JSON response'));
-          }
-        } else {
-          reject(new Error(`Upload failed with status ${xhr.status}`));
-        }
-      };
-
-      xhr.onerror = () => reject(new Error('Network error during upload'));
-      xhr.ontimeout = () => reject(new Error('Request timeout'));
-      xhr.timeout = 60000;
-      xhr.send(formData);
-    });
+      });
+      const data = await res.json();
+      return data.status === "SUCCESS" ? data.url : "";
+    } catch (e) {
+      console.error('Upload error:', e);
+      throw e;
+    }
   },
 
   taskAction: async (id: string, act: string, user: string, zone: string = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
