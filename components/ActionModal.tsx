@@ -1,272 +1,351 @@
-import React, { useState, useRef } from 'react';
-import { X, Camera, Upload, AlertCircle, RefreshCw } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { api } from '../services/api';
+import { TranslationSet, TaskAction, User } from '../types';
+import { Camera, Lock, CheckCircle, Clock, Truck, RefreshCw, Upload } from 'lucide-react';
 
 interface ActionModalProps {
-  isOpen: boolean;
+  action: TaskAction;
+  user: User;
+  t: TranslationSet;
   onClose: () => void;
-  onConfirm: (confirmed: boolean, photos?: File[]) => void;
-  containerId: string;
-  action: 'start' | 'finish';
-  uploadProgress: number;
-  showRefreshButton: boolean;
-  onRefresh: () => void;
+  onSuccess: () => void;
+  onRefresh?: () => void; // NEW: функция обновления экрана
 }
 
-const ActionModal: React.FC<ActionModalProps> = ({
-  isOpen,
-  onClose,
-  onConfirm,
-  containerId,
-  action,
-  uploadProgress,
-  showRefreshButton,
-  onRefresh
+const ActionModal: React.FC<ActionModalProps> = ({ 
+  action, 
+  user, 
+  t, 
+  onClose, 
+  onSuccess,
+  onRefresh 
 }) => {
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [isCapturing, setIsCapturing] = useState(false);
+  const [zone, setZone] = useState<string | null>(null);
+  const [photo1, setPhoto1] = useState<{data: string, mime: string, name: string} | null>(null);
+  const [photo2, setPhoto2] = useState<{data: string, mime: string, name: string} | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  
+  // NEW: состояния для прогресса и таймаута
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadTimeout, setUploadTimeout] = useState<boolean>(false);
+  const [uploadTimer, setUploadTimer] = useState<NodeJS.Timeout | null>(null);
+  
+  const [isLocalManual, setIsLocalManual] = useState(false);
+  const [manualTime, setManualTime] = useState(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const currentPhotoTarget = useRef<1 | 2>(1);
 
-  if (!isOpen) return null;
+  const isStart = action.type === 'start';
+  const AVAILABLE_ZONES = ['G4', 'G5', 'G7', 'G8', 'G9', 'P70'];
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const newPhotos = Array.from(e.target.files);
-      setPhotos(prev => [...prev, ...newPhotos]);
-    }
-  };
-
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
+  useEffect(() => {
+    return () => {
+      if (uploadTimer) {
+        clearTimeout(uploadTimer);
       }
-      setIsCapturing(true);
-    } catch (error) {
-      console.error('Camera error:', error);
-      alert('Не удалось получить доступ к камере');
+    };
+  }, [uploadTimer]);
+
+  const triggerFile = (target: 1 | 2) => {
+    currentPhotoTarget.current = target;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          const scale = 1600 / img.width;
+          canvas.width = 1600;
+          canvas.height = img.height * scale;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const suffix = isStart ? (currentPhotoTarget.current === 1 ? "_General" : "_Seal") : "_Empty";
+          const photoData = { data: canvas.toDataURL('image/jpeg', 0.8), mime: 'image/jpeg', name: `${action.id}${suffix}.jpg` };
+          if (currentPhotoTarget.current === 1) setPhoto1(photoData);
+          else setPhoto2(photoData);
+        };
+        if (evt.target?.result) img.src = evt.target.result as string;
+      };
+      reader.readAsDataURL(file);
     }
   };
 
-  const capturePhoto = () => {
-    if (!videoRef.current) return;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    const ctx = canvas.getContext('2d');
+  const isFormValid = () => {
+    // Зона обязательна ТОЛЬКО при старте
+    if (isStart && !zone) return false;
     
-    if (ctx) {
-      ctx.drawImage(videoRef.current, 0, 0);
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const file = new File([blob], `photo_${Date.now()}.jpg`, {
-            type: 'image/jpeg'
+    if (isLocalManual) return true;
+    return isStart ? (!!photo1 && !!photo2) : !!photo1;
+  };
+
+  // NEW: функция для загрузки фото с прогрессом
+  const uploadPhotoWithProgress = async (
+    photoData: { data: string, mime: string, name: string },
+    onProgress: (progress: number) => void
+  ): Promise<string> => {
+    return await api.uploadPhoto(
+      photoData.data,
+      photoData.mime,
+      photoData.name,
+      onProgress
+    );
+  };
+
+  const handleSubmit = async () => {
+    if (!isFormValid()) return;
+    
+    setSubmitting(true);
+    setUploadProgress(0);
+    setUploadTimeout(false);
+    
+    // NEW: устанавливаем таймер на 60 секунд
+    const timer = setTimeout(() => {
+      setUploadTimeout(true);
+    }, 60000);
+    
+    setUploadTimer(timer);
+    
+    let urlGen = "", urlSeal = "", urlEmpty = "";
+    
+    try {
+      if (!isLocalManual) {
+        // NEW: загружаем фото с отслеживанием прогресса
+        if (photo1) {
+          urlGen = await uploadPhotoWithProgress(photo1, (progress) => {
+            setUploadProgress(Math.round(progress * 0.5)); // Первое фото - 50%
           });
-          setPhotos(prev => [...prev, file]);
         }
-      }, 'image/jpeg', 0.8);
-    }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    setIsCapturing(false);
-  };
-
-  const handleConfirm = () => {
-    if (action === 'finish' && photos.length === 0) {
-      if (!window.confirm('Вы не прикрепили фото. Продолжить без фото?')) {
-        return;
+        
+        if (photo2) {
+          urlSeal = await uploadPhotoWithProgress(photo2, (progress) => {
+            setUploadProgress(50 + Math.round(progress * 0.5)); // Второе фото - оставшиеся 50%
+          });
+        }
+        
+        if (!isStart && photo1) { 
+          urlEmpty = urlGen; 
+          urlGen = ""; 
+        }
       }
+      
+      // Сбрасываем таймер при успешной загрузке
+      clearTimeout(timer);
+      
+      const actionTypeToSend = isLocalManual ? `${action.type}_manual_${manualTime}` : action.type;
+
+      await api.taskAction(
+        action.id,
+        actionTypeToSend,
+        user.name,
+        zone || "",
+        urlGen,
+        urlSeal,
+        urlEmpty
+      );
+
+      setSubmitting(false);
+      onSuccess();
+    } catch (error) {
+      console.error('Upload error:', error);
+      clearTimeout(timer);
+      setSubmitting(false);
+      setUploadTimeout(true);
     }
-    onConfirm(true, photos.length > 0 ? photos : undefined);
-    setPhotos([]);
-    stopCamera();
   };
 
-  const handleCancel = () => {
-    onConfirm(false);
-    setPhotos([]);
-    stopCamera();
+  // NEW: обработчик кнопки обновления экрана
+  const handleRefresh = () => {
+    if (uploadTimer) {
+      clearTimeout(uploadTimer);
+    }
+    if (onRefresh) {
+      onRefresh();
+    }
+    onClose();
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        {/* Заголовок */}
-        <div className="flex justify-between items-center p-6 border-b">
-          <h3 className="text-xl font-bold text-gray-900">
-            {action === 'start' ? 'Начать задачу' : 'Завершить задачу'}
-          </h3>
-          <button
-            onClick={handleCancel}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-6 h-6" />
-          </button>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-[#0F0F12] border border-white/10 p-8 rounded-3xl w-full max-w-[480px] flex flex-col gap-6 shadow-2xl">
+        <div className="text-center">
+           <h2 className="text-2xl font-extrabold text-white mb-1 leading-tight tracking-tight">{action.id}</h2>
+           <button 
+            onClick={() => setIsLocalManual(!isLocalManual)}
+            className={`mt-4 mx-auto flex items-center gap-2 px-5 py-2.5 rounded-full border transition-all duration-300 ${
+              isLocalManual ? 'bg-orange-500 border-orange-400 text-white shadow-lg shadow-orange-500/20' : 'bg-white/5 border-white/10 text-white/50 hover:text-white'
+            }`}
+           >
+             <Truck size={16} />
+             <span className="text-[11px] font-black uppercase tracking-[0.1em]">
+               {isLocalManual ? "Локальный режим: ВКЛ" : "Обычный (Фото) / Переключить"}
+             </span>
+           </button>
         </div>
 
-        {/* Контент */}
-        <div className="p-6">
-          {/* Контейнер ID */}
-          <div className="text-center mb-6">
-            <p className="text-sm text-gray-600 mb-1">Контейнер</p>
-            <p className="text-3xl font-bold text-blue-600">{containerId}</p>
-          </div>
-
-          {/* Предупреждение */}
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-            <div className="flex items-start">
-              <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 mr-2" />
-              <p className="text-sm text-yellow-800">
-                {action === 'start' 
-                  ? 'Подтвердите начало работы с этим контейнером' 
-                  : 'Подтвердите завершение работы. Не забудьте прикрепить фото!'}
-              </p>
-            </div>
-          </div>
-
-          {/* Загрузка фото (только для завершения) */}
-          {action === 'finish' && (
-            <div className="mb-6">
-              <div className="flex justify-between items-center mb-3">
-                <h4 className="font-semibold text-gray-700">Фотографии</h4>
-                <span className="text-sm text-gray-500">
-                  {photos.length} загружено
+        {/* NEW: Уведомление о таймауте */}
+        {uploadTimeout && (
+          <div className="animate-in slide-in-from-top-2 bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock size={16} className="text-red-400" />
+                <span className="text-sm text-red-300">
+                  Загрузка заняла более 60 секунд
                 </span>
               </div>
+              <button
+                onClick={handleRefresh}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-red-300 text-sm font-bold transition-colors"
+              >
+                <RefreshCw size={14} />
+                Обновить экран
+              </button>
+            </div>
+          </div>
+        )}
 
-              {/* Кнопки загрузки фото */}
-              <div className="flex space-x-3 mb-4">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex-1 flex items-center justify-center py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 transition-colors"
-                >
-                  <Upload className="w-5 h-5 mr-2 text-gray-500" />
-                  <span>Выбрать файлы</span>
-                </button>
+        {/* NEW: Прогресс бар загрузки */}
+        {submitting && !isLocalManual && uploadProgress > 0 && (
+          <div className="animate-in slide-in-from-top-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-white/50 uppercase tracking-wider">Загрузка фото</span>
+              <span className="text-sm font-bold text-white">{uploadProgress}%</span>
+            </div>
+            <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
 
-                <button
-                  onClick={isCapturing ? stopCamera : startCamera}
-                  className={`flex-1 flex items-center justify-center py-2 rounded-lg ${
-                    isCapturing 
-                      ? 'bg-red-500 hover:bg-red-600 text-white' 
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+        {/* Выбор зоны показываем ТОЛЬКО при нажатии кнопки "Начать" */}
+        {isStart && (
+          <div className="animate-in slide-in-from-top-2">
+            <p className="text-[10px] font-black text-white/30 mb-3 uppercase tracking-[0.2em] text-center">Выбор зоны выгрузки</p>
+            <div className="grid grid-cols-3 gap-2">
+              {AVAILABLE_ZONES.map(z => (
+                <button 
+                  key={z} 
+                  onClick={() => setZone(z)} 
+                  className={`py-4 rounded-xl font-bold text-sm border transition-all ${
+                    zone === z 
+                    ? (isLocalManual ? 'bg-orange-500 border-orange-400 text-white' : 'bg-blue-600 border-blue-500 text-white') 
+                    : 'bg-white/5 text-white/40 border-transparent hover:bg-white/10'
                   }`}
                 >
-                  <Camera className="w-5 h-5 mr-2" />
-                  <span>{isCapturing ? 'Остановить' : 'Камера'}</span>
+                  {z}
                 </button>
-              </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-
-              {/* Видео с камеры */}
-              {isCapturing && (
-                <div className="relative mb-4">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full rounded-lg"
-                  />
-                  <button
-                    onClick={capturePhoto}
-                    className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white p-3 rounded-full shadow-lg hover:shadow-xl"
-                  >
-                    <Camera className="w-6 h-6" />
-                  </button>
-                </div>
-              )}
-
-              {/* Препросмотр фото */}
-              {photos.length > 0 && (
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  {photos.map((photo, index) => (
-                    <div key={index} className="relative">
-                      <img
-                        src={URL.createObjectURL(photo)}
-                        alt={`Photo ${index + 1}`}
-                        className="w-full h-24 object-cover rounded"
-                      />
-                      <button
-                        onClick={() => setPhotos(prev => prev.filter((_, i) => i !== index))}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 text-sm"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Прогресс загрузки */}
-              {uploadProgress > 0 && (
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm text-gray-600 mb-1">
-                    <span>Загрузка фото</span>
-                    <span>{uploadProgress}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Кнопка обновления при таймауте */}
-              {showRefreshButton && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-red-700">
-                      Загрузка заняла более 60 секунд
-                    </span>
-                    <button
-                      onClick={onRefresh}
-                      className="flex items-center text-sm font-medium text-red-700 hover:text-red-800"
-                    >
-                      <RefreshCw className="w-4 h-4 mr-1" />
-                      Обновить
-                    </button>
-                  </div>
-                </div>
-              )}
+              ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Кнопки действий */}
-        <div className="flex border-t p-6">
-          <button
-            onClick={handleCancel}
-            className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
-          >
-            Отмена
-          </button>
-          <button
-            onClick={handleConfirm}
-            className="flex-1 py-3 px-4 ml-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium"
-          >
-            {action === 'start' ? 'Начать' : 'Завершить'}
-          </button>
+        {isLocalManual ? (
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col items-center gap-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-2 text-orange-400">
+              <Clock size={18} />
+              <span className="font-bold uppercase text-[10px] tracking-widest">
+                {isStart ? "Время начала (Факт)" : "Время завершения (Факт)"}
+              </span>
+            </div>
+            <input 
+              type="time" 
+              value={manualTime} 
+              onChange={(e) => setManualTime(e.target.value)} 
+              className="bg-transparent text-white text-5xl font-mono text-center outline-none [color-scheme:dark]" 
+            />
+          </div>
+        ) : (
+          <div className="space-y-3">
+             <div 
+               onClick={() => triggerFile(1)} 
+               className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 transition-all relative ${
+                 photo1 ? 'border-green-500 bg-green-500/5' : 'border-white/10 hover:border-blue-500'
+               }`}
+             >
+               {photo1 ? (
+                 <>
+                   <CheckCircle className="text-green-500 w-8 h-8" />
+                   <span className="font-bold text-green-400 text-xs uppercase text-center leading-tight">
+                     {isStart ? t.lbl_photo1 : t.lbl_photo_empty} ✓
+                   </span>
+                 </>
+               ) : (
+                 <>
+                   <Camera className="text-white/20 w-8 h-8" />
+                   <span className="font-bold text-white/60 text-xs uppercase text-center leading-tight">
+                     {isStart ? t.lbl_photo1 : t.lbl_photo_empty}
+                   </span>
+                 </>
+               )}
+             </div>
+             
+             {isStart && (
+               <div 
+                 onClick={() => triggerFile(2)} 
+                 className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 transition-all ${
+                   photo2 ? 'border-green-500 bg-green-500/5' : 'border-white/10 hover:border-blue-500'
+                 }`}
+               >
+                 {photo2 ? (
+                   <>
+                     <CheckCircle className="text-green-500 w-8 h-8" />
+                     <span className="font-bold text-green-400 text-xs uppercase">{t.lbl_photo2} ✓</span>
+                   </>
+                 ) : (
+                   <>
+                     <Lock className="text-white/20 w-8 h-8" />
+                     <span className="font-bold text-white/60 text-xs uppercase">{t.lbl_photo2}</span>
+                   </>
+                 )}
+               </div>
+             )}
+             
+             <input 
+               type="file" 
+               ref={fileInputRef} 
+               hidden 
+               accept="image/*" 
+               capture="environment" 
+               onChange={handleFileChange} 
+             />
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3">
+           <button 
+             onClick={handleSubmit} 
+             disabled={submitting || !isFormValid()} 
+             className={`w-full py-5 font-black text-sm rounded-2xl transition-all ${
+               isLocalManual ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'
+             } disabled:opacity-20 uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2`}
+           >
+             {submitting ? (
+               <>
+                 {isLocalManual ? "Сохранение..." : (
+                   <>
+                     <Upload size={16} className="animate-pulse" />
+                     Загрузка {uploadProgress}%
+                   </>
+                 )}
+               </>
+             ) : "Подтвердить"}
+           </button>
+           
+           <button 
+             onClick={onClose} 
+             className="text-white/20 hover:text-white py-2 text-[10px] font-bold uppercase tracking-widest transition-colors"
+           >
+             Отмена
+           </button>
         </div>
       </div>
     </div>
