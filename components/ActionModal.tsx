@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { api } from '../services/api';
 import { TranslationSet, TaskAction, User } from '../types';
-import { Camera, Lock, CheckCircle, Clock, Truck, RefreshCw, Upload } from 'lucide-react';
+import { Camera, Lock, CheckCircle, Clock, Truck, RefreshCw, Upload, AlertTriangle } from 'lucide-react';
 
 interface ActionModalProps {
   action: TaskAction;
@@ -9,7 +9,7 @@ interface ActionModalProps {
   t: TranslationSet;
   onClose: () => void;
   onSuccess: () => void;
-  onRefresh?: () => void; // NEW: функция обновления экрана
+  onRefresh?: () => void;
 }
 
 const ActionModal: React.FC<ActionModalProps> = ({ 
@@ -25,31 +25,46 @@ const ActionModal: React.FC<ActionModalProps> = ({
   const [photo2, setPhoto2] = useState<{data: string, mime: string, name: string} | null>(null);
   const [submitting, setSubmitting] = useState(false);
   
-  // NEW: состояния для прогресса и таймаута
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadTimeout, setUploadTimeout] = useState<boolean>(false);
-  const [uploadTimer, setUploadTimer] = useState<NodeJS.Timeout | null>(null);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   
   const [isLocalManual, setIsLocalManual] = useState(false);
-  const [manualTime, setManualTime] = useState(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+  const [manualTime, setManualTime] = useState(
+    new Date().toLocaleTimeString('ru-RU', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false 
+    }).slice(0, 5) // Берем только часы и минуты (HH:mm)
+  );
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const currentPhotoTarget = useRef<1 | 2>(1);
+  const uploadTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const isStart = action.type === 'start';
   const AVAILABLE_ZONES = ['G4', 'G5', 'G7', 'G8', 'G9', 'P70'];
 
+  // Очистка таймеров при размонтировании
   useEffect(() => {
     return () => {
-      if (uploadTimer) {
-        clearTimeout(uploadTimer);
+      if (uploadTimerRef.current) {
+        clearTimeout(uploadTimerRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
     };
-  }, [uploadTimer]);
+  }, []);
 
   const triggerFile = (target: 1 | 2) => {
     currentPhotoTarget.current = target;
-    fileInputRef.current?.click();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''; // Сбрасываем значение, чтобы onChange срабатывал каждый раз
+      fileInputRef.current.click();
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,14 +77,42 @@ const ActionModal: React.FC<ActionModalProps> = ({
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           if (!ctx) return;
-          const scale = 1600 / img.width;
-          canvas.width = 1600;
-          canvas.height = img.height * scale;
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const suffix = isStart ? (currentPhotoTarget.current === 1 ? "_General" : "_Seal") : "_Empty";
-          const photoData = { data: canvas.toDataURL('image/jpeg', 0.8), mime: 'image/jpeg', name: `${action.id}${suffix}.jpg` };
-          if (currentPhotoTarget.current === 1) setPhoto1(photoData);
-          else setPhoto2(photoData);
+          
+          // Сохраняем пропорции, но ограничиваем максимальный размер
+          const maxWidth = 1600;
+          const maxHeight = 1200;
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+          if (height > maxHeight) {
+            width = (width * maxHeight) / height;
+            height = maxHeight;
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          const suffix = isStart 
+            ? (currentPhotoTarget.current === 1 ? "_General" : "_Seal") 
+            : "_Empty";
+          const photoData = { 
+            data: canvas.toDataURL('image/jpeg', 0.8), 
+            mime: 'image/jpeg', 
+            name: `${action.id}${suffix}.jpg` 
+          };
+          
+          if (currentPhotoTarget.current === 1) {
+            setPhoto1(photoData);
+            setUploadError(null);
+          } else {
+            setPhoto2(photoData);
+            setUploadError(null);
+          }
         };
         if (evt.target?.result) img.src = evt.target.result as string;
       };
@@ -85,17 +128,82 @@ const ActionModal: React.FC<ActionModalProps> = ({
     return isStart ? (!!photo1 && !!photo2) : !!photo1;
   };
 
-  // NEW: функция для загрузки фото с прогрессом
+  // Загрузка фото с прогрессом через XMLHttpRequest
   const uploadPhotoWithProgress = async (
     photoData: { data: string, mime: string, name: string },
-    onProgress: (progress: number) => void
+    photoIndex: number
   ): Promise<string> => {
-    return await api.uploadPhoto(
-      photoData.data,
-      photoData.mime,
-      photoData.name,
-      onProgress
-    );
+    return new Promise((resolve, reject) => {
+      // Создаем новый AbortController для каждого запроса
+      abortControllerRef.current = new AbortController();
+      
+      const formData = new FormData();
+      
+      // Преобразуем base64 в Blob
+      const base64Data = photoData.data.split(',')[1];
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: photoData.mime });
+      
+      formData.append('mode', 'upload_photo');
+      formData.append('photo', blob, photoData.name);
+      formData.append('mimeType', photoData.mime);
+      
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec', true);
+      
+      // Отслеживаем прогресс загрузки
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          const baseProgress = photoIndex === 1 ? 0 : 50;
+          const adjustedProgress = baseProgress + (progress * 0.5);
+          setUploadProgress(Math.min(adjustedProgress, photoIndex === 1 ? 50 : 100));
+        }
+      };
+      
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.status === "SUCCESS" && response.url) {
+              resolve(response.url);
+            } else {
+              reject(new Error('Upload failed: ' + (response.error || 'Unknown error')));
+            }
+          } catch (e) {
+            reject(new Error('Invalid response format'));
+          }
+        } else {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      };
+      
+      xhr.onerror = () => {
+        reject(new Error('Network error during upload'));
+      };
+      
+      xhr.ontimeout = () => {
+        reject(new Error('Upload timeout'));
+      };
+      
+      // Устанавливаем таймаут 30 секунд на загрузку одного файла
+      xhr.timeout = 30000;
+      
+      // Отмена запроса через AbortController
+      if (abortControllerRef.current) {
+        abortControllerRef.current.signal.addEventListener('abort', () => {
+          xhr.abort();
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      }
+      
+      xhr.send(formData);
+    });
   };
 
   const handleSubmit = async () => {
@@ -103,30 +211,37 @@ const ActionModal: React.FC<ActionModalProps> = ({
     
     setSubmitting(true);
     setUploadProgress(0);
+    setIsUploading(true);
     setUploadTimeout(false);
+    setUploadError(null);
     
-    // NEW: устанавливаем таймер на 60 секунд
-    const timer = setTimeout(() => {
+    // Сбрасываем предыдущий таймер
+    if (uploadTimerRef.current) {
+      clearTimeout(uploadTimerRef.current);
+    }
+    
+    // Устанавливаем таймер на 60 секунд
+    uploadTimerRef.current = setTimeout(() => {
       setUploadTimeout(true);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     }, 60000);
-    
-    setUploadTimer(timer);
     
     let urlGen = "", urlSeal = "", urlEmpty = "";
     
     try {
       if (!isLocalManual) {
-        // NEW: загружаем фото с отслеживанием прогресса
+        // Загружаем фото с отслеживанием прогресса
         if (photo1) {
-          urlGen = await uploadPhotoWithProgress(photo1, (progress) => {
-            setUploadProgress(Math.round(progress * 0.5)); // Первое фото - 50%
-          });
+          setUploadProgress(10); // Начало загрузки
+          urlGen = await uploadPhotoWithProgress(photo1, 1);
+          setUploadProgress(50); // Первое фото загружено
         }
         
         if (photo2) {
-          urlSeal = await uploadPhotoWithProgress(photo2, (progress) => {
-            setUploadProgress(50 + Math.round(progress * 0.5)); // Второе фото - оставшиеся 50%
-          });
+          urlSeal = await uploadPhotoWithProgress(photo2, 2);
+          setUploadProgress(100); // Второе фото загружено
         }
         
         if (!isStart && photo1) { 
@@ -136,9 +251,23 @@ const ActionModal: React.FC<ActionModalProps> = ({
       }
       
       // Сбрасываем таймер при успешной загрузке
-      clearTimeout(timer);
+      if (uploadTimerRef.current) {
+        clearTimeout(uploadTimerRef.current);
+      }
       
-      const actionTypeToSend = isLocalManual ? `${action.type}_manual_${manualTime}` : action.type;
+      const actionTypeToSend = isLocalManual 
+        ? `${action.type}_manual_${manualTime.replace(':', '')}` 
+        : action.type;
+
+      console.log('Sending task action:', {
+        id: action.id,
+        action: actionTypeToSend,
+        user: user.name,
+        zone: zone || '',
+        urlGen,
+        urlSeal,
+        urlEmpty
+      });
 
       await api.taskAction(
         action.id,
@@ -151,24 +280,57 @@ const ActionModal: React.FC<ActionModalProps> = ({
       );
 
       setSubmitting(false);
+      setIsUploading(false);
       onSuccess();
+      
     } catch (error) {
-      console.error('Upload error:', error);
-      clearTimeout(timer);
+      console.error('Upload/action error:', error);
+      
+      // Сбрасываем таймер при ошибке
+      if (uploadTimerRef.current) {
+        clearTimeout(uploadTimerRef.current);
+      }
+      
       setSubmitting(false);
-      setUploadTimeout(true);
+      setIsUploading(false);
+      
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setUploadError('Загрузка была отменена');
+      } else if (error instanceof Error && error.message.includes('timeout')) {
+        setUploadTimeout(true);
+        setUploadError('Загрузка заняла слишком много времени');
+      } else {
+        setUploadError('Ошибка при загрузке фото. Попробуйте еще раз.');
+      }
     }
   };
 
-  // NEW: обработчик кнопки обновления экрана
+  // Обработчик кнопки обновления экрана
   const handleRefresh = () => {
-    if (uploadTimer) {
-      clearTimeout(uploadTimer);
+    // Отменяем все активные запросы
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
+    
+    // Сбрасываем таймер
+    if (uploadTimerRef.current) {
+      clearTimeout(uploadTimerRef.current);
+    }
+    
+    // Вызываем колбэк обновления и закрываем модалку
     if (onRefresh) {
       onRefresh();
     }
     onClose();
+  };
+
+  // Сброс фото
+  const resetPhoto = (target: 1 | 2) => {
+    if (target === 1) {
+      setPhoto1(null);
+    } else {
+      setPhoto2(null);
+    }
   };
 
   return (
@@ -176,6 +338,10 @@ const ActionModal: React.FC<ActionModalProps> = ({
       <div className="bg-[#0F0F12] border border-white/10 p-8 rounded-3xl w-full max-w-[480px] flex flex-col gap-6 shadow-2xl">
         <div className="text-center">
            <h2 className="text-2xl font-extrabold text-white mb-1 leading-tight tracking-tight">{action.id}</h2>
+           <p className="text-sm text-white/50">
+             {isStart ? "Подтвердите начало работы" : "Подтвердите завершение работы"}
+           </p>
+           
            <button 
             onClick={() => setIsLocalManual(!isLocalManual)}
             className={`mt-4 mx-auto flex items-center gap-2 px-5 py-2.5 rounded-full border transition-all duration-300 ${
@@ -189,12 +355,12 @@ const ActionModal: React.FC<ActionModalProps> = ({
            </button>
         </div>
 
-        {/* NEW: Уведомление о таймауте */}
+        {/* Уведомление о таймауте */}
         {uploadTimeout && (
           <div className="animate-in slide-in-from-top-2 bg-red-500/10 border border-red-500/20 rounded-xl p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Clock size={16} className="text-red-400" />
+                <AlertTriangle size={16} className="text-red-400" />
                 <span className="text-sm text-red-300">
                   Загрузка заняла более 60 секунд
                 </span>
@@ -210,19 +376,36 @@ const ActionModal: React.FC<ActionModalProps> = ({
           </div>
         )}
 
-        {/* NEW: Прогресс бар загрузки */}
-        {submitting && !isLocalManual && uploadProgress > 0 && (
+        {/* Сообщение об ошибке */}
+        {uploadError && !uploadTimeout && (
+          <div className="animate-in slide-in-from-top-2 bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={16} className="text-red-400" />
+              <span className="text-sm text-red-300">{uploadError}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Прогресс бар загрузки */}
+        {isUploading && !isLocalManual && (
           <div className="animate-in slide-in-from-top-2">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-white/50 uppercase tracking-wider">Загрузка фото</span>
+              <span className="text-xs text-white/50 uppercase tracking-wider">
+                {uploadProgress < 100 ? "Загрузка фото..." : "Загрузка завершена"}
+              </span>
               <span className="text-sm font-bold text-white">{uploadProgress}%</span>
             </div>
             <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                className="h-full bg-gradient-to-r from-blue-500 to-green-500 rounded-full transition-all duration-300 ease-out"
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
+            {uploadProgress > 0 && uploadProgress < 100 && (
+              <div className="text-center text-xs text-white/40 mt-2">
+                Пожалуйста, не закрывайте приложение
+              </div>
+            )}
           </div>
         )}
 
@@ -235,7 +418,8 @@ const ActionModal: React.FC<ActionModalProps> = ({
                 <button 
                   key={z} 
                   onClick={() => setZone(z)} 
-                  className={`py-4 rounded-xl font-bold text-sm border transition-all ${
+                  disabled={isUploading}
+                  className={`py-4 rounded-xl font-bold text-sm border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                     zone === z 
                     ? (isLocalManual ? 'bg-orange-500 border-orange-400 text-white' : 'bg-blue-600 border-blue-500 text-white') 
                     : 'bg-white/5 text-white/40 border-transparent hover:bg-white/10'
@@ -260,29 +444,54 @@ const ActionModal: React.FC<ActionModalProps> = ({
               type="time" 
               value={manualTime} 
               onChange={(e) => setManualTime(e.target.value)} 
-              className="bg-transparent text-white text-5xl font-mono text-center outline-none [color-scheme:dark]" 
+              disabled={isUploading}
+              className="bg-transparent text-white text-5xl font-mono text-center outline-none [color-scheme:dark] w-full disabled:opacity-50"
             />
+            <div className="text-xs text-white/40 text-center">
+              Формат: ЧЧ:ММ (24-часовой)
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
              <div 
-               onClick={() => triggerFile(1)} 
-               className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 transition-all relative ${
-                 photo1 ? 'border-green-500 bg-green-500/5' : 'border-white/10 hover:border-blue-500'
-               }`}
+               onClick={() => !isUploading && triggerFile(1)} 
+               className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 transition-all relative group
+                 ${isUploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
+                 ${photo1 ? 'border-green-500 bg-green-500/5' : 'border-white/10 hover:border-blue-500'}
+               `}
              >
                {photo1 ? (
                  <>
-                   <CheckCircle className="text-green-500 w-8 h-8" />
+                   <div className="absolute top-2 right-2">
+                     <button 
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         resetPhoto(1);
+                       }}
+                       className="w-6 h-6 bg-red-500/80 hover:bg-red-500 rounded-full flex items-center justify-center text-xs text-white"
+                     >
+                       ×
+                     </button>
+                   </div>
+                   <div className="relative w-16 h-16 rounded-lg overflow-hidden">
+                     <img 
+                       src={photo1.data} 
+                       alt="Preview" 
+                       className="w-full h-full object-cover"
+                     />
+                   </div>
                    <span className="font-bold text-green-400 text-xs uppercase text-center leading-tight">
                      {isStart ? t.lbl_photo1 : t.lbl_photo_empty} ✓
                    </span>
                  </>
                ) : (
                  <>
-                   <Camera className="text-white/20 w-8 h-8" />
+                   <Camera className="text-white/20 w-12 h-12" />
                    <span className="font-bold text-white/60 text-xs uppercase text-center leading-tight">
                      {isStart ? t.lbl_photo1 : t.lbl_photo_empty}
+                   </span>
+                   <span className="text-[10px] text-white/40 mt-1">
+                     Нажмите для съемки или выбора фото
                    </span>
                  </>
                )}
@@ -290,20 +499,43 @@ const ActionModal: React.FC<ActionModalProps> = ({
              
              {isStart && (
                <div 
-                 onClick={() => triggerFile(2)} 
-                 className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 transition-all ${
-                   photo2 ? 'border-green-500 bg-green-500/5' : 'border-white/10 hover:border-blue-500'
-                 }`}
+                 onClick={() => !isUploading && triggerFile(2)} 
+                 className={`border-2 border-dashed rounded-2xl p-6 cursor-pointer flex flex-col items-center gap-2 transition-all relative group
+                   ${isUploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
+                   ${photo2 ? 'border-green-500 bg-green-500/5' : 'border-white/10 hover:border-blue-500'}
+                 `}
                >
                  {photo2 ? (
                    <>
-                     <CheckCircle className="text-green-500 w-8 h-8" />
-                     <span className="font-bold text-green-400 text-xs uppercase">{t.lbl_photo2} ✓</span>
+                     <div className="absolute top-2 right-2">
+                       <button 
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           resetPhoto(2);
+                         }}
+                         className="w-6 h-6 bg-red-500/80 hover:bg-red-500 rounded-full flex items-center justify-center text-xs text-white"
+                       >
+                         ×
+                       </button>
+                     </div>
+                     <div className="relative w-16 h-16 rounded-lg overflow-hidden">
+                       <img 
+                         src={photo2.data} 
+                         alt="Preview" 
+                         className="w-full h-full object-cover"
+                       />
+                     </div>
+                     <span className="font-bold text-green-400 text-xs uppercase">
+                       {t.lbl_photo2} ✓
+                     </span>
                    </>
                  ) : (
                    <>
-                     <Lock className="text-white/20 w-8 h-8" />
+                     <Lock className="text-white/20 w-12 h-12" />
                      <span className="font-bold text-white/60 text-xs uppercase">{t.lbl_photo2}</span>
+                     <span className="text-[10px] text-white/40 mt-1">
+                       Фото пломбы/печати
+                     </span>
                    </>
                  )}
                </div>
@@ -316,6 +548,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
                accept="image/*" 
                capture="environment" 
                onChange={handleFileChange} 
+               disabled={isUploading}
              />
           </div>
         )}
@@ -323,26 +556,29 @@ const ActionModal: React.FC<ActionModalProps> = ({
         <div className="flex flex-col gap-3">
            <button 
              onClick={handleSubmit} 
-             disabled={submitting || !isFormValid()} 
-             className={`w-full py-5 font-black text-sm rounded-2xl transition-all ${
-               isLocalManual ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'
-             } disabled:opacity-20 uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2`}
+             disabled={submitting || !isFormValid() || isUploading} 
+             className={`w-full py-5 font-black text-sm rounded-2xl transition-all relative overflow-hidden group
+               ${isLocalManual ? 'bg-orange-600 hover:bg-orange-500' : 'bg-blue-600 hover:bg-blue-500'}
+               ${(submitting || isUploading) ? 'opacity-90' : ''}
+               disabled:opacity-30 disabled:cursor-not-allowed text-white uppercase tracking-widest shadow-xl active:scale-95
+             `}
            >
-             {submitting ? (
-               <>
-                 {isLocalManual ? "Сохранение..." : (
-                   <>
-                     <Upload size={16} className="animate-pulse" />
-                     Загрузка {uploadProgress}%
-                   </>
-                 )}
-               </>
-             ) : "Подтвердить"}
+             {submitting || isUploading ? (
+               <div className="flex items-center justify-center gap-3">
+                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                 <span>
+                   {isLocalManual ? "Сохранение..." : `Загрузка ${uploadProgress}%`}
+                 </span>
+               </div>
+             ) : (
+               "Подтвердить"
+             )}
            </button>
            
            <button 
              onClick={onClose} 
-             className="text-white/20 hover:text-white py-2 text-[10px] font-bold uppercase tracking-widest transition-colors"
+             disabled={isUploading}
+             className="text-white/40 hover:text-white py-2 text-[10px] font-bold uppercase tracking-widest transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
            >
              Отмена
            </button>
