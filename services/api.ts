@@ -193,30 +193,20 @@ export const api = {
    * Совместимо с макросом, который НЕ поддерживает OPTIONS.
    * Прогресс недоступен, но можно показывать общий спиннер.
    */
-  uploadPhoto: async (
-    image: string,
-    mimeType: string,
-    filename: string
-  ): Promise<string> => {
-    try {
-      // image уже в формате data:image/jpeg;base64,...
-      const res = await fetch(SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'upload_photo',
-          image: image,          // передаём полную строку data:...;base64,...
-          mimeType,
-          filename
-        })
-      });
-      const data = await res.json();
-      return data.status === "SUCCESS" ? data.url : "";
-    } catch (e) {
-      console.error('Upload error:', e);
-      throw e;
-    }
-  },
+  uploadPhoto: async (image: string, mimeType: string, filename: string): Promise<string> => {
+  try {
+    const res = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // КЛЮЧЕВОЙ МОМЕНТ
+      body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename })
+    });
+    const data = await res.json();
+    return data.status === "SUCCESS" ? data.url : "";
+  } catch (e) {
+    console.error('Upload error:', e);
+    return "";
+  }
+},
 
   taskAction: async (id: string, act: string, user: string, zone: string = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
     const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${zone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
