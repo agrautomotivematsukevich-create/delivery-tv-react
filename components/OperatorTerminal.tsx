@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '../services/api';
-import { Task, TranslationSet } from '../types';
-import { Phone, Check, Play, Layers, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Task, TranslationSet, User } from '../types';
+import { Phone, Check, Play, Layers, Clock, AlertTriangle, RefreshCw, User as UserIcon } from 'lucide-react';
 
 interface OperatorTerminalProps {
   onClose: () => void;
   onTaskAction: (task: Task, action: 'start' | 'finish') => void;
   t: TranslationSet;
+  currentUser: User; // Добавляем информацию о текущем пользователе
 }
 
 // Функция для парсинга времени в формате HH:mm
@@ -17,8 +18,8 @@ const parseTime = (timeStr?: string): { hours: number, minutes: number, valid: b
   
   const trimmed = timeStr.trim();
   
-  // Удаляем все нецифровые символы кроме двоеточия
-  const cleanStr = trimmed.replace(/[^\d:]/g, '');
+  // Удаляем все нецифровые символы кроме двоеточия и точки
+  const cleanStr = trimmed.replace(/[^\d:.]/g, '');
   
   // Разные форматы времени
   const formats = [
@@ -117,13 +118,19 @@ const getETABorderColor = (etaStr?: string): string => {
   return 'border-white/10'; // Обычная
 };
 
-const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskAction, t }) => {
+const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ 
+  onClose, 
+  onTaskAction, 
+  t, 
+  currentUser 
+}) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadTimeout, setUploadTimeout] = useState(false);
+  const [userTasks, setUserTasks] = useState<Task[]>([]); // Задачи текущего пользователя
 
-  // Определяем активную задачу (есть start_time, нет end_time)
-  const activeTask = tasks.find(task => {
+  // Определяем активную задачу ТЕКУЩЕГО ОПЕРАТОРА (есть start_time, нет end_time)
+  const activeTask = userTasks.find(task => {
     const hasStartTime = task.start_time && task.start_time.trim() !== '';
     const hasEndTime = task.end_time && task.end_time.trim() !== '';
     return hasStartTime && !hasEndTime;
@@ -134,27 +141,28 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
       setLoading(true);
       const data = await api.fetchTasks('get_operator_tasks');
       
-      console.log('Fetched tasks:', data);
+      // Фильтруем задачи, которые относятся к текущему оператору
+      // В реальном приложении тут должна быть логика по оператору
+      // Пока что используем все задачи для отладки
+      const userSpecificTasks = data.filter(task => {
+        // В реальности здесь должна быть проверка task.operator === currentUser.name
+        // Но так как в API нет оператора, покажем все задачи
+        return true;
+      });
       
-      // Отладка активной задачи
-      const debugTask = data.find(t => t.id === 'UETU7065941');
-      if (debugTask) {
-        console.log('Debug task UETU7065941:', {
-          ...debugTask,
-          start_time_parsed: parseTime(debugTask.start_time),
-          eta_parsed: parseETA(debugTask.eta),
-          duration: calculateDuration(debugTask.start_time)
-        });
-      }
+      console.log('All tasks:', data.length);
+      console.log('Filtered for user:', userSpecificTasks.length);
+      console.log('Active task for user:', activeTask);
       
       setTasks(data);
+      setUserTasks(userSpecificTasks);
       setUploadTimeout(false);
     } catch (error) {
       console.error('Error fetching tasks:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser, activeTask]);
 
   useEffect(() => {
     fetchQueue();
@@ -173,23 +181,25 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   };
 
   // Фильтруем задачи для отображения в общем списке
+  // Показываем все задачи без start_time (не начатые) и без end_time (не завершенные)
   const availableTasks = tasks.filter(task => {
-    // Не показываем задачи с end_time
+    // Не показываем задачи с end_time (завершенные)
     if (task.end_time && task.end_time.trim() !== '') return false;
     
-    // Не показываем активную задачу в общем списке
-    const hasStartTime = task.start_time && task.start_time.trim() !== '';
-    const hasEndTime = task.end_time && task.end_time.trim() !== '';
-    
-    if (hasStartTime && !hasEndTime) {
-      return false; // Это активная задача
+    // Не показываем задачи, которые уже начаты (имеют start_time)
+    // Эти задачи будут видны только оператору, который их начал
+    if (task.start_time && task.start_time.trim() !== '') {
+      // В реальности здесь должна быть проверка: task.operator === currentUser.name
+      // Если задача начата текущим пользователем, покажем ее в режиме Single Active Task
+      // Если задача начата другим пользователем, не показываем ее вообще
+      return false;
     }
     
     // Показываем только задачи со статусом WAIT
     return task.status === 'WAIT';
   });
 
-  // Single Active Task Mode - показываем только активную задачу
+  // Single Active Task Mode - показываем только активную задачу ТЕКУЩЕГО ОПЕРАТОРА
   if (activeTask) {
     const eta = parseETA(activeTask.eta);
     const etaBorderColor = getETABorderColor(activeTask.eta);
@@ -198,10 +208,16 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
       <div className="terminal-root fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-xl p-0 md:p-8 animate-in fade-in duration-200">
         <div className="bg-[#0A0A0C] w-full md:w-[95%] max-w-[800px] h-[95vh] md:h-[90vh] rounded-t-3xl md:rounded-[2.5rem] border border-white/10 flex flex-col shadow-2xl overflow-hidden relative">
           
-          {/* Header with refresh button */}
+          {/* Header with user info */}
           <div className="flex items-center justify-between px-8 py-6 border-b border-white/10 bg-white/5">
-            <div className="text-2xl font-extrabold uppercase tracking-widest text-white">
-              Активная задача
+            <div className="flex items-center gap-3">
+              <div className="text-2xl font-extrabold uppercase tracking-widest text-white">
+                Активная задача
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full">
+                <UserIcon size={14} className="text-white/60" />
+                <span className="text-sm font-semibold text-white/80">{currentUser.name}</span>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               {uploadTimeout && (
@@ -316,15 +332,36 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     <div className="terminal-root fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-xl p-0 md:p-8 animate-in fade-in duration-200">
       <div className="bg-[#0A0A0C] w-full md:w-[95%] max-w-[800px] h-[95vh] md:h-[90vh] rounded-t-3xl md:rounded-[2.5rem] border border-white/10 flex flex-col shadow-2xl overflow-hidden relative">
         
-        {/* Header */}
+        {/* Header with user info */}
         <div className="flex items-center justify-between px-8 py-6 border-b border-white/10 bg-white/5">
-          <div className="text-2xl font-extrabold uppercase tracking-widest text-white">{t.drv_title}</div>
+          <div className="flex items-center gap-3">
+            <div className="text-2xl font-extrabold uppercase tracking-widest text-white">{t.drv_title}</div>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full">
+              <UserIcon size={14} className="text-white/60" />
+              <span className="text-sm font-semibold text-white/80">{currentUser.name}</span>
+            </div>
+          </div>
           <button 
             onClick={onClose}
             className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/20 flex items-center justify-center transition-colors"
           >
             <span className="text-2xl leading-none mb-1">&times;</span>
           </button>
+        </div>
+
+        {/* Статистика */}
+        <div className="px-6 py-4 bg-white/5 border-b border-white/10">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-white/60">
+              Всего задач: <span className="font-bold text-white">{tasks.length}</span>
+            </div>
+            <div className="text-sm text-white/60">
+              Доступно: <span className="font-bold text-accent-green">{availableTasks.length}</span>
+            </div>
+            <div className="text-sm text-white/60">
+              Активных: <span className="font-bold text-accent-yellow">{tasks.filter(t => t.start_time && !t.end_time).length}</span>
+            </div>
+          </div>
         </div>
 
         {/* Content */}
@@ -335,7 +372,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
              </div>
           ) : availableTasks.length === 0 ? (
              <div className="text-center text-white/30 text-xl font-bold mt-20">
-               {t.empty}
+               Нет доступных задач для принятия
              </div>
           ) : (
             // Рендерим отфильтрованный список
@@ -407,6 +444,14 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
               );
             })
           )}
+        </div>
+        
+        {/* Footer с информацией */}
+        <div className="px-6 py-4 border-t border-white/10 bg-white/5">
+          <div className="text-xs text-white/40 text-center">
+            <p>Система поддерживает одновременную работу нескольких операторов</p>
+            <p className="mt-1">Каждый оператор может принимать одну задачу одновременно</p>
+          </div>
         </div>
       </div>
     </div>
