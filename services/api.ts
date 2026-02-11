@@ -1,25 +1,155 @@
-import { SCRIPT_URL } from "../constants";
-import { DashboardData, Task, Issue, TaskInput, PlanRow } from "../types";
+// services/api.ts
 
-export const hashPassword = async (p: string): Promise<string> => {
-  const msgBuffer = new TextEncoder().encode(p);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+import { SCRIPT_URL } from "../constants";
+import { Task, Issue, PlanRow } from "../types";
+
+/* -------------------------------------------------- */
+/* ------------------- HELPERS ---------------------- */
+/* -------------------------------------------------- */
+
+const get = async (params: Record<string, string>) => {
+  const query = new URLSearchParams(params).toString();
+  const res = await fetch(`${SCRIPT_URL}?${query}`);
+  return res.json();
 };
 
-export const api = {
+const post = async (body: any) => {
+  const res = await fetch(SCRIPT_URL, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return res.json();
+};
 
-  fetchTasks: async (mode: 'get_operator_tasks' | 'get_stats'): Promise<Task[]> => {
-    try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=${mode}`);
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch {
-      return [];
-    }
+/* -------------------------------------------------- */
+/* --------------------- API ------------------------ */
+/* -------------------------------------------------- */
+
+export const api = {
+  /* ---------- TERMINAL / DASHBOARD ---------- */
+
+  fetchTasks: async (mode: "get_operator_tasks" | "get_stats"): Promise<Task[]> => {
+    const data = await get({ mode });
+    return data.tasks || [];
   },
 
-  // ✅ НОВЫЙ uploadPhoto С ПРОГРЕССОМ
+  fetchDashboard: async () => {
+    const data = await get({ mode: "get_stats" });
+    return data;
+  },
+
+  taskAction: async (
+    id: string,
+    act: string,
+    user: string,
+    zone?: string,
+    pGen?: string,
+    pSeal?: string,
+    pEmpty?: string
+  ) => {
+    return post({
+      mode: "update_container_row",
+      id,
+      act,
+      user,
+      zone,
+      pGen,
+      pSeal,
+      pEmpty,
+    });
+  },
+
+  /* ---------- AUTH ---------- */
+
+  login: async (login: string, password: string) => {
+    return get({
+      mode: "login",
+      login,
+      password,
+    });
+  },
+
+  register: async (login: string, password: string, role: string) => {
+    return post({
+      mode: "register",
+      login,
+      password,
+      role,
+    });
+  },
+
+  /* ---------- HISTORY ---------- */
+
+  fetchHistory: async (date: string) => {
+    const data = await get({
+      mode: "get_history",
+      date,
+    });
+    return data.rows || [];
+  },
+
+  /* ---------- ISSUES ---------- */
+
+  fetchIssues: async () => {
+    const data = await get({ mode: "get_issues" });
+    return data.issues || [];
+  },
+
+  reportIssue: async (
+    containerId: string,
+    message: string,
+    photoUrl?: string
+  ) => {
+    return post({
+      mode: "report_issue",
+      containerId,
+      message,
+      photoUrl,
+    });
+  },
+
+  fetchAllContainers: async () => {
+    const data = await get({ mode: "get_all_containers" });
+    return data.rows || [];
+  },
+
+  /* ---------- LOGISTICS ---------- */
+
+  createPlan: async (rows: PlanRow[], date: string) => {
+    return post({
+      mode: "create_plan",
+      date,
+      rows,
+    });
+  },
+
+  fetchFullPlan: async (date: string) => {
+    const data = await get({
+      mode: "get_full_plan",
+      date,
+    });
+    return data.rows || [];
+  },
+
+  updatePlanRow: async (row: PlanRow) => {
+    return post({
+      mode: "update_plan_row",
+      row,
+    });
+  },
+
+  /* ---------- IMAGES (FIREWALL BYPASS) ---------- */
+
+  getProxyImage: async (id: string): Promise<string> => {
+    const data = await get({
+      mode: "get_photo",
+      id,
+    });
+    return data.base64 || "";
+  },
+
+  /* ---------- PHOTO UPLOAD WITH PROGRESS ---------- */
+
   uploadPhoto: (
     image: string,
     mimeType: string,
@@ -48,25 +178,14 @@ export const api = {
 
       xhr.onerror = () => resolve("");
 
-      xhr.send(JSON.stringify({
-        mode: "upload_photo",
-        image,
-        mimeType,
-        filename
-      }));
+      xhr.send(
+        JSON.stringify({
+          mode: "upload_photo",
+          image,
+          mimeType,
+          filename,
+        })
+      );
     });
   },
-
-  taskAction: async (
-    id: string,
-    act: string,
-    user: string,
-    zone: string = '',
-    pGen: string = '',
-    pSeal: string = '',
-    pEmpty: string = ''
-  ): Promise<void> => {
-    const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${zone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
-    await fetch(url);
-  }
 };
