@@ -9,22 +9,111 @@ interface OperatorTerminalProps {
   t: TranslationSet;
 }
 
+// Функция для парсинга даты из Google Sheets
+const parseSheetDateTime = (dateStr?: string): Date | null => {
+  if (!dateStr) return null;
+  
+  try {
+    // Пробуем разные форматы дат
+    // 1. ISO формат
+    const isoDate = new Date(dateStr);
+    if (!isNaN(isoDate.getTime())) return isoDate;
+    
+    // 2. Формат DD.MM.YYYY HH:mm:ss
+    const parts1 = dateStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4}) (\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/);
+    if (parts1) {
+      const [_, day, month, year, hour, minute, second] = parts1;
+      return new Date(
+        parseInt(year),
+        parseInt(month) - 1,
+        parseInt(day),
+        parseInt(hour),
+        parseInt(minute),
+        second ? parseInt(second) : 0
+      );
+    }
+    
+    // 3. Формат DD.MM HH:mm
+    const parts2 = dateStr.match(/^(\d{1,2})\.(\d{1,2}) (\d{1,2}):(\d{1,2})$/);
+    if (parts2) {
+      const [_, day, month, hour, minute] = parts2;
+      const now = new Date();
+      return new Date(
+        now.getFullYear(),
+        parseInt(month) - 1,
+        parseInt(day),
+        parseInt(hour),
+        parseInt(minute)
+      );
+    }
+    
+    // 4. Формат timestamp
+    const timestamp = Number(dateStr);
+    if (!isNaN(timestamp)) {
+      return new Date(timestamp);
+    }
+    
+    return null;
+  } catch (e) {
+    console.error('Date parsing error:', e);
+    return null;
+  }
+};
+
+// Форматирование даты для отображения
+const formatTime = (date: Date | null): string => {
+  if (!date) return '-';
+  return date.toLocaleTimeString('ru-RU', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+// Вычисление времени работы в минутах
+const calculateDuration = (startDate: Date | null): string => {
+  if (!startDate) return '-';
+  
+  const diffMs = Date.now() - startDate.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+  
+  if (diffMinutes < 0) return '-';
+  if (diffMinutes < 60) return `${diffMinutes} мин`;
+  
+  const hours = Math.floor(diffMinutes / 60);
+  const minutes = diffMinutes % 60;
+  return `${hours} ч ${minutes} мин`;
+};
+
 const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskAction, t }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadTimeout, setUploadTimeout] = useState(false);
 
-  // NEW: Определяем активную задачу (есть start_time, нет end_time)
-  const activeTask = tasks.find(task => 
-    task.start_time && !task.end_time
-  );
+  // Определяем активную задачу (есть start_time, нет end_time)
+  const activeTask = tasks.find(task => {
+    const hasStartTime = task.start_time && task.start_time.trim() !== '';
+    const hasEndTime = task.end_time && task.end_time.trim() !== '';
+    return hasStartTime && !hasEndTime;
+  });
 
   const fetchQueue = useCallback(async () => {
-    // Получаем задачи
-    const data = await api.fetchTasks('get_operator_tasks');
-    setTasks(data);
-    setLoading(false);
-    setUploadTimeout(false);
+    try {
+      const data = await api.fetchTasks('get_operator_tasks');
+      
+      // Логируем для отладки
+      console.log('Fetched tasks:', data);
+      if (activeTask) {
+        console.log('Active task raw data:', activeTask);
+        console.log('Active task start_time:', activeTask.start_time);
+      }
+      
+      setTasks(data);
+      setLoading(false);
+      setUploadTimeout(false);
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -43,35 +132,47 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     return <span className={`px-2 py-0.5 rounded text-xs font-bold border ${color} ml-2`}>{type}</span>;
   };
 
-  // NEW: Функция для определения цвета рамки ETA
+  // Функция для определения цвета рамки ETA
   const getETABorderColor = (eta?: string): string => {
     if (!eta) return 'border-white/10';
     
-    try {
-      const now = new Date();
-      const etaTime = new Date(eta);
-      const diffMinutes = (etaTime.getTime() - now.getTime()) / (1000 * 60);
-      
-      if (diffMinutes < 0) return 'border-red-500'; // Просрочено
-      if (diffMinutes < 30) return 'border-orange-500'; // Менее 30 минут
-      return 'border-white/10'; // Обычная
-    } catch (e) {
-      return 'border-white/10';
-    }
+    const etaDate = parseSheetDateTime(eta);
+    if (!etaDate) return 'border-white/10';
+    
+    const now = new Date();
+    const diffMinutes = (etaDate.getTime() - now.getTime()) / (1000 * 60);
+    
+    if (diffMinutes < 0) return 'border-red-500'; // Просрочено
+    if (diffMinutes < 30) return 'border-orange-500'; // Менее 30 минут
+    return 'border-white/10'; // Обычная
   };
 
-  // Фильтруем задачи перед рендером
-  const activeTasks = tasks.filter(task => {
-    // 1. Если есть время завершения - скрываем (Критическая логика)
-    if (task.end_time) return false;
-    // 2. Если статус DONE - скрываем
+  // Фильтруем задачи перед рендером - ПРАВИЛЬНАЯ ФИЛЬТРАЦИЯ
+  const availableTasks = tasks.filter(task => {
+    // 1. Если есть end_time - задача завершена, не показываем
+    if (task.end_time && task.end_time.trim() !== '') return false;
+    
+    // 2. Если задача уже активна (есть start_time без end_time), 
+    // она будет показана только в режиме Single Active Task
+    // В обычном списке мы ее НЕ показываем
+    const hasStartTime = task.start_time && task.start_time.trim() !== '';
+    const hasEndTime = task.end_time && task.end_time.trim() !== '';
+    
+    if (hasStartTime && !hasEndTime) {
+      return false; // Это активная задача, не показываем в общем списке
+    }
+    
+    // 3. Если статус DONE - скрываем
     if (task.status === 'DONE') return false;
-    // Иначе показываем
+    
+    // Остальные задачи (WAIT без start_time) показываем
     return true;
   });
 
-  // NEW: Single Active Task Mode - показываем только активную задачу
+  // Single Active Task Mode - показываем только активную задачу
   if (activeTask) {
+    const startDate = parseSheetDateTime(activeTask.start_time);
+    const etaDate = parseSheetDateTime(activeTask.eta);
     const etaBorderColor = getETABorderColor(activeTask.eta);
     
     return (
@@ -120,10 +221,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                   <div className="text-right">
                     <div className="text-sm text-white/50">ETA</div>
                     <div className="text-xl font-bold text-white">
-                      {activeTask.eta ? new Date(activeTask.eta).toLocaleTimeString('ru-RU', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      }) : '-'}
+                      {etaDate ? formatTime(etaDate) : '-'}
                     </div>
                   </div>
                 </div>
@@ -136,10 +234,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                   <div className="flex items-center gap-2 text-white">
                     <Clock size={16} />
                     <span className="text-lg font-semibold">
-                      {activeTask.start_time ? new Date(activeTask.start_time).toLocaleTimeString('ru-RU', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      }) : '-'}
+                      {startDate ? formatTime(startDate) : '-'}
                     </span>
                   </div>
                 </div>
@@ -165,7 +260,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                 <div className="space-y-2">
                   <div className="text-sm text-white/50">Время работы</div>
                   <div className="text-lg font-semibold text-white">
-                    {activeTask.start_time ? `${Math.round((Date.now() - new Date(activeTask.start_time).getTime()) / (1000 * 60))} мин` : '-'}
+                    {calculateDuration(startDate)}
                   </div>
                 </div>
               </div>
@@ -181,6 +276,16 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                 </button>
               </div>
             </div>
+            
+            {/* Информация о блокировке других задач */}
+            <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+              <div className="flex items-center gap-2 text-blue-300 text-sm">
+                <AlertTriangle size={16} />
+                <span>
+                  Другие задачи временно недоступны. Завершите текущую задачу, чтобы получить доступ к следующим.
+                </span>
+              </div>
+            </div>
           </div>
         </div>
         <style>{`
@@ -191,7 +296,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     );
   }
 
-  // Обычный режим - все задачи
+  // Обычный режим - все доступные задачи
   return (
     <div className="terminal-root fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-xl p-0 md:p-8 animate-in fade-in duration-200">
       <div className="bg-[#0A0A0C] w-full md:w-[95%] max-w-[800px] h-[95vh] md:h-[90vh] rounded-t-3xl md:rounded-[2.5rem] border border-white/10 flex flex-col shadow-2xl overflow-hidden relative">
@@ -213,13 +318,16 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
              <div className="flex items-center justify-center h-full">
                <div className="text-white/50 animate-pulse">Loading tasks...</div>
              </div>
-          ) : activeTasks.length === 0 ? (
-             <div className="text-center text-white/30 text-xl font-bold mt-20">{t.empty}</div>
+          ) : availableTasks.length === 0 ? (
+             <div className="text-center text-white/30 text-xl font-bold mt-20">
+               {activeTask ? "Завершите текущую задачу, чтобы увидеть следующие" : t.empty}
+             </div>
           ) : (
             // Рендерим отфильтрованный список
-            activeTasks.map(task => {
+            availableTasks.map(task => {
               const isWait = task.status === 'WAIT';
               const etaBorderColor = getETABorderColor(task.eta);
+              const etaDate = parseSheetDateTime(task.eta);
               
               return (
                 <div 
@@ -238,10 +346,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                       <div className="flex items-center gap-1 mt-2">
                         <Clock size={12} className="text-white/40" />
                         <span className="text-xs text-white/40">
-                          ETA: {new Date(task.eta).toLocaleTimeString('ru-RU', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
+                          ETA: {etaDate ? formatTime(etaDate) : task.eta}
                         </span>
                         {etaBorderColor.includes('red') && (
                           <span className="text-[10px] text-red-500 font-bold ml-2">ПРОСРОЧЕНО</span>
