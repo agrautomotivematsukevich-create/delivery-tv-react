@@ -10,9 +10,9 @@ import IssueModal from './components/IssueModal';
 import HistoryModal from './components/HistoryModal';
 import HistoryView from './components/HistoryView';
 import LogisticsView from './components/LogisticsView';
-import { api } from './services/api';              // ← ИСПРАВЛЕНО: './services/api'
-import { TRANSLATIONS } from './constants';        // ← ИСПРАВЛЕНО: './constants'
-import { DashboardData, Lang, User, Task, TaskAction } from './types'; // ← ИСПРАВЛЕНО: './types'
+import { api } from './services/api';
+import { TRANSLATIONS } from './constants';
+import { DashboardData, Lang, User, Task, TaskAction } from './types';
 
 function App() {
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('warehouse_lang') as Lang) || 'RU');
@@ -84,10 +84,9 @@ function App() {
 
   return (
     <>
-      {/* Приветственный экран загрузки – можно оставить ваш код */}
       {!isAppReady && (
         <div className="fixed inset-0 z-[100] bg-[#0A0A0C] flex flex-col items-center justify-center overflow-hidden">
-          {/* ваш splash screen */}
+          {/* splash screen – можно оставить ваш */}
         </div>
       )}
 
@@ -139,7 +138,7 @@ function App() {
         )}
 
         <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
-          {/* ваш футер */}
+          {/* footer */}
         </footer>
       </div>
       <Analytics />
