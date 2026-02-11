@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { api } from '../services/api';
 import { TranslationSet, TaskAction, User } from '../types';
+import { SCRIPT_URL } from '../constants'; // ← ИМПОРТИРУЕМ РАБОЧИЙ URL
 import { Camera, Lock, CheckCircle, Clock, Truck, RefreshCw, Upload, AlertTriangle } from 'lucide-react';
 
 interface ActionModalProps {
@@ -36,7 +37,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
       hour: '2-digit', 
       minute: '2-digit',
       hour12: false 
-    }).slice(0, 5) // Берем только часы и минуты (HH:mm)
+    }).slice(0, 5)
   );
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -47,22 +48,17 @@ const ActionModal: React.FC<ActionModalProps> = ({
   const isStart = action.type === 'start';
   const AVAILABLE_ZONES = ['G4', 'G5', 'G7', 'G8', 'G9', 'P70'];
 
-  // Очистка таймеров при размонтировании
   useEffect(() => {
     return () => {
-      if (uploadTimerRef.current) {
-        clearTimeout(uploadTimerRef.current);
-      }
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+      if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
     };
   }, []);
 
   const triggerFile = (target: 1 | 2) => {
     currentPhotoTarget.current = target;
     if (fileInputRef.current) {
-      fileInputRef.current.value = ''; // Сбрасываем значение, чтобы onChange срабатывал каждый раз
+      fileInputRef.current.value = '';
       fileInputRef.current.click();
     }
   };
@@ -78,7 +74,6 @@ const ActionModal: React.FC<ActionModalProps> = ({
           const ctx = canvas.getContext('2d');
           if (!ctx) return;
           
-          // Сохраняем пропорции, но ограничиваем максимальный размер
           const maxWidth = 1600;
           const maxHeight = 1200;
           let width = img.width;
@@ -121,25 +116,21 @@ const ActionModal: React.FC<ActionModalProps> = ({
   };
 
   const isFormValid = () => {
-    // Зона обязательна ТОЛЬКО при старте
     if (isStart && !zone) return false;
-    
     if (isLocalManual) return true;
     return isStart ? (!!photo1 && !!photo2) : !!photo1;
   };
 
-  // Загрузка фото с прогрессом через XMLHttpRequest
+  // Загрузка фото с прогрессом через XMLHttpRequest – ИСПОЛЬЗУЕМ SCRIPT_URL ИЗ КОНСТАНТ
   const uploadPhotoWithProgress = async (
     photoData: { data: string, mime: string, name: string },
     photoIndex: number
   ): Promise<string> => {
     return new Promise((resolve, reject) => {
-      // Создаем новый AbortController для каждого запроса
       abortControllerRef.current = new AbortController();
       
       const formData = new FormData();
       
-      // Преобразуем base64 в Blob
       const base64Data = photoData.data.split(',')[1];
       const byteCharacters = atob(base64Data);
       const byteNumbers = new Array(byteCharacters.length);
@@ -154,9 +145,8 @@ const ActionModal: React.FC<ActionModalProps> = ({
       formData.append('mimeType', photoData.mime);
       
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec', true);
+      xhr.open('POST', SCRIPT_URL, true); // ← ИСПРАВЛЕНО: используем SCRIPT_URL
       
-      // Отслеживаем прогресс загрузки
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
           const progress = Math.round((event.loaded / event.total) * 100);
@@ -183,18 +173,10 @@ const ActionModal: React.FC<ActionModalProps> = ({
         }
       };
       
-      xhr.onerror = () => {
-        reject(new Error('Network error during upload'));
-      };
-      
-      xhr.ontimeout = () => {
-        reject(new Error('Upload timeout'));
-      };
-      
-      // Устанавливаем таймаут 30 секунд на загрузку одного файла
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.ontimeout = () => reject(new Error('Upload timeout'));
       xhr.timeout = 30000;
       
-      // Отмена запроса через AbortController
       if (abortControllerRef.current) {
         abortControllerRef.current.signal.addEventListener('abort', () => {
           xhr.abort();
@@ -215,59 +197,37 @@ const ActionModal: React.FC<ActionModalProps> = ({
     setUploadTimeout(false);
     setUploadError(null);
     
-    // Сбрасываем предыдущий таймер
-    if (uploadTimerRef.current) {
-      clearTimeout(uploadTimerRef.current);
-    }
+    if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current);
     
-    // Устанавливаем таймер на 60 секунд
     uploadTimerRef.current = setTimeout(() => {
       setUploadTimeout(true);
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+      if (abortControllerRef.current) abortControllerRef.current.abort();
     }, 60000);
     
     let urlGen = "", urlSeal = "", urlEmpty = "";
     
     try {
       if (!isLocalManual) {
-        // Загружаем фото с отслеживанием прогресса
         if (photo1) {
-          setUploadProgress(10); // Начало загрузки
+          setUploadProgress(10);
           urlGen = await uploadPhotoWithProgress(photo1, 1);
-          setUploadProgress(50); // Первое фото загружено
+          setUploadProgress(50);
         }
-        
         if (photo2) {
           urlSeal = await uploadPhotoWithProgress(photo2, 2);
-          setUploadProgress(100); // Второе фото загружено
+          setUploadProgress(100);
         }
-        
         if (!isStart && photo1) { 
           urlEmpty = urlGen; 
           urlGen = ""; 
         }
       }
       
-      // Сбрасываем таймер при успешной загрузке
-      if (uploadTimerRef.current) {
-        clearTimeout(uploadTimerRef.current);
-      }
+      if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current);
       
       const actionTypeToSend = isLocalManual 
         ? `${action.type}_manual_${manualTime.replace(':', '')}` 
         : action.type;
-
-      console.log('Sending task action:', {
-        id: action.id,
-        action: actionTypeToSend,
-        user: user.name,
-        zone: zone || '',
-        urlGen,
-        urlSeal,
-        urlEmpty
-      });
 
       await api.taskAction(
         action.id,
@@ -286,10 +246,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
     } catch (error) {
       console.error('Upload/action error:', error);
       
-      // Сбрасываем таймер при ошибке
-      if (uploadTimerRef.current) {
-        clearTimeout(uploadTimerRef.current);
-      }
+      if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current);
       
       setSubmitting(false);
       setIsUploading(false);
@@ -305,32 +262,16 @@ const ActionModal: React.FC<ActionModalProps> = ({
     }
   };
 
-  // Обработчик кнопки обновления экрана
   const handleRefresh = () => {
-    // Отменяем все активные запросы
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    
-    // Сбрасываем таймер
-    if (uploadTimerRef.current) {
-      clearTimeout(uploadTimerRef.current);
-    }
-    
-    // Вызываем колбэк обновления и закрываем модалку
-    if (onRefresh) {
-      onRefresh();
-    }
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    if (uploadTimerRef.current) clearTimeout(uploadTimerRef.current);
+    if (onRefresh) onRefresh();
     onClose();
   };
 
-  // Сброс фото
   const resetPhoto = (target: 1 | 2) => {
-    if (target === 1) {
-      setPhoto1(null);
-    } else {
-      setPhoto2(null);
-    }
+    if (target === 1) setPhoto1(null);
+    else setPhoto2(null);
   };
 
   return (
@@ -355,28 +296,23 @@ const ActionModal: React.FC<ActionModalProps> = ({
            </button>
         </div>
 
-        {/* Уведомление о таймауте */}
         {uploadTimeout && (
           <div className="animate-in slide-in-from-top-2 bg-red-500/10 border border-red-500/20 rounded-xl p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <AlertTriangle size={16} className="text-red-400" />
-                <span className="text-sm text-red-300">
-                  Загрузка заняла более 60 секунд
-                </span>
+                <span className="text-sm text-red-300">Загрузка заняла более 60 секунд</span>
               </div>
               <button
                 onClick={handleRefresh}
                 className="flex items-center gap-2 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-red-300 text-sm font-bold transition-colors"
               >
-                <RefreshCw size={14} />
-                Обновить экран
+                <RefreshCw size={14} /> Обновить экран
               </button>
             </div>
           </div>
         )}
 
-        {/* Сообщение об ошибке */}
         {uploadError && !uploadTimeout && (
           <div className="animate-in slide-in-from-top-2 bg-red-500/10 border border-red-500/20 rounded-xl p-4">
             <div className="flex items-center gap-2">
@@ -386,7 +322,6 @@ const ActionModal: React.FC<ActionModalProps> = ({
           </div>
         )}
 
-        {/* Прогресс бар загрузки */}
         {isUploading && !isLocalManual && (
           <div className="animate-in slide-in-from-top-2">
             <div className="flex items-center justify-between mb-2">
@@ -409,7 +344,6 @@ const ActionModal: React.FC<ActionModalProps> = ({
           </div>
         )}
 
-        {/* Выбор зоны показываем ТОЛЬКО при нажатии кнопки "Начать" */}
         {isStart && (
           <div className="animate-in slide-in-from-top-2">
             <p className="text-[10px] font-black text-white/30 mb-3 uppercase tracking-[0.2em] text-center">Выбор зоны выгрузки</p>
