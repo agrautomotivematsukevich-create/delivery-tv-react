@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Analytics } from '@vercel/analytics/react'; // Добавлена библиотека аналитики
+import { Analytics } from '@vercel/analytics/react';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import AuthModal from './components/AuthModal';
@@ -114,7 +114,7 @@ function App() {
               <div className="h-full bg-blue-500 animate-[loading-bar_1.5s_ease-in-out_forwards]"></div>
             </div>
 
-            {/* Блок авторства (тот самый Developer) */}
+            {/* Блок авторства */}
             <div className="mt-12 flex flex-col items-center gap-2 transition-opacity duration-1000 opacity-60">
               <span className="text-[8px] font-bold uppercase tracking-[0.4em] text-white/50">System Initializing</span>
               <p className="text-[10px] font-medium tracking-[0.2em] text-white">
@@ -160,8 +160,13 @@ function App() {
         {showAuth && (
           <AuthModal t={t} onClose={() => setShowAuth(false)} onLoginSuccess={handleLogin} />
         )}
-        {showTerminal && (
-          <OperatorTerminal t={t} onClose={() => setShowTerminal(false)} onTaskAction={handleTaskActionRequest} />
+        {showTerminal && user && ( // Добавлена проверка user
+          <OperatorTerminal 
+            t={t} 
+            onClose={() => setShowTerminal(false)} 
+            onTaskAction={handleTaskActionRequest} 
+            currentUser={user} // Передаем текущего пользователя
+          />
         )}
         {showStats && (
           <StatsModal t={t} onClose={() => setShowStats(false)} />
@@ -173,7 +178,13 @@ function App() {
           <HistoryModal t={t} onClose={() => setShowIssueHistory(false)} />
         )}
         {currentAction && user && (
-          <ActionModal action={currentAction} user={user} t={t} onClose={() => setCurrentAction(null)} onSuccess={handleActionSuccess} />
+          <ActionModal 
+            action={currentAction} 
+            user={user} 
+            t={t} 
+            onClose={() => setCurrentAction(null)} 
+            onSuccess={handleActionSuccess} 
+          />
         )}
 
         <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
@@ -186,7 +197,6 @@ function App() {
         </footer>
       </div>
 
-      {/* Интеграция аналитики в DOM */}
       <Analytics />
     </>
   );
