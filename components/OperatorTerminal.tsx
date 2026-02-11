@@ -1,97 +1,309 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../services/api';
-import { Task, TranslationSet } from '../types';
-import { Phone, Check, Play, Layers } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  getOperatorTasks, 
+  updateContainerRow, 
+  uploadPhoto,
+  type Task 
+} from '../services/api';
+import ActionModal from './ActionModal';
+import { CheckCircle, AlertTriangle, Clock, RefreshCw } from 'lucide-react';
 
-interface OperatorTerminalProps {
-  onClose: () => void;
-  onTaskAction: (task: Task, action: 'start' | 'finish') => void;
-  t: TranslationSet;
-}
-
-const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskAction, t }) => {
+const OperatorTerminal: React.FC<{ operatorId: string }> = ({ operatorId }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [modalAction, setModalAction] = useState<'start' | 'finish' | null>(null);
+  const [selectedContainer, setSelectedContainer] = useState<string>('');
+  const [uploadTimeout, setUploadTimeout] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
-  const fetchQueue = async () => {
-    const data = await api.fetchTasks('get_operator_tasks');
-    setTasks(data);
-    setLoading(false);
-  };
+  // Загрузка задач оператора
+  const loadTasks = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await getOperatorTasks(operatorId);
+      setTasks(data);
+      
+      // Определяем активную задачу (есть Start Time, нет End Time)
+      const active = data.find(task => 
+        task.startTime && !task.endTime
+      );
+      setActiveTask(active || null);
+    } catch (error) {
+      console.error('Error loading tasks:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [operatorId]);
 
   useEffect(() => {
-    fetchQueue();
-    const interval = setInterval(fetchQueue, 5000);
+    loadTasks();
+    const interval = setInterval(loadTasks, 30000); // Обновление каждые 30 сек
     return () => clearInterval(interval);
-  }, []);
+  }, [loadTasks]);
 
-  const activeTasks = tasks.filter(t => !t.end_time && t.status !== 'DONE');
-
-  const activeNow = activeTasks.find(t => t.start_time && !t.end_time);
-
-  const getEtaBorder = (eta?: string) => {
-    if (!eta) return "border-white/5";
-    const [h, m] = eta.split(":").map(Number);
-    const d = new Date();
-    d.setHours(h, m, 0);
-    const diffMin = (d.getTime() - Date.now()) / 60000;
-    if (diffMin < 0) return "border-red-500";
-    if (diffMin < 30) return "border-orange-500";
-    return "border-white/5";
+  // Определение цвета рамки ETA
+  const getETABorderColor = (eta: string): string => {
+    const now = new Date();
+    const etaTime = new Date(eta);
+    const diffMinutes = (etaTime.getTime() - now.getTime()) / (1000 * 60);
+    
+    if (diffMinutes < 0) return 'border-red-500';
+    if (diffMinutes < 30) return 'border-orange-500';
+    return 'border-gray-300';
   };
 
-  return (
-    <div className="terminal-root fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-xl p-0 md:p-8">
-      <div className="bg-[#0A0A0C] w-full md:w-[95%] max-w-[800px] h-[95vh] md:h-[90vh] rounded-t-3xl md:rounded-[2.5rem] border border-white/10 flex flex-col overflow-hidden">
+  // Обработчик начала задачи
+  const handleStartClick = (containerId: string) => {
+    setSelectedContainer(containerId);
+    setModalAction('start');
+    setShowActionModal(true);
+  };
 
-        <div className="flex items-center justify-between px-8 py-6 border-b border-white/10 bg-white/5">
-          <div className="text-2xl font-extrabold uppercase tracking-widest text-white">{t.drv_title}</div>
-          <button onClick={onClose} className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/20">
-            <span className="text-2xl">&times;</span>
-          </button>
+  // Обработчик завершения задачи
+  const handleFinishClick = () => {
+    if (activeTask) {
+      setSelectedContainer(activeTask.containerId);
+      setModalAction('finish');
+      setShowActionModal(true);
+    }
+  };
+
+  // Подтверждение действия из модального окна
+  const handleActionConfirm = async (confirmed: boolean, photos?: File[]) => {
+    setShowActionModal(false);
+    setUploadTimeout(false);
+    setUploadProgress(0);
+
+    if (!confirmed || !modalAction || !selectedContainer) return;
+
+    try {
+      if (modalAction === 'start') {
+        await updateContainerRow(selectedContainer, {
+          status: 'ACTIVE',
+          startTime: new Date().toISOString()
+        });
+      } else if (modalAction === 'finish') {
+        // Загрузка фото с отслеживанием прогресса
+        if (photos && photos.length > 0) {
+          let uploadTimer: NodeJS.Timeout;
+          
+          // Таймер 60 секунд
+          const timeoutPromise = new Promise((_, reject) => {
+            uploadTimer = setTimeout(() => {
+              setUploadTimeout(true);
+              reject(new Error('Upload timeout'));
+            }, 60000);
+          });
+
+          try {
+            await Promise.race([
+              Promise.all(photos.map(async (photo, index) => {
+                await uploadPhoto(
+                  selectedContainer,
+                  photo,
+                  index === 0 ? 'before' : 'after',
+                  (progress) => {
+                    setUploadProgress(progress);
+                  }
+                );
+              })),
+              timeoutPromise
+            ]);
+            
+            clearTimeout(uploadTimer);
+          } catch (uploadError) {
+            clearTimeout(uploadTimer);
+            throw uploadError;
+          }
+        }
+
+        await updateContainerRow(selectedContainer, {
+          endTime: new Date().toISOString()
+        });
+      }
+
+      // Перезагрузка задач после успешного действия
+      await loadTasks();
+    } catch (error) {
+      console.error('Error performing action:', error);
+      alert('Произошла ошибка. Попробуйте еще раз.');
+    }
+  };
+
+  // Single Active Task Mode
+  if (activeTask) {
+    return (
+      <div className="p-6 max-w-4xl mx-auto">
+        {/* Заголовок активной задачи */}
+        <div className="mb-6 flex justify-between items-center">
+          <h2 className="text-2xl font-bold text-gray-800">
+            Активная задача
+          </h2>
+          <div className="flex items-center space-x-3">
+            {uploadTimeout && (
+              <button
+                onClick={loadTasks}
+                className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Обновить экран
+              </button>
+            )}
+            <button
+              onClick={handleFinishClick}
+              className="flex items-center px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 font-semibold"
+            >
+              <CheckCircle className="w-5 h-5 mr-2" />
+              Завершить задачу
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {loading ? (
-            <div className="text-white/50 text-center mt-20">Loading...</div>
-          ) : activeNow ? (
-            <div className="flex flex-col items-center justify-center h-full text-center gap-10">
-              <div>
-                <div className="text-5xl font-mono font-bold text-white">{activeNow.id}</div>
-                <div className="text-white/40 mt-2">{activeNow.pallets} pallets</div>
-              </div>
-              <button
-                onClick={() => onTaskAction(activeNow, 'finish')}
-                className="w-[80%] py-10 text-2xl font-black rounded-3xl bg-accent-green text-black"
-              >
-                {t.btn_finish}
-              </button>
+        {/* Карточка активной задачи */}
+        <div className={`bg-white rounded-xl shadow-lg p-6 border-2 ${getETABorderColor(activeTask.eta)}`}>
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">Контейнер</h3>
+              <p className="text-2xl font-bold text-gray-900">{activeTask.containerId}</p>
+              <p className="text-gray-600 mt-1">Lot: {activeTask.lot}</p>
             </div>
-          ) : (
-            activeTasks.map(task => {
-              const isWait = task.status === 'WAIT';
-              return (
-                <div
-                  key={task.id}
-                  className={`bg-white/5 border ${getEtaBorder(task.eta)} rounded-2xl p-5 flex items-center justify-between`}
-                >
-                  <div>
-                    <div className="text-xl font-bold text-white">{task.id}</div>
-                    <div className="text-white/40 text-sm">{task.eta}</div>
-                  </div>
+            
+            <div>
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">ETA</h3>
+              <div className="flex items-center">
+                <Clock className="w-5 h-5 mr-2 text-gray-500" />
+                <span className="text-xl font-medium">
+                  {new Date(activeTask.eta).toLocaleTimeString('ru-RU', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </span>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">
+                {new Date(activeTask.eta).toLocaleDateString('ru-RU')}
+              </p>
+            </div>
 
-                  <button
-                    onClick={() => onTaskAction(task, isWait ? 'start' : 'finish')}
-                    className={`h-12 px-6 rounded-xl font-bold ${isWait ? 'bg-accent-blue' : 'bg-accent-green text-black'}`}
-                  >
-                    {isWait ? t.btn_start : t.btn_finish}
-                  </button>
-                </div>
-              );
-            })
+            <div>
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">Паллеты</h3>
+              <p className="text-xl font-bold text-blue-600">{activeTask.pallets}</p>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">Зона</h3>
+              <p className="text-xl font-medium text-gray-900">{activeTask.zone}</p>
+            </div>
+          </div>
+
+          {/* Прогресс загрузки фото */}
+          {uploadProgress > 0 && uploadProgress < 100 && (
+            <div className="mt-6">
+              <div className="flex justify-between mb-1">
+                <span className="text-sm font-medium text-gray-700">Загрузка фото</span>
+                <span className="text-sm font-medium text-gray-700">{uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
           )}
         </div>
       </div>
+    );
+  }
+
+  // Режим множественных задач (нет активной)
+  return (
+    <div className="p-6 max-w-6xl mx-auto">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">
+        Доступные задачи
+      </h2>
+
+      {isLoading ? (
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+        </div>
+      ) : tasks.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          Нет доступных задач
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {tasks.map((task) => (
+            <div
+              key={task.containerId}
+              className={`bg-white rounded-lg shadow-md p-4 border-2 ${getETABorderColor(task.eta)} hover:shadow-lg transition-shadow`}
+            >
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <h3 className="font-bold text-lg text-gray-900">
+                    {task.containerId}
+                  </h3>
+                  <p className="text-sm text-gray-600">Lot: {task.lot}</p>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                  task.status === 'WAIT' ? 'bg-yellow-100 text-yellow-800' :
+                  task.status === 'ACTIVE' ? 'bg-blue-100 text-blue-800' :
+                  'bg-green-100 text-green-800'
+                }`}>
+                  {task.status}
+                </span>
+              </div>
+
+              <div className="space-y-2 mb-4">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Паллеты:</span>
+                  <span className="font-semibold">{task.pallets}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Зона:</span>
+                  <span className="font-semibold">{task.zone}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">ETA:</span>
+                  <div className="flex items-center">
+                    {getETABorderColor(task.eta).includes('red') && (
+                      <AlertTriangle className="w-4 h-4 text-red-500 mr-1" />
+                    )}
+                    <span className="font-medium">
+                      {new Date(task.eta).toLocaleTimeString('ru-RU', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => handleStartClick(task.containerId)}
+                className="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium transition-colors"
+              >
+                Начать задачу
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Модальное окно подтверждения */}
+      {showActionModal && (
+        <ActionModal
+          isOpen={showActionModal}
+          onClose={() => setShowActionModal(false)}
+          onConfirm={handleActionConfirm}
+          containerId={selectedContainer}
+          action={modalAction!}
+          uploadProgress={uploadProgress}
+          showRefreshButton={uploadTimeout}
+          onRefresh={loadTasks}
+        />
+      )}
     </div>
   );
 };
