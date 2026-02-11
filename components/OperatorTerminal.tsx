@@ -9,76 +9,67 @@ interface OperatorTerminalProps {
   t: TranslationSet;
 }
 
-// Улучшенная функция для парсинга даты из Google Sheets
-const parseSheetDateTime = (dateStr?: string): Date | null => {
-  if (!dateStr || dateStr.trim() === '') return null;
+// Функция для парсинга времени в формате HH:mm
+const parseTime = (timeStr?: string): { hours: number, minutes: number, valid: boolean } => {
+  if (!timeStr || typeof timeStr !== 'string') {
+    return { hours: 0, minutes: 0, valid: false };
+  }
   
-  const str = dateStr.trim();
+  const trimmed = timeStr.trim();
   
-  // 1. Пробуем разобрать как время HH:mm или HH:mm:ss
-  const timeMatch = str.match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/);
-  if (timeMatch) {
-    const hours = parseInt(timeMatch[1], 10);
-    const minutes = parseInt(timeMatch[2], 10);
-    const seconds = timeMatch[3] ? parseInt(timeMatch[3], 10) : 0;
-    
-    if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60 && seconds >=0 && seconds < 60) {
-      const date = new Date();
-      date.setHours(hours, minutes, seconds, 0);
-      return date;
+  // Удаляем все нецифровые символы кроме двоеточия
+  const cleanStr = trimmed.replace(/[^\d:]/g, '');
+  
+  // Разные форматы времени
+  const formats = [
+    /^(\d{1,2}):(\d{1,2})$/,       // 9:42, 09:42
+    /^(\d{1,2})\.(\d{1,2})$/,      // 9.42, 09.42
+    /^(\d{1,2})(\d{2})$/,          // 942, 0942
+  ];
+  
+  for (const format of formats) {
+    const match = cleanStr.match(format);
+    if (match) {
+      const hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+      
+      if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
+        return { hours, minutes, valid: true };
+      }
     }
   }
   
-  // 2. Пробуем разобрать как дату с временем DD.MM.YYYY HH:mm
-  const dateTimeMatch = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4}) (\d{1,2}):(\d{1,2})$/);
-  if (dateTimeMatch) {
-    const [_, day, month, year, hour, minute] = dateTimeMatch;
-    return new Date(
-      parseInt(year),
-      parseInt(month) - 1,
-      parseInt(day),
-      parseInt(hour),
-      parseInt(minute)
-    );
-  }
-  
-  // 3. Пробуем разобрать как дату с временем DD.MM HH:mm
-  const dateTimeShortMatch = str.match(/^(\d{1,2})\.(\d{1,2}) (\d{1,2}):(\d{1,2})$/);
-  if (dateTimeShortMatch) {
-    const [_, day, month, hour, minute] = dateTimeShortMatch;
-    const now = new Date();
-    return new Date(
-      now.getFullYear(),
-      parseInt(month) - 1,
-      parseInt(day),
-      parseInt(hour),
-      parseInt(minute)
-    );
-  }
-  
-  // 4. Пробуем стандартный парсинг даты
-  const date = new Date(str);
-  if (!isNaN(date.getTime())) {
-    return date;
-  }
-  
-  return null;
+  return { hours: 0, minutes: 0, valid: false };
 };
 
 // Форматирование времени для отображения
-const formatTime = (date: Date | null): string => {
-  if (!date || isNaN(date.getTime())) return '-';
-  return date.toLocaleTimeString('ru-RU', {
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+const formatTime = (timeStr?: string): string => {
+  if (!timeStr) return '-';
+  
+  const parsed = parseTime(timeStr);
+  if (!parsed.valid) return '-';
+  
+  const { hours, minutes } = parsed;
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 };
 
-// Вычисление времени работы в минутах
-const calculateDuration = (startDate: Date | null): string => {
-  if (!startDate || isNaN(startDate.getTime())) return '-';
+// Расчет времени работы
+const calculateDuration = (startTimeStr?: string): string => {
+  if (!startTimeStr) return '-';
   
-  const diffMs = Date.now() - startDate.getTime();
+  const startParsed = parseTime(startTimeStr);
+  if (!startParsed.valid) return '-';
+  
+  const now = new Date();
+  const startDate = new Date();
+  startDate.setHours(startParsed.hours, startParsed.minutes, 0, 0);
+  
+  // Если время начала позже текущего времени, значит это было вчера
+  if (startDate > now) {
+    startDate.setDate(startDate.getDate() - 1);
+  }
+  
+  const diffMs = now.getTime() - startDate.getTime();
   if (diffMs < 0) return '-';
   
   const diffMinutes = Math.floor(diffMs / (1000 * 60));
@@ -90,33 +81,40 @@ const calculateDuration = (startDate: Date | null): string => {
   return `${hours} ч ${minutes > 0 ? `${minutes} мин` : ''}`.trim();
 };
 
-// Функция для парсинга ETA (может быть только время или полная дата)
-const parseETA = (etaStr?: string): Date | null => {
-  if (!etaStr || etaStr.trim() === '') return null;
+// Парсинг ETA времени
+const parseETA = (etaStr?: string): { time: string, date: Date | null, valid: boolean } => {
+  if (!etaStr) return { time: '-', date: null, valid: false };
   
-  const str = etaStr.trim();
+  const parsed = parseTime(etaStr);
+  if (!parsed.valid) return { time: '-', date: null, valid: false };
   
-  // Если это просто время (например, "7:30", "08:00")
-  const timeMatch = str.match(/^(\d{1,2}):(\d{1,2})$/);
-  if (timeMatch) {
-    const hours = parseInt(timeMatch[1], 10);
-    const minutes = parseInt(timeMatch[2], 10);
-    
-    if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
-      const date = new Date();
-      date.setHours(hours, minutes, 0, 0);
-      
-      // Если время уже прошло сегодня, добавляем день
-      if (date < new Date()) {
-        date.setDate(date.getDate() + 1);
-      }
-      
-      return date;
-    }
+  const { hours, minutes } = parsed;
+  const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  
+  // Создаем дату для ETA
+  const etaDate = new Date();
+  etaDate.setHours(hours, minutes, 0, 0);
+  
+  // Если ETA уже прошло сегодня, считаем что это на следующий день
+  const now = new Date();
+  if (etaDate < now) {
+    etaDate.setDate(etaDate.getDate() + 1);
   }
   
-  // Пробуем другие форматы
-  return parseSheetDateTime(str);
+  return { time: timeStr, date: etaDate, valid: true };
+};
+
+// Определение цвета рамки для ETA
+const getETABorderColor = (etaStr?: string): string => {
+  const eta = parseETA(etaStr);
+  if (!eta.valid || !eta.date) return 'border-white/10';
+  
+  const now = new Date();
+  const diffMinutes = (eta.date.getTime() - now.getTime()) / (1000 * 60);
+  
+  if (diffMinutes < 0) return 'border-red-500'; // Просрочено
+  if (diffMinutes < 30) return 'border-orange-500'; // Менее 30 минут
+  return 'border-white/10'; // Обычная
 };
 
 const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskAction, t }) => {
@@ -136,17 +134,16 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
       setLoading(true);
       const data = await api.fetchTasks('get_operator_tasks');
       
-      // Логирование для отладки
       console.log('Fetched tasks:', data);
       
-      // Находим задачу UETU7065941 для отладки
+      // Отладка активной задачи
       const debugTask = data.find(t => t.id === 'UETU7065941');
       if (debugTask) {
         console.log('Debug task UETU7065941:', {
           ...debugTask,
-          start_time_parsed: parseSheetDateTime(debugTask.start_time),
-          end_time_parsed: parseSheetDateTime(debugTask.end_time),
-          eta_parsed: parseETA(debugTask.eta)
+          start_time_parsed: parseTime(debugTask.start_time),
+          eta_parsed: parseETA(debugTask.eta),
+          duration: calculateDuration(debugTask.start_time)
         });
       }
       
@@ -175,21 +172,6 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     return <span className={`px-2 py-0.5 rounded text-xs font-bold border ${color} ml-2`}>{type}</span>;
   };
 
-  // Функция для определения цвета рамки ETA
-  const getETABorderColor = (eta?: string): string => {
-    if (!eta) return 'border-white/10';
-    
-    const etaDate = parseETA(eta);
-    if (!etaDate) return 'border-white/10';
-    
-    const now = new Date();
-    const diffMinutes = (etaDate.getTime() - now.getTime()) / (1000 * 60);
-    
-    if (diffMinutes < 0) return 'border-red-500'; // Просрочено
-    if (diffMinutes < 30) return 'border-orange-500'; // Менее 30 минут
-    return 'border-white/10'; // Обычная
-  };
-
   // Фильтруем задачи для отображения в общем списке
   const availableTasks = tasks.filter(task => {
     // Не показываем задачи с end_time
@@ -209,8 +191,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
   // Single Active Task Mode - показываем только активную задачу
   if (activeTask) {
-    const startDate = parseSheetDateTime(activeTask.start_time);
-    const etaDate = parseETA(activeTask.eta);
+    const eta = parseETA(activeTask.eta);
     const etaBorderColor = getETABorderColor(activeTask.eta);
     
     return (
@@ -259,7 +240,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                   <div className="text-right">
                     <div className="text-sm text-white/50">ETA</div>
                     <div className="text-xl font-bold text-white">
-                      {etaDate ? formatTime(etaDate) : activeTask.eta || '-'}
+                      {eta.time}
                     </div>
                   </div>
                 </div>
@@ -272,7 +253,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                   <div className="flex items-center gap-2 text-white">
                     <Clock size={16} />
                     <span className="text-lg font-semibold">
-                      {startDate ? formatTime(startDate) : '-'}
+                      {formatTime(activeTask.start_time)}
                     </span>
                   </div>
                 </div>
@@ -298,7 +279,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                 <div className="space-y-2">
                   <div className="text-sm text-white/50">Время работы</div>
                   <div className="text-lg font-semibold text-white">
-                    {calculateDuration(startDate)}
+                    {calculateDuration(activeTask.start_time)}
                   </div>
                 </div>
               </div>
@@ -361,7 +342,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
             availableTasks.map(task => {
               const isWait = task.status === 'WAIT';
               const etaBorderColor = getETABorderColor(task.eta);
-              const etaDate = parseETA(task.eta);
+              const eta = parseETA(task.eta);
               
               return (
                 <div 
@@ -380,7 +361,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                       <div className="flex items-center gap-1 mt-2">
                         <Clock size={12} className="text-white/40" />
                         <span className="text-xs text-white/40">
-                          ETA: {etaDate ? formatTime(etaDate) : task.eta}
+                          ETA: {eta.time}
                         </span>
                         {etaBorderColor.includes('red') && (
                           <span className="text-[10px] text-red-500 font-bold ml-2">ПРОСРОЧЕНО</span>
