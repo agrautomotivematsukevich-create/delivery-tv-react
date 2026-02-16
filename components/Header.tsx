@@ -6,10 +6,10 @@ interface HeaderProps {
   user: User | null;
   lang: Lang;
   t: TranslationSet;
-view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 
-        'analytics' | 'arrival' | 'arrival-analytics'; // ✅
+  view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 
+        'analytics' | 'arrival' | 'arrival-analytics';
   setView: (view: 'dashboard' | 'history' | 'logistics' | 
-           'downtime' | 'analytics' | 'arrival' | 'arrival-analytics') => void; // ✅
+           'downtime' | 'analytics' | 'arrival' | 'arrival-analytics') => void;
   onToggleLang: () => void;
   onLoginClick: () => void;
   onLogoutClick: () => void;
@@ -17,6 +17,7 @@ view: 'dashboard' | 'history' | 'logistics' | 'downtime' |
   onStatsClick: () => void;
   onIssueClick: () => void;
   onHistoryClick: () => void;
+  onArrivalTerminalClick?: () => void; // ✅ ADDED
   title: string;
   tvMode: boolean;
   onTvToggle: () => void;
@@ -24,7 +25,7 @@ view: 'dashboard' | 'history' | 'logistics' | 'downtime' |
 
 const Header: React.FC<HeaderProps> = ({
   user, lang, t, view, setView, onToggleLang, onLoginClick, onLogoutClick,
-  onTerminalClick, onStatsClick, onIssueClick, onHistoryClick, title, tvMode, onTvToggle,
+  onTerminalClick, onStatsClick, onIssueClick, onHistoryClick, onArrivalTerminalClick, title, tvMode, onTvToggle,
 }) => {
   const [time, setTime] = useState(new Date());
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -135,6 +136,26 @@ const Header: React.FC<HeaderProps> = ({
                 </button>
               </>
             )}
+            
+            {/* ✅ AGRL Navigation */}
+            {(user.role === 'AGRL' || user.role === 'ADMIN') && (
+              <>
+                <button
+                  onClick={() => setView('arrival')}
+                  className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'arrival' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
+                >
+                  <Truck size={14} />
+                  <span className="hidden sm:inline">{t.nav_arrival}</span>
+                </button>
+                <button
+                  onClick={() => setView('arrival-analytics')}
+                  className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'arrival-analytics' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
+                >
+                  <BarChart2 size={14} />
+                  <span className="hidden sm:inline">{t.nav_arrival_analytics}</span>
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -158,11 +179,17 @@ const Header: React.FC<HeaderProps> = ({
           {user && (
             <>
               <button
-                onClick={onTerminalClick}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider text-accent-blue bg-accent-blue/10 border border-accent-blue/20"
+                onClick={user.role === 'AGRL' ? (onArrivalTerminalClick || onTerminalClick) : onTerminalClick}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider ${
+                  user.role === 'AGRL' 
+                    ? 'text-blue-600 bg-blue-600/10 border border-blue-600/20'
+                    : 'text-accent-blue bg-accent-blue/10 border border-accent-blue/20'
+                }`}
               >
-                <ScanBarcode size={16} />
-                <span className="hidden xs:inline">{t.drv_title}</span>
+                {user.role === 'AGRL' ? <Truck size={16} /> : <ScanBarcode size={16} />}
+                <span className="hidden xs:inline">
+                  {user.role === 'AGRL' ? t.arrival_mark : t.drv_title}
+                </span>
               </button>
               <button
                 onClick={onIssueClick}
