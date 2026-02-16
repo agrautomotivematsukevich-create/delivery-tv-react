@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { Issue, TranslationSet } from '../types';
-import { ArrowLeft, User, Calendar, X, ImageIcon, AlertCircle } from 'lucide-react';
-import SecureImage from './SecureImage';
+import { ArrowLeft, User, Calendar, X, ImageIcon, AlertCircle, ExternalLink, Camera } from 'lucide-react';
 
 interface HistoryModalProps {
   onClose: () => void;
@@ -32,6 +31,30 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
     setSelectedIssue(null);
   };
 
+  // --- ОБНОВЛЕННЫЙ МЕТОД: ОБХОД ЧЕРЕЗ WSRV.NL ---
+  const getDriveImgSrc = (url: string, size?: string) => {
+    if (!url) return '';
+    let id = "";
+    
+    const match1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (match1) id = match1[1];
+    
+    if (!id) {
+      const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (match2) id = match2[1];
+    }
+
+    if (!id) return url;
+
+    // Прямая ссылка на скачивание из Drive
+    const originalFileLink = `https://drive.google.com/uc?export=download&id=${id}`;
+    
+    // Параметры размера для wsrv.nl (по аналогии с вашим архивом)
+    const sizeParam = size ? `&${size.startsWith('w') ? 'w' : 'h'}=${size.replace(/\D/g, '')}` : '&n=-1';
+    
+    // Возвращаем через прокси wsrv.nl (обходит CORS и улучшает загрузку)
+    return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=80${sizeParam}`;
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-xl p-0 md:p-8 animate-in fade-in duration-200">
@@ -134,16 +157,26 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                        {selectedIssue.photos.map((url, idx) => {
                          // Используем прокси для превью и большого фото
-                         const fullSrc = url;
-
+                         const thumbSrc = getDriveImgSrc(url, 'w600');
+                         const fullSrc = getDriveImgSrc(url, 'w2000');
+                         
                          return (
                            <div key={idx} className="relative rounded-2xl overflow-hidden border border-white/10 bg-black/50 aspect-video group">
-                              <SecureImage
-                                src={url} 
+                              <img 
+                                src={thumbSrc} 
                                 onClick={() => setLightboxImg(fullSrc)}
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                  (e.target as HTMLElement).nextElementSibling?.classList.remove('hidden');
+                                }}
                                 alt="Issue evidence" 
-                                className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
+                                className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300" 
                               />
+                              <div className="hidden absolute inset-0 flex items-center justify-center bg-white/5">
+                                 <a href={url} target="_blank" rel="noreferrer" className="px-4 py-2 bg-accent-blue rounded-lg text-white font-bold text-sm hover:bg-accent-blue/80 flex items-center gap-2">
+                                   <ExternalLink size={16} /> {t.btn_open_drive}
+                                 </a>
+                              </div>
                            </div>
                          );
                        })}
@@ -161,14 +194,13 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
           className="fixed inset-0 z-[70] bg-black/95 flex items-center justify-center p-4 animate-in fade-in duration-200 cursor-zoom-out"
           onClick={() => setLightboxImg(null)}
         >
-          <div onClick={(e) => e.stopPropagation()}>
-          <SecureImage
-            src={lightboxImg}
+          <img 
+            src={lightboxImg} 
             alt="Full view" 
             className="max-w-full max-h-full rounded-lg shadow-2xl object-contain cursor-default" 
+            onClick={(e) => e.stopPropagation()} 
           />
-          </div>
-          <button onClick={() => setLightboxImg(null)} className="absolute top-4 right-4 text-white/50 hover:text-white p-2 transition-colors">
+          <button className="absolute top-4 right-4 text-white/50 hover:text-white p-2 transition-colors">
             <X size={32} />
           </button>
         </div>

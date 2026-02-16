@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { DashboardData, TranslationSet } from '../types';
 import { Package, Clock } from 'lucide-react';
 
@@ -45,42 +45,6 @@ const calculateTimeDiff = (timeStr: string, t: TranslationSet): string => {
 };
 
 const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
-  // Добавляем состояние для живого обновления таймеров каждую минуту
-  const [now, setNow] = useState(new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30000); // Обновляем раз в 30 сек
-    return () => clearInterval(timer);
-  }, []);
-
-  // Функция расчета времени "В работе"
-  const getWorkDuration = (startStr: string) => {
-    if (!startStr || !startStr.includes(':')) return null;
-    const [h, m] = startStr.split(':').map(Number);
-    
-    const startTime = new Date(now);
-    startTime.setHours(h, m, 0, 0);
-
-    // Если время старта больше текущего (например, ошибка ввода или будущее), корректируем
-    let diffMs = now.getTime() - startTime.getTime();
-    
-    // Обработка перехода через полночь (если начали в 23:00, а сейчас 01:00)
-    // Если разница отрицательная и большая (например, -23 часа), значит перешли сутки
-    if (diffMs < -12 * 60 * 60 * 1000) {
-       diffMs += 24 * 60 * 60 * 1000;
-    } 
-    // Если задача "из будущего" (небольшой минус), считаем 0
-    else if (diffMs < 0) {
-       diffMs = 0;
-    }
-
-    const totalMins = Math.floor(diffMs / 60000);
-    const hrs = Math.floor(totalMins / 60);
-    const mins = totalMins % 60;
-
-    return `${hrs > 0 ? `${hrs}ч ` : ''}${mins} мин`;
-  };
-
   if (!data) return <div className="text-white/30 animate-pulse text-center mt-20">Loading Dashboard...</div>;
 
   const percent = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
@@ -164,15 +128,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
                    </div>
                    <div className="ml-auto flex flex-col items-end shrink-0">
                       <span className="text-[0.7rem] uppercase text-white/50 font-bold tracking-widest mb-1">{t.lbl_start}</span>
-                      <span className="font-mono text-2xl font-bold text-accent-green leading-none">{item.start}</span>
-                      
-                      {/* --- ДОБАВЛЕН ТАЙМЕР --- */}
-                      <span className="mt-2 font-mono text-sm font-bold text-blue-400 flex items-center gap-1.5 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
-                        <Clock size={12} />
-                        {getWorkDuration(item.start)}
-                      </span>
-                      {/* ----------------------- */}
-
+                      <span className="font-mono text-2xl font-bold text-accent-green">{item.start}</span>
                    </div>
                 </div>
               ))}

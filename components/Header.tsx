@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { User, Lang, TranslationSet } from '../types';
-import { Globe, User as UserIcon, LogOut, ChevronDown, ScanBarcode, LogIn, AlertTriangle, History, LayoutDashboard, Archive, Truck } from 'lucide-react';
+import { Globe, User as UserIcon, LogOut, ChevronDown, ScanBarcode, LogIn, AlertTriangle, History, LayoutDashboard, Archive, Truck, TrendingDown } from 'lucide-react';
 
 interface HeaderProps {
   user: User | null;
   lang: Lang;
   t: TranslationSet;
-  view: 'dashboard' | 'history' | 'logistics';
-  setView: (view: 'dashboard' | 'history' | 'logistics') => void;
+  view: 'dashboard' | 'history' | 'logistics' | 'downtime'; // ОБНОВЛЕНО
+  setView: (view: 'dashboard' | 'history' | 'logistics' | 'downtime') => void; // ОБНОВЛЕНО
   onToggleLang: () => void;
   onLoginClick: () => void;
   onLogoutClick: () => void;
@@ -33,7 +33,6 @@ const Header: React.FC<HeaderProps> = ({
   const formattedDate = time.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    // Добавлен pt-safe для защиты от вырезов на экране
     <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 h-auto z-50 gap-4 relative pt-2">
       
       {/* Title + Mobile Time Block */}
@@ -48,7 +47,6 @@ const Header: React.FC<HeaderProps> = ({
           <ChevronDown className="text-white/30 w-5 h-5 group-hover:text-white transition-colors" />
         </div>
 
-        {/* Время на мобильных теперь здесь (в строку с заголовком) */}
         <div className="md:hidden font-mono text-lg font-bold tabular-nums text-white/50 bg-white/5 px-3 py-1 rounded-lg border border-white/5">
           {formattedTime}
         </div>
@@ -72,6 +70,18 @@ const Header: React.FC<HeaderProps> = ({
                <Archive size={14} />
                <span className="hidden sm:inline lg:inline">{t.nav_history}</span>
              </button>
+             
+             {/* НОВАЯ КНОПКА: Простои (только для LOGISTIC и ADMIN) */}
+             {(user.role === 'LOGISTIC' || user.role === 'ADMIN') && (
+               <button 
+                 onClick={() => setView('downtime')}
+                 className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'downtime' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
+               >
+                 <TrendingDown size={14} />
+                 <span className="hidden sm:inline lg:inline">{t.nav_downtime}</span>
+               </button>
+             )}
+             
              {(user.role === 'LOGISTIC' || user.role === 'ADMIN') && (
                <button 
                  onClick={() => setView('logistics')}

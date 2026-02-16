@@ -5,7 +5,8 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
-      // base: '/delivery-tv/',  <-- ЭТУ СТРОКУ НУЖНО УДАЛИТЬ ИЛИ ЗАКОММЕНТИРОВАТЬ
+      // Раскомментировано для корректной работы на GitHub Pages
+      base: '/delivery-tv/', 
       server: {
         port: 3000,
         host: '0.0.0.0',

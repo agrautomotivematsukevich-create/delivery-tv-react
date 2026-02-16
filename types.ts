@@ -115,6 +115,7 @@ export interface TranslationSet {
   nav_dashboard: string;
   nav_history: string;
   nav_plan: string;
+  nav_downtime: string; // НОВОЕ ПОЛЕ
   
   log_title: string;
   log_date: string;

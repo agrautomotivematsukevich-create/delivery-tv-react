@@ -19,7 +19,6 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     issue_title: "Сообщить о проблеме", issue_desc_ph: "Опишите проблему...", issue_btn: "Отправить проблему", issue_upload: "Добавить фото", issue_success: "Проблема отправлена",
     btn_history: "История проблем", history_title: "История", history_empty: "Проблем не найдено", history_back: "Назад к списку",
     
-    // New
     menu_history: "История",
     menu_logout: "Выйти",
     lbl_description: "Описание",
@@ -30,6 +29,7 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     nav_dashboard: "Дашборд",
     nav_history: "Архив",
     nav_plan: "Поставки",
+    nav_downtime: "Простои", // НОВОЕ
     
     log_title: "План поставок",
     log_date: "Дата поставки",
@@ -74,7 +74,6 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     issue_title: "Report Issue / 报告问题", issue_desc_ph: "Describe the issue... / 描述问题", issue_btn: "Submit Issue / 提交", issue_upload: "Add Photo / 添加照片", issue_success: "Report sent / 发送成功",
     btn_history: "Issue History / 问题记录", history_title: "History / 历史", history_empty: "No issues found / 无记录", history_back: "Back / 返回",
 
-    // New
     menu_history: "History / 历史",
     menu_logout: "Logout / 退出",
     lbl_description: "Description / 描述",
@@ -85,6 +84,7 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     nav_dashboard: "Dashboard / 仪表板",
     nav_history: "Archive / 档案",
     nav_plan: "Logistics / 物流",
+    nav_downtime: "Downtime / 停机", // НОВОЕ
     
     log_title: "Delivery Plan / 交付计划",
     log_date: "Delivery Date / 交货日期",

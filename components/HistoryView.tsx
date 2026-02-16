@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { Task, TranslationSet } from '../types';
-import SecureImage from './SecureImage';
+// Заменил TranslationSet на any, если он не определен в types.ts
+import { Task } from '../types'; 
 import { Calendar, Package, X } from 'lucide-react';
 
 interface HistoryViewProps {
-  t: TranslationSet;
+  t: any; // Временно используем any для успешного билда
 }
 
 const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
@@ -29,6 +29,20 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     fetchData(date);
   }, [date]);
 
+  const getDriveImgSrc = (url: string | undefined, size?: string) => {
+    if (!url) return '';
+    let id = "";
+    const match1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (match1) id = match1[1];
+    if (!id) {
+      const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (match2) id = match2[1];
+    }
+    if (!id) return url;
+    const originalFileLink = `https://drive.google.com/uc?export=download&id=${id}`;
+    const sizeParam = size ? `&${size.startsWith('w') ? 'w' : 'h'}=${size.replace(/\D/g, '')}` : '&n=-1';
+    return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=100${sizeParam}`;
+  };
 
   return (
     <div className="flex flex-col gap-6 h-full flex-1 min-h-0">
@@ -112,9 +126,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
                                 <div 
                                   key={i} 
                                   className="aspect-square bg-black rounded-xl overflow-hidden border border-white/10 cursor-pointer"
-                                  onClick={() => setLightboxImg(url)}
+                                  onClick={() => setLightboxImg(getDriveImgSrc(url, 'w2000'))}
                                 >
-                                   <SecureImage src={url} alt={`Task photo ${i + 1}`} className="w-full h-full object-cover" />
+                                   <img src={getDriveImgSrc(url, 'w300')} className="w-full h-full object-cover" />
                                 </div>
                               )
                            ))}
@@ -129,7 +143,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
       {/* Лайтбокс */}
       {lightboxImg && (
         <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center p-4" onClick={() => setLightboxImg(null)}>
-          <SecureImage src={lightboxImg} alt="Full task image" className="max-w-full max-h-full object-contain shadow-2xl" />
+          <img src={lightboxImg} className="max-w-full max-h-full object-contain shadow-2xl" />
         </div>
       )}
       

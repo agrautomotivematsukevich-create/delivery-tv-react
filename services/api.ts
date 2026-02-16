@@ -1,5 +1,5 @@
-import { SCRIPT_URL } from '../constants';
-import { DashboardData, Task, Issue, TaskInput, PlanRow } from '../types';
+import { SCRIPT_URL } from "../constants";
+import { DashboardData, Task, Issue, TaskInput, PlanRow } from "../types";
 
 export const hashPassword = async (p: string): Promise<string> => {
   const msgBuffer = new TextEncoder().encode(p);
@@ -10,20 +10,25 @@ export const hashPassword = async (p: string): Promise<string> => {
 export const parseDashboardData = (text: string): DashboardData | null => {
   try {
     if (!text || text.includes("DOCTYPE")) return null;
+    
     const parts = text.split("###MSG###");
     const lines = parts[0].split('\n');
     const r1 = lines[0].split(';');
+
     if (r1.length < 3) return null;
+
     const counts = r1[1].split('|');
     const done = parseInt(counts[0]) || 0;
     const total = parseInt(counts[1]) || 0;
     const activeList = [];
+
     for (let i = 1; i < lines.length; i++) {
       if (lines[i].includes('|')) {
         const p = lines[i].split('|');
         activeList.push({ id: p[0], start: p[1], zone: p[4] });
       }
     }
+
     return {
       status: r1[0].trim(),
       done,
@@ -39,30 +44,6 @@ export const parseDashboardData = (text: string): DashboardData | null => {
 };
 
 export const api = {
-  getProxyImage: async (sourceUrl: string): Promise<string> => {
-    try {
-      if (!sourceUrl) return "";
-      const driveIdMatch = sourceUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || sourceUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-      const driveId = driveIdMatch?.[1];
-      if (!driveId) return "";
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_photo&id=${encodeURIComponent(driveId)}`);
-      const text = (await res.text()).trim();
-      if (!text) return "";
-      if (text.startsWith('data:image/')) return text;
-      try {
-        const parsed = JSON.parse(text);
-        if (typeof parsed?.data === 'string' && parsed.data) {
-          const mime = parsed.mime || 'image/jpeg';
-          return `data:${mime};base64,${parsed.data}`;
-        }
-      } catch {}
-      return `data:image/jpeg;base64,${text}`;
-    } catch (e) {
-      console.error(e);
-      return "";
-    }
-  },
-
   fetchDashboard: async (): Promise<DashboardData | null> => {
     try {
       const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}`);
@@ -86,6 +67,7 @@ export const api = {
   },
 
   fetchHistory: async (dateStr: string): Promise<Task[]> => {
+    // dateStr in DD.MM format expected by backend
     try {
       const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
       const data = await res.json();
@@ -96,51 +78,49 @@ export const api = {
     }
   },
 
+  // Logistics: Get full plan for editing
   fetchFullPlan: async (dateStr: string): Promise<PlanRow[]> => {
     try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_full_plan&date=${encodeURIComponent(dateStr)}`);
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
+       const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_full_plan&date=${encodeURIComponent(dateStr)}`);
+       const data = await res.json();
+       return Array.isArray(data) ? data : [];
     } catch (e) {
       console.error(e);
       return [];
     }
   },
 
+  // Logistics: Create new plan
   createPlan: async (dateStr: string, tasks: TaskInput[]): Promise<boolean> => {
     try {
-      const res = await fetch(SCRIPT_URL, {
-        method: 'POST',
-        body: JSON.stringify({ mode: 'create_plan', date: dateStr, tasks })
-      });
-      const txt = await res.text();
-      return txt.includes("CREATED");
+       const payload = JSON.stringify(tasks);
+       await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=create_plan&date=${encodeURIComponent(dateStr)}&tasks=${encodeURIComponent(payload)}`);
+       return true;
     } catch(e) {
-      console.error("Create Plan Error:", e);
+      console.error(e);
       return false;
     }
   },
   
+  // Logistics: Update specific row
   updatePlanRow: async (dateStr: string, row: PlanRow): Promise<boolean> => {
     try {
-      const res = await fetch(SCRIPT_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-          mode: 'update_container_row',
-          date: dateStr,
-          row: row.rowIndex.toString(),
-          lot: row.lot,
-          ws: row.ws,
-          pallets: row.pallets,
-          id: row.id,
-          phone: row.phone,
-          eta: row.eta
-        })
-      });
-      const txt = await res.text();
-      return txt.includes("UPDATED");
+       const params = new URLSearchParams({
+         mode: 'update_container_row',
+         date: dateStr,
+         row: row.rowIndex.toString(),
+         lot: row.lot,
+         ws: row.ws,
+         pallets: row.pallets,
+         id: row.id,
+         phone: row.phone,
+         eta: row.eta
+       });
+       const res = await fetch(`${SCRIPT_URL}?${params.toString()}`);
+       const txt = await res.text();
+       return txt.includes("UPDATED");
     } catch(e) {
-      console.error("Update Row Error:", e);
+      console.error(e);
       return false;
     }
   },
@@ -173,6 +153,7 @@ export const api = {
     const txt = await res.text();
     if (txt.includes("CORRECT")) {
       const parts = txt.split('|');
+      // Format: CORRECT|NAME|ROLE
       return { 
         success: true, 
         name: parts.length > 1 ? parts[1] : user,
@@ -188,79 +169,19 @@ export const api = {
     return true;
   },
 
-  /**
-   * Загрузка фото с поддержкой прогресса и отмены.
-   * Использует XHR с Content-Type: text/plain (нет preflight).
-   * @param image dataURL
-   * @param mimeType MIME-тип
-   * @param filename Имя файла
-   * @param onProgress Колбэк прогресса (0-100)
-   * @param signal AbortSignal для отмены
-   * @returns URL загруженного фото или пустую строку
-   */
-  uploadPhoto: async (
-    image: string,
-    mimeType: string,
-    filename: string,
-    onProgress?: (progress: number) => void,
-    signal?: AbortSignal
-  ): Promise<string> => {
-    // Если прогресс не нужен и нет сигнала — используем быстрый fetch
-    if (!onProgress && !signal) {
-      try {
-        const res = await fetch(SCRIPT_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename })
-        });
-        const data = await res.json();
-        return data.status === "SUCCESS" ? data.url : "";
-      } catch (e) {
-        console.error('Upload error:', e);
-        return "";
-      }
+  uploadPhoto: async (image: string, mimeType: string, filename: string): Promise<string> => {
+    try {
+      const res = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename })
+      });
+      const data = await res.json();
+      return data.status === "SUCCESS" ? data.url : "";
+    } catch (e) {
+      console.error(e);
+      return "";
     }
-
-    // С прогрессом и/или отменой — XHR
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', SCRIPT_URL, true);
-      xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
-      xhr.timeout = 60000;
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && onProgress) {
-          const percent = Math.round((e.loaded / e.total) * 100);
-          onProgress(percent);
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          try {
-            const data = JSON.parse(xhr.responseText);
-            resolve(data.status === "SUCCESS" ? data.url : "");
-          } catch {
-            reject(new Error('Invalid JSON response'));
-          }
-        } else {
-          reject(new Error(`HTTP ${xhr.status}`));
-        }
-      };
-
-      xhr.onerror = () => reject(new Error('Network error'));
-      xhr.ontimeout = () => reject(new Error('Timeout'));
-
-      // Поддержка отмены через AbortSignal
-      if (signal) {
-        signal.addEventListener('abort', () => {
-          xhr.abort();
-          reject(new DOMException('Aborted', 'AbortError'));
-        });
-      }
-
-      xhr.send(JSON.stringify({ mode: 'upload_photo', image, mimeType, filename }));
-    });
   },
 
   taskAction: async (id: string, act: string, user: string, zone: string = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
