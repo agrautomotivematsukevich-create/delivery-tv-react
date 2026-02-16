@@ -6,8 +6,10 @@ interface HeaderProps {
   user: User | null;
   lang: Lang;
   t: TranslationSet;
-  view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 'analytics';
-  setView: (view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 'analytics') => void;
+view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 
+        'analytics' | 'arrival' | 'arrival-analytics'; // ✅
+  setView: (view: 'dashboard' | 'history' | 'logistics' | 
+           'downtime' | 'analytics' | 'arrival' | 'arrival-analytics') => void; // ✅
   onToggleLang: () => void;
   onLoginClick: () => void;
   onLogoutClick: () => void;
