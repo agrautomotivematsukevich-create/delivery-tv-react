@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
-import { TranslationSet, User } from '../types'; // Тип данных
-import { X, Camera, AlertCircle, User as UserIcon } from 'lucide-react';
+import { Issue, TranslationSet, User } from '../types';
+import { ArrowLeft, User as UserIcon, Calendar, X, ImageIcon, AlertCircle, ExternalLink } from 'lucide-react';
 
 interface IssueModalProps {
   onClose: () => void;
@@ -9,7 +9,7 @@ interface IssueModalProps {
   user?: User | null;
 }
 
-const IssueModal: React.FC<IssueModalProps> = ({ onClose, t, user }) => {
+const IssueModal: React.FC<IssueModalProps> = ({ onClose, t }) => {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,28 +32,19 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, t, user }) => {
     setSelectedIssue(null);
   };
 
-  // --- ОБНОВЛЕННЫЙ МЕТОД: ОБХОД ЧЕРЕЗ WSRV.NL ---
   const getDriveImgSrc = (url: string, size?: string) => {
     if (!url) return '';
     let id = "";
-    
     const match1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
     if (match1) id = match1[1];
-    
     if (!id) {
       const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
       if (match2) id = match2[1];
     }
-
     if (!id) return url;
 
-    // Прямая ссылка на скачивание из Drive
     const originalFileLink = `https://drive.google.com/uc?export=download&id=${id}`;
-    
-    // Параметры размера для wsrv.nl (по аналогии с вашим архивом)
     const sizeParam = size ? `&${size.startsWith('w') ? 'w' : 'h'}=${size.replace(/\D/g, '')}` : '&n=-1';
-    
-    // Возвращаем через прокси wsrv.nl (обходит CORS и улучшает загрузку)
     return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=80${sizeParam}`;
   };
 
@@ -91,7 +82,6 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, t, user }) => {
                <div className="text-white/50 animate-pulse">{t.msg_loading_history}</div>
              </div>
           ) : !selectedIssue ? (
-            // LIST VIEW
             <div className="p-4 md:p-6 space-y-3">
               {issues.length === 0 ? (
                 <div className="text-center text-white/30 text-xl font-bold mt-20">{t.history_empty}</div>
@@ -112,7 +102,7 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, t, user }) => {
                             {issue.id}
                           </div>
                           <div className="text-xs text-white/40 font-bold uppercase tracking-wider flex items-center gap-1">
-                             <User size={10} /> {issue.author}
+                             <UserIcon size={10} /> {issue.author}
                           </div>
                         </div>
                       </div>
@@ -137,13 +127,12 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, t, user }) => {
               )}
             </div>
           ) : (
-            // DETAIL VIEW
             <div className="p-6 md:p-8 space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
                <div className="flex flex-col gap-2 border-b border-white/10 pb-6">
                   <div className="flex items-center gap-2 text-white/40 text-sm font-mono">
                      <Calendar size={14} /> {selectedIssue.timestamp}
                      <span className="mx-2">|</span>
-                     <User size={14} /> {selectedIssue.author}
+                     <UserIcon size={14} /> {selectedIssue.author}
                   </div>
                </div>
 
@@ -157,7 +146,6 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, t, user }) => {
                     <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4">{t.lbl_photos_list}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                        {selectedIssue.photos.map((url, idx) => {
-                         // Используем прокси для превью и большого фото
                          const thumbSrc = getDriveImgSrc(url, 'w600');
                          const fullSrc = getDriveImgSrc(url, 'w2000');
                          
@@ -170,7 +158,7 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, t, user }) => {
                                   (e.target as HTMLImageElement).style.display = 'none';
                                   (e.target as HTMLElement).nextElementSibling?.classList.remove('hidden');
                                 }}
-                                alt="Issue evidence" 
+                                alt="Issue" 
                                 className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300" 
                               />
                               <div className="hidden absolute inset-0 flex items-center justify-center bg-white/5">
@@ -189,7 +177,6 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, t, user }) => {
         </div>
       </div>
 
-      {/* Lightbox Overlay */}
       {lightboxImg && (
         <div 
           className="fixed inset-0 z-[70] bg-black/95 flex items-center justify-center p-4 animate-in fade-in duration-200 cursor-zoom-out"
@@ -215,4 +202,4 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, t, user }) => {
   );
 };
 
-export default IssueHistoryModal;
+export default IssueModal;
