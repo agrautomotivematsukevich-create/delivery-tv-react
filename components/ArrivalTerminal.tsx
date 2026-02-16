@@ -11,13 +11,10 @@ interface Props {
 /**
  * ArrivalTerminal Component
  * 
- * Allows AGRL (Arrival Agent) and ADMIN to mark container arrivals
- * 
- * Features:
- * - Shows all containers for current date
- * - Visual indicator for arrived containers
- * - Set/Edit arrival time (default: current time)
- * - Auto-refresh list after marking
+ * ✅ FIXED v2.3.2:
+ * - Slower auto-refresh (2 minutes instead of 30 seconds)
+ * - Pauses refresh when modal is open
+ * - Dark theme matching the main site
  */
 export function ArrivalTerminal({ lang, onClose }: Props) {
   const t = TRANSLATIONS[lang];
@@ -59,10 +56,16 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
   useEffect(() => {
     loadContainers();
     
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(loadContainers, 30000);
+    // ✅ FIXED: Auto-refresh every 2 minutes (was 30 seconds)
+    // ✅ FIXED: Pause when modal is open
+    const interval = setInterval(() => {
+      if (!selectedContainer) { // Only refresh if no modal is open
+        loadContainers();
+      }
+    }, 120000); // 2 minutes
+    
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedContainer]); // ✅ Re-run when modal state changes
 
   // Open arrival modal
   const handleMarkArrival = (container: ContainerSchedule) => {
@@ -148,29 +151,29 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
   // Get status color
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'DONE': return 'text-green-600';
-      case 'ACTIVE': return 'text-blue-600';
-      default: return 'text-gray-600';
+      case 'DONE': return 'text-green-400';
+      case 'ACTIVE': return 'text-blue-400';
+      default: return 'text-gray-400';
     }
   };
 
   // Get container type color
   const getTypeColor = (type?: string) => {
     switch (type) {
-      case 'BS': return 'bg-red-100 text-red-700';
-      case 'AS': return 'bg-orange-100 text-orange-700';
-      case 'PS': return 'bg-purple-100 text-purple-700';
-      default: return 'bg-gray-100 text-gray-700';
+      case 'BS': return 'bg-red-500/20 text-red-400 border-red-500/30';
+      case 'AS': return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
+      case 'PS': return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
     }
   };
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg p-8 max-w-md w-full">
+      <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+        <div className="bg-[#1a1a2e] rounded-lg p-8 max-w-md w-full border border-white/10">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">{t.msg_uploading}</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p className="text-gray-400">{t.msg_uploading}</p>
           </div>
         </div>
       </div>
@@ -178,10 +181,10 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-2xl max-w-4xl w-full my-8">
+    <div className="fixed inset-0 bg-black bg-opacity-80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-[#0a0a0c] rounded-2xl shadow-2xl max-w-4xl w-full my-8 border border-white/10">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-lg">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-2xl">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Truck className="w-8 h-8" />
@@ -205,7 +208,7 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
         <div className="p-6 max-h-[600px] overflow-y-auto">
           {containers.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
-              <Truck className="w-16 h-16 mx-auto mb-4 opacity-50" />
+              <Truck className="w-16 h-16 mx-auto mb-4 opacity-30" />
               <p className="text-lg">{t.empty}</p>
             </div>
           ) : (
@@ -213,17 +216,19 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
               {containers.map((container) => (
                 <div
                   key={container.id}
-                  className={`border rounded-lg p-4 hover:shadow-md transition-all ${
-                    container.arrival ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'
+                  className={`border rounded-xl p-4 transition-all ${
+                    container.arrival 
+                      ? 'bg-green-500/10 border-green-500/30 hover:bg-green-500/15' 
+                      : 'bg-white/5 border-white/10 hover:bg-white/10'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-4">
                     {/* Left: Container Info */}
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <span className="font-bold text-lg text-gray-900">{container.id}</span>
+                        <span className="font-bold text-lg text-white">{container.id}</span>
                         {container.type && (
-                          <span className={`px-2 py-1 rounded text-xs font-semibold ${getTypeColor(container.type)}`}>
+                          <span className={`px-2 py-1 rounded border text-xs font-semibold ${getTypeColor(container.type)}`}>
                             {container.type}
                           </span>
                         )}
@@ -232,23 +237,23 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
                         </span>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-gray-600">
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-gray-400">
                         {container.lot && (
                           <div>
-                            <span className="font-medium">{t.log_lot}:</span> {container.lot}
+                            <span className="font-medium text-gray-500">{t.log_lot}:</span> {container.lot}
                           </div>
                         )}
                         {container.pallets && (
                           <div>
-                            <span className="font-medium">{t.log_pallets}:</span> {container.pallets}
+                            <span className="font-medium text-gray-500">{t.log_pallets}:</span> {container.pallets}
                           </div>
                         )}
                         <div>
-                          <span className="font-medium">{t.log_eta}:</span> {container.eta}
+                          <span className="font-medium text-gray-500">{t.log_eta}:</span> {container.eta}
                         </div>
                         {container.zone && (
                           <div>
-                            <span className="font-medium">{t.dtl_zone}:</span> {container.zone}
+                            <span className="font-medium text-gray-500">{t.dtl_zone}:</span> {container.zone}
                           </div>
                         )}
                       </div>
@@ -258,7 +263,7 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
                     <div className="flex flex-col items-end gap-2">
                       {container.arrival ? (
                         <>
-                          <div className="flex items-center gap-2 text-green-600">
+                          <div className="flex items-center gap-2 text-green-400">
                             <CheckCircle2 className="w-5 h-5" />
                             <div className="text-right">
                               <div className="font-semibold">{t.arrival_marked}</div>
@@ -267,7 +272,7 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
                           </div>
                           <button
                             onClick={() => handleMarkArrival(container)}
-                            className="flex items-center gap-1 px-3 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            className="flex items-center gap-1 px-3 py-1 text-xs text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
                           >
                             <Edit className="w-3 h-3" />
                             {t.log_btn_edit}
@@ -293,8 +298,8 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
 
       {/* Arrival Time Modal */}
       {selectedContainer && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full">
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[60] p-4">
+          <div className="bg-[#1a1a2e] rounded-lg shadow-2xl max-w-md w-full border border-white/10">
             <div className="bg-blue-600 text-white p-4 rounded-t-lg">
               <h3 className="text-xl font-bold">{t.arrival_set_time}</h3>
               <p className="text-blue-100 text-sm mt-1">{selectedContainer.id}</p>
@@ -302,12 +307,12 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
 
             <div className="p-6">
               {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded text-red-400 text-sm">
                   {error}
                 </div>
               )}
 
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-400 mb-2">
                 {t.arrival_time} (HH:MM)
               </label>
               
@@ -316,7 +321,7 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
                 value={arrivalTime}
                 onChange={(e) => setArrivalTime(e.target.value)}
                 placeholder="14:30"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg font-mono text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-lg font-mono text-center text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 disabled={saving}
               />
 
@@ -325,7 +330,7 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
                   <button
                     onClick={handleResetArrival}
                     disabled={saving}
-                    className="flex-1 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium disabled:opacity-50"
+                    className="flex-1 px-4 py-2 bg-red-500/10 text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/20 transition-colors font-medium disabled:opacity-50"
                   >
                     {t.arrival_reset}
                   </button>
@@ -334,7 +339,7 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
                 <button
                   onClick={() => setSelectedContainer(null)}
                   disabled={saving}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50"
+                  className="flex-1 px-4 py-2 bg-white/5 text-gray-400 border border-white/10 rounded-lg hover:bg-white/10 transition-colors font-medium disabled:opacity-50"
                 >
                   {t.btn_cancel}
                 </button>
