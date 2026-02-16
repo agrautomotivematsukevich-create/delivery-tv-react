@@ -207,6 +207,12 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                       <div className="flex items-center">
                         <span className="font-mono text-2xl font-bold text-white">{task.id}</span>
                         {getTypeBadge(task.type)}
+                        {/* ✅ NEW: Arrival indicator */}
+                        {task.arrival && (
+                          <span className="ml-2 flex items-center gap-1 px-2 py-0.5 bg-green-500/15 border border-green-500/30 rounded text-xs font-bold text-green-400">
+                            🚛 {t.arrival_on_site}
+                          </span>
+                        )}
                         {isHighlighted && (
                           <span className="ml-2 flex items-center gap-1 text-accent-blue text-xs font-bold">
                             <Zap size={12} /> Найден
@@ -214,6 +220,12 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                         )}
                       </div>
                       <span className="text-sm font-mono text-white/50 mt-1">{task.time}</span>
+                      {/* ✅ NEW: Show arrival time if present */}
+                      {task.arrival && (
+                        <span className="text-xs text-green-400 mt-1">
+                          {t.arrival_marked} {task.arrival}
+                        </span>
+                      )}
                       <div className="flex items-center gap-2 mt-2 text-white/40 text-sm">
                         <Layers size={14} />
                         <span className="font-semibold">{task.pallets || '-'}</span>
