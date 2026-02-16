@@ -19,6 +19,7 @@ export interface Task {
   operator?: string;
   photo_gen?: string;
   photo_seal?: string;
+  photo_inspect?: string;
   photo_empty?: string;
 }
 
@@ -115,7 +116,25 @@ export interface TranslationSet {
   nav_dashboard: string;
   nav_history: string;
   nav_plan: string;
-  nav_downtime: string; // НОВОЕ ПОЛЕ
+  nav_downtime: string;
+  nav_analytics: string;
+  
+  // TV mode
+  tv_mode: string;
+  tv_exit: string;
+  
+  // Search
+  search_placeholder: string;
+  
+  // Export
+  export_csv: string;
+  
+  // Analytics
+  analytics_title: string;
+  analytics_week: string;
+  analytics_avg_time: string;
+  analytics_containers: string;
+  analytics_no_data: string;
   
   log_title: string;
   log_date: string;
