@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import Header from './components/Header';
-import Dashboard from './components/Dashboard_AGRL'; // ✅ Using updated Dashboard
+import Dashboard from './components/Dashboard'; // ✅ Fixed import
 import AuthModal from './components/AuthModal';
 import OperatorTerminal from './components/OperatorTerminal';
 import StatsModal from './components/StatsModal';
