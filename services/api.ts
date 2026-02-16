@@ -7,6 +7,12 @@ export const hashPassword = async (p: string): Promise<string> => {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
+// Единый хелпер для всех GET-запросов — добавляет nocache автоматически
+const buildUrl = (params: Record<string, string>): string => {
+  const p = new URLSearchParams({ ...params, nocache: Date.now().toString() });
+  return `${SCRIPT_URL}?${p.toString()}`;
+};
+
 export const parseDashboardData = (text: string): DashboardData | null => {
   try {
     if (!text || text.includes("DOCTYPE")) return null;
@@ -46,7 +52,7 @@ export const parseDashboardData = (text: string): DashboardData | null => {
 export const api = {
   fetchDashboard: async (): Promise<DashboardData | null> => {
     try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}`);
+      const res = await fetch(buildUrl({}));
       const text = await res.text();
       return parseDashboardData(text);
     } catch (e) {
@@ -57,7 +63,7 @@ export const api = {
 
   fetchTasks: async (mode: 'get_operator_tasks' | 'get_stats'): Promise<Task[]> => {
     try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=${mode}`);
+      const res = await fetch(buildUrl({ mode }));
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     } catch (e) {
@@ -67,9 +73,8 @@ export const api = {
   },
 
   fetchHistory: async (dateStr: string): Promise<Task[]> => {
-    // dateStr in DD.MM format expected by backend
     try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
+      const res = await fetch(buildUrl({ mode: 'get_history', date: dateStr }));
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     } catch (e) {
@@ -78,48 +83,48 @@ export const api = {
     }
   },
 
-  // Logistics: Get full plan for editing
   fetchFullPlan: async (dateStr: string): Promise<PlanRow[]> => {
     try {
-       const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_full_plan&date=${encodeURIComponent(dateStr)}`);
-       const data = await res.json();
-       return Array.isArray(data) ? data : [];
+      const res = await fetch(buildUrl({ mode: 'get_full_plan', date: dateStr }));
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
     } catch (e) {
       console.error(e);
       return [];
     }
   },
 
-  // Logistics: Create new plan
   createPlan: async (dateStr: string, tasks: TaskInput[]): Promise<boolean> => {
     try {
-       const payload = JSON.stringify(tasks);
-       await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=create_plan&date=${encodeURIComponent(dateStr)}&tasks=${encodeURIComponent(payload)}`);
-       return true;
-    } catch(e) {
+      const res = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: 'create_plan', date: dateStr, tasks }),
+      });
+      const txt = await res.text();
+      return txt.includes('CREATED');
+    } catch (e) {
       console.error(e);
       return false;
     }
   },
-  
-  // Logistics: Update specific row
+
   updatePlanRow: async (dateStr: string, row: PlanRow): Promise<boolean> => {
     try {
-       const params = new URLSearchParams({
-         mode: 'update_container_row',
-         date: dateStr,
-         row: row.rowIndex.toString(),
-         lot: row.lot,
-         ws: row.ws,
-         pallets: row.pallets,
-         id: row.id,
-         phone: row.phone,
-         eta: row.eta
-       });
-       const res = await fetch(`${SCRIPT_URL}?${params.toString()}`);
-       const txt = await res.text();
-       return txt.includes("UPDATED");
-    } catch(e) {
+      const res = await fetch(buildUrl({
+        mode: 'update_container_row',
+        date: dateStr,
+        row: row.rowIndex.toString(),
+        lot: row.lot,
+        ws: row.ws,
+        pallets: row.pallets,
+        id: row.id,
+        phone: row.phone,
+        eta: row.eta,
+      }));
+      const txt = await res.text();
+      return txt.includes('UPDATED');
+    } catch (e) {
       console.error(e);
       return false;
     }
@@ -127,7 +132,7 @@ export const api = {
 
   fetchAllContainers: async (): Promise<string[]> => {
     try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_all_containers`);
+      const res = await fetch(buildUrl({ mode: 'get_all_containers' }));
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     } catch (e) {
@@ -138,7 +143,7 @@ export const api = {
 
   fetchIssues: async (): Promise<Issue[]> => {
     try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_issues`);
+      const res = await fetch(buildUrl({ mode: 'get_issues' }));
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     } catch (e) {
@@ -149,15 +154,14 @@ export const api = {
 
   login: async (user: string, pass: string): Promise<{ success: boolean; name?: string; role?: string }> => {
     const hash = await hashPassword(pass);
-    const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=login&user=${encodeURIComponent(user)}&hash=${hash}`);
+    const res = await fetch(buildUrl({ mode: 'login', user, hash }));
     const txt = await res.text();
-    if (txt.includes("CORRECT")) {
+    if (txt.includes('CORRECT')) {
       const parts = txt.split('|');
-      // Format: CORRECT|NAME|ROLE
-      return { 
-        success: true, 
+      return {
+        success: true,
         name: parts.length > 1 ? parts[1] : user,
-        role: parts.length > 2 ? parts[2] : 'OPERATOR'
+        role: parts.length > 2 ? parts[2] : 'OPERATOR',
       };
     }
     return { success: false };
@@ -165,8 +169,9 @@ export const api = {
 
   register: async (user: string, pass: string, name: string): Promise<boolean> => {
     const hash = await hashPassword(pass);
-    await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=register&user=${encodeURIComponent(user)}&hash=${hash}&name=${encodeURIComponent(name)}`);
-    return true;
+    const res = await fetch(buildUrl({ mode: 'register', user, hash, name }));
+    const txt = await res.text();
+    return txt.includes('REGISTERED');
   },
 
   uploadPhoto: async (image: string, mimeType: string, filename: string): Promise<string> => {
@@ -174,26 +179,48 @@ export const api = {
       const res = await fetch(SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename })
+        body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename }),
       });
       const data = await res.json();
-      return data.status === "SUCCESS" ? data.url : "";
+      return data.status === 'SUCCESS' ? data.url : '';
     } catch (e) {
       console.error(e);
-      return "";
+      return '';
     }
   },
 
-  taskAction: async (id: string, act: string, user: string, zone: string = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
-    const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${zone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
-    await fetch(url);
+  taskAction: async (
+    id: string,
+    act: string,
+    user: string,
+    zone: string = '',
+    pGen: string = '',
+    pSeal: string = '',
+    pInspect: string = '',
+    pEmpty: string = '',
+  ): Promise<void> => {
+    await fetch(buildUrl({
+      mode: 'task_action',
+      id,
+      act,
+      op: user,
+      zone,
+      pGen,
+      pSeal,
+      pInspect,
+      pEmpty,
+    }));
   },
 
   reportIssue: async (id: string, desc: string, photos: string[], author: string): Promise<void> => {
-    const p1 = photos[0] ? encodeURIComponent(photos[0]) : "";
-    const p2 = photos[1] ? encodeURIComponent(photos[1]) : "";
-    const p3 = photos[2] ? encodeURIComponent(photos[2]) : "";
-    const url = `${SCRIPT_URL}?mode=report_issue&id=${encodeURIComponent(id)}&desc=${encodeURIComponent(desc)}&p1=${p1}&p2=${p2}&p3=${p3}&author=${encodeURIComponent(author)}`;
-    await fetch(url);
-  }
+    await fetch(buildUrl({
+      mode: 'report_issue',
+      id,
+      desc,
+      p1: photos[0] || '',
+      p2: photos[1] || '',
+      p3: photos[2] || '',
+      author,
+    }));
+  },
 };
