@@ -1,210 +1,211 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
-import { TranslationSet, User } from '../types';
-import { Camera, X, Upload, CheckCircle } from 'lucide-react';
+import { Issue, TranslationSet } from '../types';
+import { ArrowLeft, User, Calendar, X, ImageIcon, AlertCircle, ExternalLink, Camera } from 'lucide-react';
 
-interface IssueModalProps {
+interface HistoryModalProps {
   onClose: () => void;
-  user: User | null;
   t: TranslationSet;
 }
 
-interface PhotoData {
-  data: string;
-  mime: string;
-  name: string;
-  preview: string;
-}
-
-const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
-  const [containerIds, setContainerIds] = useState<string[]>([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [description, setDescription] = useState("");
-  const [photos, setPhotos] = useState<(PhotoData | null)[]>([null, null, null]);
-  const [loading, setLoading] = useState(false);
-  const [loadingIds, setLoadingIds] = useState(true);
-  const [uploadStatus, setUploadStatus] = useState("");
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const activePhotoIndex = useRef<number>(0);
+const IssueHistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadIds = async () => {
-      const ids = await api.fetchAllContainers();
-      setContainerIds(ids);
-      setLoadingIds(false);
+    const fetch = async () => {
+      const data = await api.fetchIssues();
+      setIssues(data);
+      setLoading(false);
     };
-    loadIds();
+    fetch();
   }, []);
 
-  const triggerFile = (index: number) => {
-    activePhotoIndex.current = index;
-    fileInputRef.current?.click();
+  const handleIssueClick = (issue: Issue) => {
+    setSelectedIssue(issue);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          
-          const scale = 1200 / img.width;
-          canvas.width = 1200;
-          canvas.height = img.height * scale;
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          
-          const newPhotos = [...photos];
-          newPhotos[activePhotoIndex.current] = {
-            data: canvas.toDataURL('image/jpeg', 0.8),
-            mime: 'image/jpeg',
-            name: `issue_${Date.now()}_${activePhotoIndex.current}.jpg`,
-            preview: canvas.toDataURL('image/jpeg', 0.1)
-          };
-          setPhotos(newPhotos);
-        };
-        if (evt.target?.result) img.src = evt.target.result as string;
-      };
-      reader.readAsDataURL(file);
-    }
-    e.target.value = '';
+  const handleBack = () => {
+    setSelectedIssue(null);
   };
 
-  const removePhoto = (index: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const newPhotos = [...photos];
-    newPhotos[index] = null;
-    setPhotos(newPhotos);
-  };
-
-  const handleSubmit = async () => {
-    if (!selectedId || !description) return;
-
-    setLoading(true);
-    setUploadStatus(t.msg_uploading);
-
-    const uploadedUrls: string[] = [];
-
-    for (let i = 0; i < photos.length; i++) {
-      const p = photos[i];
-      if (p) {
-        setUploadStatus(`${t.msg_uploading} (${i + 1}/${photos.filter(x => x).length})`);
-        const url = await api.uploadPhoto(p.data, p.mime, p.name);
-        uploadedUrls.push(url);
-      } else {
-        uploadedUrls.push("");
-      }
-    }
-
-    setUploadStatus("Sending Report...");
+  // --- ОБНОВЛЕННЫЙ МЕТОД: ОБХОД ЧЕРЕЗ WSRV.NL ---
+  const getDriveImgSrc = (url: string, size?: string) => {
+    if (!url) return '';
+    let id = "";
     
-    await api.reportIssue(
-      selectedId,
-      description,
-      uploadedUrls,
-      user ? user.name : "Guest"
-    );
+    const match1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (match1) id = match1[1];
+    
+    if (!id) {
+      const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (match2) id = match2[1];
+    }
 
-    setLoading(false);
-    alert(t.issue_success);
-    onClose();
+    if (!id) return url;
+
+    // Прямая ссылка на скачивание из Drive
+    const originalFileLink = `https://drive.google.com/uc?export=download&id=${id}`;
+    
+    // Параметры размера для wsrv.nl (по аналогии с вашим архивом)
+    const sizeParam = size ? `&${size.startsWith('w') ? 'w' : 'h'}=${size.replace(/\D/g, '')}` : '&n=-1';
+    
+    // Возвращаем через прокси wsrv.nl (обходит CORS и улучшает загрузку)
+    return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=80${sizeParam}`;
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
-      <div className="bg-[#0F0F12] border border-white/10 p-8 rounded-3xl w-full max-w-[550px] flex flex-col gap-6 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-xl p-0 md:p-8 animate-in fade-in duration-200">
+      <div className="bg-[#0A0A0C] w-full md:w-[95%] max-w-[800px] h-full md:h-[90vh] rounded-none md:rounded-[2.5rem] border-0 md:border border-white/10 flex flex-col shadow-2xl overflow-hidden relative">
         
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-extrabold text-white uppercase tracking-wider">{t.issue_title}</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-6 border-b border-white/10 bg-white/5 shrink-0">
+          <div className="flex items-center gap-4">
+            {selectedIssue && (
+              <button 
+                onClick={handleBack}
+                className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors border border-white/5"
+              >
+                <ArrowLeft className="w-5 h-5 text-white" />
+              </button>
+            )}
+            <div className="text-2xl font-extrabold uppercase tracking-widest text-white">
+              {selectedIssue ? selectedIssue.id : t.history_title}
+            </div>
+          </div>
+          <button 
+            onClick={onClose}
+            className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/20 flex items-center justify-center transition-colors text-white"
+          >
             <X size={24} />
           </button>
         </div>
 
-        {/* Container Selection */}
-        <div>
-          <label className="text-xs font-bold text-white/40 mb-2 block uppercase tracking-wider">Container ID</label>
-          <select 
-            value={selectedId}
-            onChange={(e) => setSelectedId(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all appearance-none"
-            disabled={loadingIds}
-          >
-            <option value="">{loadingIds ? "Loading..." : "Select Container..."}</option>
-            {!loadingIds && containerIds.map(id => (
-              <option key={id} value={id} className="bg-[#1a1a1e] text-white">{id}</option>
-            ))}
-          </select>
-        </div>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-black/20">
+          {loading ? (
+             <div className="flex items-center justify-center h-full">
+               <div className="text-white/50 animate-pulse">{t.msg_loading_history}</div>
+             </div>
+          ) : !selectedIssue ? (
+            // LIST VIEW
+            <div className="p-4 md:p-6 space-y-3">
+              {issues.length === 0 ? (
+                <div className="text-center text-white/30 text-xl font-bold mt-20">{t.history_empty}</div>
+              ) : (
+                issues.map((issue, idx) => (
+                  <div 
+                    key={idx} 
+                    onClick={() => handleIssueClick(issue)}
+                    className="bg-white/5 border border-white/5 rounded-2xl p-5 hover:bg-white/10 transition-all cursor-pointer group flex flex-col gap-2"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-accent-red/10 flex items-center justify-center border border-accent-red/20">
+                           <AlertCircle className="text-accent-red w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="font-mono text-xl font-bold text-white group-hover:text-accent-blue transition-colors">
+                            {issue.id}
+                          </div>
+                          <div className="text-xs text-white/40 font-bold uppercase tracking-wider flex items-center gap-1">
+                             <User size={10} /> {issue.author}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-xs font-mono text-white/30 bg-white/5 px-2 py-1 rounded-lg border border-white/5">
+                        {issue.timestamp.split(',')[0]}
+                      </span>
+                    </div>
+                    
+                    <div className="text-white/70 text-sm line-clamp-2 pl-[52px]">
+                       {issue.desc}
+                    </div>
 
-        {/* Description */}
-        <div>
-           <label className="text-xs font-bold text-white/40 mb-2 block uppercase tracking-wider">Description</label>
-           <textarea
-             value={description}
-             onChange={e => setDescription(e.target.value)}
-             placeholder={t.issue_desc_ph}
-             className="w-full h-32 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/30 focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all resize-none"
-           />
-        </div>
+                    {issue.photos.length > 0 && (
+                      <div className="pl-[52px] flex items-center gap-2 mt-1">
+                         <div className="flex items-center justify-center px-2 py-1 rounded bg-white/5 border border-white/5 text-xs text-white/50 gap-1">
+                            <ImageIcon size={10} /> {issue.photos.length}
+                         </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          ) : (
+            // DETAIL VIEW
+            <div className="p-6 md:p-8 space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+               <div className="flex flex-col gap-2 border-b border-white/10 pb-6">
+                  <div className="flex items-center gap-2 text-white/40 text-sm font-mono">
+                     <Calendar size={14} /> {selectedIssue.timestamp}
+                     <span className="mx-2">|</span>
+                     <User size={14} /> {selectedIssue.author}
+                  </div>
+               </div>
 
-        {/* Photos */}
-        <div>
-           <label className="text-xs font-bold text-white/40 mb-2 block uppercase tracking-wider">Photos (Max 3)</label>
-           <div className="grid grid-cols-3 gap-3">
-              {photos.map((p, idx) => (
-                <div 
-                  key={idx}
-                  onClick={() => triggerFile(idx)}
-                  className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer relative overflow-hidden transition-all ${
-                    p ? 'border-accent-green bg-black' : 'border-white/20 hover:bg-white/5 hover:border-accent-blue'
-                  }`}
-                >
-                   {p ? (
-                     <>
-                       <img src={p.preview} alt="preview" className="absolute inset-0 w-full h-full object-cover opacity-60" />
-                       <CheckCircle className="relative z-10 text-accent-green w-8 h-8 drop-shadow-lg" />
-                       <button 
-                         onClick={(e) => removePhoto(idx, e)}
-                         className="absolute top-1 right-1 bg-black/50 rounded-full p-1 hover:bg-red-500/80 transition-colors z-20"
-                       >
-                         <X size={12} className="text-white" />
-                       </button>
-                     </>
-                   ) : (
-                     <Camera className="text-white/30 w-6 h-6" />
-                   )}
-                </div>
-              ))}
-           </div>
-           {/* ИСПРАВЛЕННЫЙ ИНПУТ: добавлен capture="environment" */}
-           <input 
-             type="file" 
-             ref={fileInputRef} 
-             hidden 
-             accept="image/*" 
-             capture="environment" 
-             onChange={handleFileChange} 
-           />
-        </div>
+               <div className="bg-white/5 rounded-2xl p-6 border border-white/5">
+                 <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-2">{t.lbl_description}</h3>
+                 <p className="text-white text-lg leading-relaxed whitespace-pre-wrap">{selectedIssue.desc}</p>
+               </div>
 
-        {/* Submit */}
-        <div className="mt-2">
-           <button 
-             onClick={handleSubmit}
-             disabled={loading || !selectedId || !description}
-             className="w-full py-4 bg-accent-blue hover:bg-accent-blue/90 text-white font-bold rounded-2xl shadow-lg shadow-accent-blue/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-           >
-             {loading ? <Upload className="animate-bounce w-5 h-5" /> : null}
-             {loading ? uploadStatus : t.issue_btn}
-           </button>
+               {selectedIssue.photos.length > 0 && (
+                 <div>
+                    <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4">{t.lbl_photos_list}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       {selectedIssue.photos.map((url, idx) => {
+                         // Используем прокси для превью и большого фото
+                         const thumbSrc = getDriveImgSrc(url, 'w600');
+                         const fullSrc = getDriveImgSrc(url, 'w2000');
+                         
+                         return (
+                           <div key={idx} className="relative rounded-2xl overflow-hidden border border-white/10 bg-black/50 aspect-video group">
+                              <img 
+                                src={thumbSrc} 
+                                onClick={() => setLightboxImg(fullSrc)}
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                  (e.target as HTMLElement).nextElementSibling?.classList.remove('hidden');
+                                }}
+                                alt="Issue evidence" 
+                                className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300" 
+                              />
+                              <div className="hidden absolute inset-0 flex items-center justify-center bg-white/5">
+                                 <a href={url} target="_blank" rel="noreferrer" className="px-4 py-2 bg-accent-blue rounded-lg text-white font-bold text-sm hover:bg-accent-blue/80 flex items-center gap-2">
+                                   <ExternalLink size={16} /> {t.btn_open_drive}
+                                 </a>
+                              </div>
+                           </div>
+                         );
+                       })}
+                    </div>
+                 </div>
+               )}
+            </div>
+          )}
         </div>
-
       </div>
+
+      {/* Lightbox Overlay */}
+      {lightboxImg && (
+        <div 
+          className="fixed inset-0 z-[70] bg-black/95 flex items-center justify-center p-4 animate-in fade-in duration-200 cursor-zoom-out"
+          onClick={() => setLightboxImg(null)}
+        >
+          <img 
+            src={lightboxImg} 
+            alt="Full view" 
+            className="max-w-full max-h-full rounded-lg shadow-2xl object-contain cursor-default" 
+            onClick={(e) => e.stopPropagation()} 
+          />
+          <button className="absolute top-4 right-4 text-white/50 hover:text-white p-2 transition-colors">
+            <X size={32} />
+          </button>
+        </div>
+      )}
+
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
@@ -213,4 +214,4 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
   );
 };
 
-export default IssueModal;
+export default IssueHistoryModal;
