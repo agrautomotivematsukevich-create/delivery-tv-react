@@ -3,10 +3,11 @@ import { api } from '../services/api';
 import { Issue, TranslationSet } from '../types';
 import { ArrowLeft, User, Calendar, X, ImageIcon, AlertCircle, ExternalLink, Camera } from 'lucide-react';
 
-interface HistoryModalProps {
+interface IssueModalProps {
   onClose: () => void;
   t: TranslationSet;
   user?: User | null;
+}
 
 const IssueHistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
   const [issues, setIssues] = useState<Issue[]>([]);
