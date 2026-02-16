@@ -111,7 +111,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
                             {issue.id}
                           </div>
                           <div className="text-xs text-white/40 font-bold uppercase tracking-wider flex items-center gap-1">
-                             <User size={10} /> {issue.author}
+                             <UserIcon size={10} /> {issue.author}
                           </div>
                         </div>
                       </div>
@@ -142,7 +142,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
                   <div className="flex items-center gap-2 text-white/40 text-sm font-mono">
                      <Calendar size={14} /> {selectedIssue.timestamp}
                      <span className="mx-2">|</span>
-                     <User size={14} /> {selectedIssue.author}
+                     <UserIcon size={14} /> {selectedIssue.author}
                   </div>
                </div>
 
