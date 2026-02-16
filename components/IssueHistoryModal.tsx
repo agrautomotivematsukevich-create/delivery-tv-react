@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
-import { Issue, TranslationSet } from '../types';
-import { ArrowLeft, User, Calendar, X, ImageIcon, AlertCircle, ExternalLink, Camera } from 'lucide-react';
+import { Issue, TranslationSet, User } from '../types'; 
+import { ArrowLeft, User as UserIcon, Calendar, X, ImageIcon, AlertCircle, ExternalLink, Camera } from 'lucide-react';
 
 interface HistoryModalProps {
   onClose: () => void;
   t: TranslationSet;
-}
+  user?: User | null;
 
 const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
   const [issues, setIssues] = useState<Issue[]>([]);
