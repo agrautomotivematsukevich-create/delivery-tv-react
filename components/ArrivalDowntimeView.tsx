@@ -232,29 +232,29 @@ export function ArrivalDowntimeView({ lang }: Props) {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6 max-w-7xl mx-auto text-white">
       {/* Header */}
       <div className="mb-6">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">
+        <h2 className="text-3xl font-bold text-white mb-2">
           {t.analytics_arrival_title}
         </h2>
-        <p className="text-gray-600">
+        <p className="text-gray-400">
           {t.nav_arrival_analytics}
         </p>
       </div>
 
       {/* Date Range Selector */}
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div className="bg-white/5 border border-white/10 rounded-lg shadow-md p-6 mb-6">
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               {t.analytics_date_from}
             </label>
             <input
               type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
@@ -266,7 +266,7 @@ export function ArrivalDowntimeView({ lang }: Props) {
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-4 py-2 border border-white/10 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
@@ -293,37 +293,37 @@ export function ArrivalDowntimeView({ lang }: Props) {
       {/* Statistics */}
       {records.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="bg-white/5 border border-white/10 rounded-lg shadow-md p-6">
             <div className="flex items-center gap-3 mb-2">
               <TrendingUp className="w-6 h-6 text-blue-600" />
-              <h3 className="text-sm font-medium text-gray-600">{t.analytics_total_downtime}</h3>
+              <h3 className="text-sm font-medium text-gray-300">{t.analytics_total_downtime}</h3>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{formatDowntime(totalDowntime)}</p>
+            <p className="text-3xl font-bold text-white">{formatDowntime(totalDowntime)}</p>
           </div>
 
-          <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="bg-white/5 border border-white/10 rounded-lg shadow-md p-6">
             <div className="flex items-center gap-3 mb-2">
               <Clock className="w-6 h-6 text-green-600" />
-              <h3 className="text-sm font-medium text-gray-600">{t.analytics_avg_downtime}</h3>
+              <h3 className="text-sm font-medium text-gray-300">{t.analytics_avg_downtime}</h3>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{formatDowntime(avgDowntime)}</p>
+            <p className="text-3xl font-bold text-white">{formatDowntime(avgDowntime)}</p>
           </div>
 
-          <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="bg-white/5 border border-white/10 rounded-lg shadow-md p-6">
             <div className="flex items-center gap-3 mb-2">
               <Calendar className="w-6 h-6 text-purple-600" />
-              <h3 className="text-sm font-medium text-gray-600">{t.analytics_records_count}</h3>
+              <h3 className="text-sm font-medium text-gray-300">{t.analytics_records_count}</h3>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{records.length}</p>
+            <p className="text-3xl font-bold text-white">{records.length}</p>
           </div>
         </div>
       )}
 
       {/* Data Table */}
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
+      <div className="bg-white/5 border border-white/10 rounded-lg shadow-md overflow-hidden">
         {/* Table Header with Export */}
-        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">
+        <div className="bg-white/5 border border-white/10 rounded-lg shadow-md overflow-hidden">
+          <h3 className="text-lg font-semibold text-white">
             {records.length > 0 ? `${records.length} ${t.analytics_records_count}` : t.analytics_no_arrivals}
           </h3>
           
@@ -342,12 +342,12 @@ export function ArrivalDowntimeView({ lang }: Props) {
         {records.length === 0 ? (
           <div className="p-12 text-center text-gray-500">
             <Clock className="w-16 h-16 mx-auto mb-4 opacity-50" />
-            <p className="text-lg">{t.analytics_no_arrivals}</p>
+            <p className="text-lg text-gray-400">{t.analytics_no_arrivals}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-100 border-b border-gray-200">
+              <thead className="bg-white/5 border-b border-white/10">
                 <tr>
                   <SortableHeader field="date" label={t.analytics_col_date} />
                   <SortableHeader field="id" label="ID" />
@@ -365,7 +365,7 @@ export function ArrivalDowntimeView({ lang }: Props) {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-white/10">
                 {sortedRecords.map((record) => (
                   <tr key={`${record.date}-${record.id}`} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm text-gray-900">{record.date}</td>
@@ -422,7 +422,7 @@ export function ArrivalDowntimeView({ lang }: Props) {
                 <button
                   onClick={() => setEditingRecord(null)}
                   disabled={saving}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50"
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-white/10 transition-colors font-medium disabled:opacity-50"
                 >
                   {t.btn_cancel}
                 </button>
@@ -449,7 +449,7 @@ export function ArrivalDowntimeView({ lang }: Props) {
     return (
       <th
         onClick={() => handleSort(field)}
-        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase cursor-pointer hover:bg-gray-200 transition-colors select-none"
+        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase cursor-pointer hover:bg-white/5 transition-colors select-none"
       >
         <div className="flex items-center gap-2">
           {label}
