@@ -1,7 +1,7 @@
 export interface User {
   user: string;
   name: string;
-  role: 'OPERATOR' | 'LOGISTIC' | 'ADMIN';
+  role: 'OPERATOR' | 'LOGISTIC' | 'ADMIN' | 'AGRL'; // ✅ Added AGRL (Arrival Agent)
 }
 
 export interface Task {
@@ -14,6 +14,7 @@ export interface Task {
   time: string;
   start_time?: string;
   end_time?: string;
+  arrival?: string; // ✅ NEW: Arrival time (HH:MM) for AGRL functionality
   // Extended fields for History
   zone?: string;
   operator?: string;
@@ -163,10 +164,74 @@ export interface TranslationSet {
   dtl_operator: string;
   dtl_zone: string;
   dtl_photos: string;
+  
+  // ✅ NEW: AGRL Role
+  nav_arrival: string;
+  nav_arrival_analytics: string;
+  arrival_terminal_title: string;
+  arrival_mark: string;
+  arrival_time: string;
+  arrival_set_time: string;
+  arrival_current_time: string;
+  arrival_manual_time: string;
+  arrival_success: string;
+  arrival_reset: string;
+  arrival_not_marked: string;
+  arrival_marked: string;
+  arrival_on_site: string;
+  arrival_waiting_unload: string;
+  analytics_arrival_title: string;
+  analytics_date_from: string;
+  analytics_date_to: string;
+  analytics_load_data: string;
+  analytics_total_downtime: string;
+  analytics_avg_downtime: string;
+  analytics_records_count: string;
+  analytics_minutes: string;
+  analytics_hours: string;
+  analytics_col_date: string;
+  analytics_col_eta: string;
+  analytics_col_arrival: string;
+  analytics_col_end: string;
+  analytics_col_downtime: string;
+  analytics_edit_arrival: string;
+  analytics_no_arrivals: string;
 }
 
 export interface TaskAction {
   id: string;
   type: 'start' | 'finish';
   zone?: string | null;
+}
+
+// ============================================
+// ✅ NEW TYPES FOR AGRL ROLE
+// ============================================
+
+/**
+ * Arrival Analytics Record
+ * Represents one container's journey from arrival to completion
+ */
+export interface ArrivalAnalyticsRecord {
+  id: string;           // Container ID
+  date: string;         // Date sheet name (DD.MM)
+  lot?: string;         // Lot number
+  type?: string;        // Container type (BS/AS/PS)
+  pallets?: string;     // Pallets count
+  eta: string;          // Expected time (HH:MM)
+  arrival: string;      // Actual arrival time (HH:MM)
+  start_time?: string;  // Unloading start (HH:MM)
+  end_time?: string;    // Unloading end (HH:MM)
+  downtime: number | null; // Minutes between arrival and end_time
+  zone?: string;        // Unloading zone
+  operator?: string;    // Operator name
+  status: 'WAIT' | 'ACTIVE' | 'DONE';
+}
+
+/**
+ * Simplified container info for Arrival Terminal
+ */
+export interface ContainerSchedule extends Task {
+  index?: string;       // Visual index
+  lot?: string;         // Lot number
 }
