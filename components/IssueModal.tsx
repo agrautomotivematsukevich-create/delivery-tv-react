@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { api } from '../services/api';
-import { Issue, TranslationSet } from '../types';
-import { ArrowLeft, User, Calendar, X, ImageIcon, AlertCircle, ExternalLink, Camera } from 'lucide-react';
+import { TranslationSet, User } from '../types'; // Тип данных
+import { X, Camera, AlertCircle, User as UserIcon } from 'lucide-react';
 
 interface IssueModalProps {
   onClose: () => void;
@@ -9,7 +9,7 @@ interface IssueModalProps {
   user?: User | null;
 }
 
-const IssueHistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
+const IssueModal: React.FC<IssueModalProps> = ({ onClose, t, user }) => {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [loading, setLoading] = useState(true);
