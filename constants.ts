@@ -69,7 +69,41 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     
     dtl_operator: "Оператор",
     dtl_zone: "Зона",
-    dtl_photos: "Фотоотчет"
+    dtl_photos: "Фотоотчет",
+    
+    // ✅ NEW: AGRL Role Translations
+    nav_arrival: "Прибытие",
+    nav_arrival_analytics: "Аналитика прибытий",
+    
+    arrival_terminal_title: "Терминал отметки прибытия",
+    arrival_mark: "Отметить прибытие",
+    arrival_time: "Время прибытия",
+    arrival_set_time: "Установить время",
+    arrival_current_time: "Текущее время",
+    arrival_manual_time: "Ввести вручную",
+    arrival_success: "Прибытие зафиксировано",
+    arrival_reset: "Сбросить",
+    arrival_not_marked: "Не отмечено",
+    arrival_marked: "Прибыл в",
+    arrival_on_site: "На территории",
+    arrival_waiting_unload: "Ожидает выгрузки",
+    
+    analytics_arrival_title: "Аналитика простоев",
+    analytics_date_from: "С",
+    analytics_date_to: "По",
+    analytics_load_data: "Загрузить",
+    analytics_total_downtime: "Общий простой",
+    analytics_avg_downtime: "Средний простой",
+    analytics_records_count: "Записей",
+    analytics_minutes: "мин",
+    analytics_hours: "ч",
+    analytics_col_date: "Дата",
+    analytics_col_eta: "План",
+    analytics_col_arrival: "Прибытие",
+    analytics_col_end: "Окончание",
+    analytics_col_downtime: "Простой",
+    analytics_edit_arrival: "Изменить прибытие",
+    analytics_no_arrivals: "Нет данных о прибытиях за выбранный период"
   },
   EN_CN: {
     title: "Warehouse Monitor / 仓库监控", progress: "PROGRESS / 进度", next: "NEXT / 下一个", list: "ACTIVE TASKS / 任务",
@@ -137,6 +171,40 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     
     dtl_operator: "Operator / 操作员",
     dtl_zone: "Zone / 区域",
-    dtl_photos: "Report Photos / 报告照片"
+    dtl_photos: "Report Photos / 报告照片",
+    
+    // ✅ NEW: AGRL Role Translations
+    nav_arrival: "Arrival / 到达",
+    nav_arrival_analytics: "Arrival Analytics / 到达分析",
+    
+    arrival_terminal_title: "Arrival Terminal / 到达终端",
+    arrival_mark: "Mark Arrival / 标记到达",
+    arrival_time: "Arrival Time / 到达时间",
+    arrival_set_time: "Set Time / 设置时间",
+    arrival_current_time: "Current Time / 当前时间",
+    arrival_manual_time: "Enter Manually / 手动输入",
+    arrival_success: "Arrival Recorded / 到达已记录",
+    arrival_reset: "Reset / 重置",
+    arrival_not_marked: "Not Marked / 未标记",
+    arrival_marked: "Arrived at / 到达于",
+    arrival_on_site: "On Site / 在场",
+    arrival_waiting_unload: "Waiting Unload / 等待卸货",
+    
+    analytics_arrival_title: "Downtime Analytics / 停机分析",
+    analytics_date_from: "From / 从",
+    analytics_date_to: "To / 到",
+    analytics_load_data: "Load / 加载",
+    analytics_total_downtime: "Total Downtime / 总停机时间",
+    analytics_avg_downtime: "Avg Downtime / 平均停机",
+    analytics_records_count: "Records / 记录",
+    analytics_minutes: "min / 分钟",
+    analytics_hours: "h / 小时",
+    analytics_col_date: "Date / 日期",
+    analytics_col_eta: "ETA / 预计",
+    analytics_col_arrival: "Arrival / 到达",
+    analytics_col_end: "End / 结束",
+    analytics_col_downtime: "Downtime / 停机",
+    analytics_edit_arrival: "Edit Arrival / 编辑到达",
+    analytics_no_arrivals: "No arrival data for selected period / 所选期间无到达数据"
   }
 };
