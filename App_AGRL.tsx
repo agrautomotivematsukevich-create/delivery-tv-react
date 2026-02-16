@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import Header from './components/Header';
-import Dashboard from './components/Dashboard';
+import Dashboard from './components/Dashboard_AGRL'; // ✅ Using updated Dashboard
 import AuthModal from './components/AuthModal';
 import OperatorTerminal from './components/OperatorTerminal';
 import StatsModal from './components/StatsModal';
@@ -12,6 +12,9 @@ import AnalyticsView from './components/AnalyticsView';
 import HistoryView from './components/HistoryView';
 import LogisticsView from './components/LogisticsView';
 import ZoneDowntimeView from './components/ZoneDowntimeView';
+// ✅ NEW: AGRL Components
+import { ArrivalTerminal } from './components/ArrivalTerminal';
+import { ArrivalDowntimeView } from './components/ArrivalDowntimeView';
 import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
 import { DashboardData, Lang, User, Task, TaskAction } from './types';
@@ -23,7 +26,8 @@ function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
-  const [view, setView] = useState<'dashboard' | 'history' | 'logistics' | 'downtime' | 'analytics'>('dashboard');
+  // ✅ UPDATED: Added 'arrival' and 'arrival-analytics' views
+  const [view, setView] = useState<'dashboard' | 'history' | 'logistics' | 'downtime' | 'analytics' | 'arrival' | 'arrival-analytics'>('dashboard');
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isAppReady, setIsAppReady] = useState(false);
   const [tvMode, setTvMode] = useState(false);
@@ -33,6 +37,8 @@ function App() {
   const [showStats, setShowStats] = useState(false);
   const [showIssue, setShowIssue] = useState(false);
   const [showIssueHistory, setShowIssueHistory] = useState(false);
+  // ✅ NEW: Arrival Terminal modal state
+  const [showArrivalTerminal, setShowArrivalTerminal] = useState(false);
   const [currentAction, setCurrentAction] = useState<TaskAction | null>(null);
 
   const t = TRANSLATIONS[lang];
@@ -88,6 +94,11 @@ function App() {
     setUser(u);
     localStorage.setItem('warehouse_user', JSON.stringify(u));
     setShowAuth(false);
+    
+    // ✅ NEW: Auto-navigate AGRL users to arrival terminal
+    if (u.role === 'AGRL') {
+      setView('arrival');
+    }
   };
 
   const handleLogout = () => {
@@ -95,6 +106,7 @@ function App() {
     localStorage.removeItem('warehouse_user');
     setView('dashboard');
     setShowTerminal(false);
+    setShowArrivalTerminal(false);
   };
 
   const handleTaskActionRequest = (task: Task, actionType: 'start' | 'finish') => {
@@ -118,11 +130,23 @@ function App() {
     }
   };
 
+  // ✅ UPDATED: Added new view cases
   const renderContent = () => {
     if (view === 'history') return <HistoryView t={t} />;
     if (view === 'logistics') return <LogisticsView t={t} />;
     if (view === 'downtime') return <ZoneDowntimeView t={t} />;
     if (view === 'analytics') return <AnalyticsView t={t} />;
+    // ✅ NEW: AGRL Views
+    if (view === 'arrival') {
+      // Inline arrival terminal (not modal)
+      return (
+        <div className="flex-1 flex items-center justify-center">
+          <ArrivalTerminal lang={lang} onClose={() => setView('dashboard')} />
+        </div>
+      );
+    }
+    if (view === 'arrival-analytics') return <ArrivalDowntimeView lang={lang} />;
+    
     return <Dashboard data={dashboardData} t={t} />;
   };
 
@@ -180,6 +204,8 @@ function App() {
               onStatsClick={() => setShowStats(true)}
               onIssueClick={() => setShowIssue(true)}
               onHistoryClick={() => setShowIssueHistory(true)}
+              // ✅ NEW: AGRL handlers
+              onArrivalTerminalClick={() => setShowArrivalTerminal(true)}
               tvMode={tvMode}
               onTvToggle={handleTvToggle}
             />
@@ -200,6 +226,8 @@ function App() {
         {showStats && <StatsModal t={t} onClose={() => setShowStats(false)} />}
         {showIssue && <IssueModal t={t} user={user} onClose={() => setShowIssue(false)} />}
         {showIssueHistory && <IssueHistoryModal t={t} onClose={() => setShowIssueHistory(false)} />}
+        {/* ✅ NEW: Arrival Terminal Modal (alternative to inline view) */}
+        {showArrivalTerminal && <ArrivalTerminal lang={lang} onClose={() => setShowArrivalTerminal(false)} />}
         {currentAction && user && (
           <ActionModal action={currentAction} user={user} t={t} onClose={() => setCurrentAction(null)} onSuccess={handleActionSuccess} />
         )}
