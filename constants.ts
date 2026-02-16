@@ -29,7 +29,20 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     nav_dashboard: "Дашборд",
     nav_history: "Архив",
     nav_plan: "Поставки",
-    nav_downtime: "Простои", // НОВОЕ
+    nav_downtime: "Простои",
+    nav_analytics: "Аналитика",
+    
+    tv_mode: "ТВ",
+    tv_exit: "Выйти",
+    
+    search_placeholder: "Поиск по ID контейнера...",
+    export_csv: "Экспорт CSV",
+    
+    analytics_title: "Аналитика за 7 дней",
+    analytics_week: "Неделя",
+    analytics_avg_time: "Среднее время (мин)",
+    analytics_containers: "Контейнеров",
+    analytics_no_data: "Нет данных за этот период",
     
     log_title: "План поставок",
     log_date: "Дата поставки",
@@ -84,7 +97,20 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     nav_dashboard: "Dashboard / 仪表板",
     nav_history: "Archive / 档案",
     nav_plan: "Logistics / 物流",
-    nav_downtime: "Downtime / 停机", // НОВОЕ
+    nav_downtime: "Downtime / 停机",
+    nav_analytics: "Analytics / 分析",
+    
+    tv_mode: "TV",
+    tv_exit: "Exit",
+    
+    search_placeholder: "Search by Container ID...",
+    export_csv: "Export CSV",
+    
+    analytics_title: "Analytics (7 days) / 分析 (7天)",
+    analytics_week: "Week / 周",
+    analytics_avg_time: "Avg time (min) / 平均时间",
+    analytics_containers: "Containers / 集装箱",
+    analytics_no_data: "No data for this period / 无数据",
     
     log_title: "Delivery Plan / 交付计划",
     log_date: "Delivery Date / 交货日期",
