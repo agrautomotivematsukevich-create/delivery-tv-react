@@ -8,6 +8,7 @@ import StatsModal from './components/StatsModal';
 import ActionModal from './components/ActionModal';
 import IssueModal from './components/IssueModal';
 import IssueHistoryModal from './components/IssueHistoryModal';
+import AnalyticsView from './components/AnalyticsView';
 import HistoryView from './components/HistoryView';
 import LogisticsView from './components/LogisticsView';
 import ZoneDowntimeView from './components/ZoneDowntimeView';
