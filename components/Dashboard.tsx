@@ -1,11 +1,36 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { DashboardData, TranslationSet } from '../types';
-import { Package, Clock } from 'lucide-react';
+import { Package, Clock, AlertTriangle } from 'lucide-react';
 
 interface DashboardProps {
   data: DashboardData | null;
   t: TranslationSet;
 }
+
+// Живой счётчик времени для активных контейнеров
+const ElapsedTimer: React.FC<{ startTime: string }> = ({ startTime }) => {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const calc = () => {
+      const [h, m] = startTime.split(':').map(Number);
+      if (isNaN(h) || isNaN(m)) return;
+      const start = new Date();
+      start.setHours(h, m, 0, 0);
+      setElapsed(Math.max(0, Math.floor((Date.now() - start.getTime()) / 60000)));
+    };
+    calc();
+    const id = setInterval(calc, 30000);
+    return () => clearInterval(id);
+  }, [startTime]);
+
+  const color = elapsed > 60 ? 'text-red-400' : elapsed > 30 ? 'text-yellow-400' : 'text-accent-green';
+  const label = elapsed >= 60
+    ? `${Math.floor(elapsed / 60)}ч ${elapsed % 60}м`
+    : `${elapsed}м`;
+
+  return <span className={`font-mono text-xl font-bold tabular-nums ${color}`}>{label}</span>;
+};
 
 const formatMinutes = (totalMinutes: number, t: TranslationSet): string => {
   const absMinutes = Math.abs(totalMinutes);
@@ -55,6 +80,16 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
   const isVictory = data.total > 0 && data.done === data.total;
   const isEmpty = data.total === 0;
 
+  // Проверка опоздания — ETA прошёл, а контейнер ещё не стартовал
+  const isOverdue = (timeStr: string): boolean => {
+    if (!timeStr || !timeStr.includes(':')) return false;
+    const [h, m] = timeStr.split(':').map(Number);
+    if (isNaN(h) || isNaN(m)) return false;
+    const target = new Date();
+    target.setHours(h, m, 0, 0);
+    return new Date() > target;
+  };
+
   const getStatusClass = (s: string) => {
     if (s === 'ACTIVE') return 'text-accent-green border-accent-green bg-accent-green/10 shadow-[0_0_20px_rgba(0,230,118,0.4)]';
     if (s === 'PAUSE') return 'text-accent-yellow border-accent-yellow bg-accent-yellow/10 shadow-[0_0_20px_rgba(255,214,10,0.2)]';
@@ -97,12 +132,22 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
       {/* Right Panel */}
       <div className="flex flex-col gap-6 h-full min-h-0">
         {!isVictory && !isEmpty && (
-          <div className={`${glassPanelClass} p-8 flex flex-col justify-center`}>
-            <div className="text-xs font-bold text-white/30 uppercase tracking-[2px] mb-2">{t.next}</div>
+          <div className={`${glassPanelClass} p-8 flex flex-col justify-center transition-all duration-300 ${
+            isOverdue(data.nextTime) ? 'border-red-500/60 animate-pulse' : ''
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs font-bold text-white/30 uppercase tracking-[2px]">{t.next}</div>
+              {isOverdue(data.nextTime) && (
+                <div className="flex items-center gap-1.5 bg-red-500/15 border border-red-500/30 rounded-full px-3 py-1">
+                  <AlertTriangle size={12} className="text-red-400" />
+                  <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">Опаздывает</span>
+                </div>
+              )}
+            </div>
             <div className="font-mono text-6xl md:text-7xl font-bold tracking-tighter my-2 bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent break-all">
               {data.nextId}
             </div>
-            <div className="text-2xl text-accent-blue font-semibold flex items-center gap-3">
+            <div className={`text-2xl font-semibold flex items-center gap-3 ${isOverdue(data.nextTime) ? 'text-red-400' : 'text-accent-blue'}`}>
                <Clock className="w-6 h-6" />
                {calculateTimeDiff(data.nextTime, t)}
             </div>
@@ -129,6 +174,10 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
                    <div className="ml-auto flex flex-col items-end shrink-0">
                       <span className="text-[0.7rem] uppercase text-white/50 font-bold tracking-widest mb-1">{t.lbl_start}</span>
                       <span className="font-mono text-2xl font-bold text-accent-green">{item.start}</span>
+                      <div className="flex items-center gap-1 mt-1">
+                        <Clock size={11} className="text-white/30" />
+                        <ElapsedTimer startTime={item.start} />
+                      </div>
                    </div>
                 </div>
               ))}
