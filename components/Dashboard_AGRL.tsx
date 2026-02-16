@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { DashboardData, TranslationSet } from '../types';
-import { Package, Clock, AlertTriangle } from 'lucide-react';
+import { DashboardData, TranslationSet, Task } from '../types';
+import { Package, Clock, AlertTriangle, Truck } from 'lucide-react';
+import { SCRIPT_URL } from '../constants';
 
 interface DashboardProps {
   data: DashboardData | null;
@@ -69,7 +70,78 @@ const calculateTimeDiff = (timeStr: string, t: TranslationSet): string => {
   return formatMinutes(diffMinutes, t);
 };
 
+// ✅ NEW: Calculate waiting time since arrival
+const calculateWaitingSinceArrival = (arrivalTime: string, t: TranslationSet): string => {
+  if (!arrivalTime || !arrivalTime.includes(':')) return "...";
+  const match = arrivalTime.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return "...";
+  
+  const arrivalH = parseInt(match[1]);
+  const arrivalM = parseInt(match[2]);
+  const now = new Date();
+  const arrival = new Date();
+  
+  arrival.setHours(arrivalH, arrivalM, 0, 0);
+  
+  let waitingMinutes = Math.round((now.getTime() - arrival.getTime()) / 60000);
+  
+  // Handle next day case
+  if (waitingMinutes < 0) {
+    arrival.setDate(arrival.getDate() - 1);
+    waitingMinutes = Math.round((now.getTime() - arrival.getTime()) / 60000);
+  }
+  
+  if (waitingMinutes < 0) return "...";
+  
+  const hours = Math.floor(waitingMinutes / 60);
+  const mins = waitingMinutes % 60;
+  
+  let timeString = "";
+  if (hours > 0) {
+    timeString += `${hours}ч `;
+  }
+  if (mins > 0 || hours === 0) {
+    timeString += `${mins}мин`;
+  }
+  
+  return `${t.arrival_waiting_unload} ${timeString.trim()}`;
+};
+
 const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
+  // ✅ NEW: Track arrival info for next container
+  const [nextContainerArrival, setNextContainerArrival] = useState<string | null>(null);
+  
+  // ✅ NEW: Load arrival info for next container
+  useEffect(() => {
+    if (!data || !data.nextId || data.nextId === '---') {
+      setNextContainerArrival(null);
+      return;
+    }
+    
+    const loadNextContainerInfo = async () => {
+      try {
+        const response = await fetch(`${SCRIPT_URL}?mode=get_operator_tasks&nocache=${Date.now()}`);
+        const tasks: Task[] = await response.json();
+        
+        const nextTask = tasks.find(t => t.id === data.nextId);
+        if (nextTask && nextTask.arrival) {
+          setNextContainerArrival(nextTask.arrival);
+        } else {
+          setNextContainerArrival(null);
+        }
+      } catch (err) {
+        console.error('Failed to load next container arrival:', err);
+        setNextContainerArrival(null);
+      }
+    };
+    
+    loadNextContainerInfo();
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(loadNextContainerInfo, 30000);
+    return () => clearInterval(interval);
+  }, [data?.nextId]);
+  
   if (!data) return <div className="text-white/30 animate-pulse text-center mt-20">Loading Dashboard...</div>;
 
   const percent = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
@@ -133,11 +205,18 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
       <div className="flex flex-col gap-6 h-full min-h-0">
         {!isVictory && !isEmpty && (
           <div className={`${glassPanelClass} p-8 flex flex-col justify-center transition-all duration-300 ${
-            isOverdue(data.nextTime) ? 'border-red-500/60 animate-pulse' : ''
+            isOverdue(data.nextTime) && !nextContainerArrival ? 'border-red-500/60 animate-pulse' : 
+            nextContainerArrival ? 'border-blue-500/60' : ''
           }`}>
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs font-bold text-white/30 uppercase tracking-[2px]">{t.next}</div>
-              {isOverdue(data.nextTime) && (
+              {/* ✅ NEW: Show "On Site" badge if arrived */}
+              {nextContainerArrival ? (
+                <div className="flex items-center gap-1.5 bg-blue-500/15 border border-blue-500/30 rounded-full px-3 py-1">
+                  <Truck size={12} className="text-blue-400" />
+                  <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{t.arrival_on_site}</span>
+                </div>
+              ) : isOverdue(data.nextTime) && (
                 <div className="flex items-center gap-1.5 bg-red-500/15 border border-red-500/30 rounded-full px-3 py-1">
                   <AlertTriangle size={12} className="text-red-400" />
                   <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">Опаздывает</span>
@@ -147,10 +226,18 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
             <div className="font-mono text-6xl md:text-7xl font-bold tracking-tighter my-2 bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent break-all">
               {data.nextId}
             </div>
-            <div className={`text-2xl font-semibold flex items-center gap-3 ${isOverdue(data.nextTime) ? 'text-red-400' : 'text-accent-blue'}`}>
-               <Clock className="w-6 h-6" />
-               {calculateTimeDiff(data.nextTime, t)}
-            </div>
+            {/* ✅ MODIFIED: Show waiting time if arrived, else ETA countdown */}
+            {nextContainerArrival ? (
+              <div className="text-2xl font-semibold flex items-center gap-3 text-blue-400">
+                <Truck className="w-6 h-6" />
+                {calculateWaitingSinceArrival(nextContainerArrival, t)}
+              </div>
+            ) : (
+              <div className={`text-2xl font-semibold flex items-center gap-3 ${isOverdue(data.nextTime) ? 'text-red-400' : 'text-accent-blue'}`}>
+                <Clock className="w-6 h-6" />
+                {calculateTimeDiff(data.nextTime, t)}
+              </div>
+            )}
           </div>
         )}
 
