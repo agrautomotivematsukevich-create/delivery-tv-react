@@ -12,7 +12,6 @@ import AnalyticsView from './components/AnalyticsView';
 import HistoryView from './components/HistoryView';
 import LogisticsView from './components/LogisticsView';
 import ZoneDowntimeView from './components/ZoneDowntimeView';
-import AnalyticsView from './components/AnalyticsView';
 import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
 import { DashboardData, Lang, User, Task, TaskAction } from './types';
