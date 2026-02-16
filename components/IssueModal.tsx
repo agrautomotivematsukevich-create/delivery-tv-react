@@ -6,7 +6,7 @@ import { ArrowLeft, User, Calendar, X, ImageIcon, AlertCircle, ExternalLink, Cam
 interface HistoryModalProps {
   onClose: () => void;
   t: TranslationSet;
-}
+  user?: User | null;
 
 const IssueHistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
   const [issues, setIssues] = useState<Issue[]>([]);
