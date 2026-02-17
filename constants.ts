@@ -102,6 +102,7 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     analytics_col_arrival: "Прибытие",
     analytics_col_end: "Окончание",
     analytics_col_downtime: "Простой",
+    analytics_col_wait: "Ожидание до выгрузки",
     analytics_edit_arrival: "Изменить прибытие",
     analytics_no_arrivals: "Нет данных о прибытиях за выбранный период"
   },
@@ -204,6 +205,7 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     analytics_col_arrival: "Arrival / 到达",
     analytics_col_end: "End / 结束",
     analytics_col_downtime: "Downtime / 停机",
+    analytics_col_wait: "Wait Before Unload / 等待卸货",
     analytics_edit_arrival: "Edit Arrival / 编辑到达",
     analytics_no_arrivals: "No arrival data for selected period / 所选期间无到达数据"
   }

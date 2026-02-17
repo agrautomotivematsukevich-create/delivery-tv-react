@@ -194,6 +194,7 @@ export interface TranslationSet {
   analytics_col_arrival: string;
   analytics_col_end: string;
   analytics_col_downtime: string;
+  analytics_col_wait: string;
   analytics_edit_arrival: string;
   analytics_no_arrivals: string;
 }
@@ -222,7 +223,8 @@ export interface ArrivalAnalyticsRecord {
   arrival: string;      // Actual arrival time (HH:MM)
   start_time?: string;  // Unloading start (HH:MM)
   end_time?: string;    // Unloading end (HH:MM)
-  downtime: number | null; // Minutes between arrival and end_time
+  downtime: number | null;   // Minutes: arrival → end_time (total on-site time)
+  wait_time: number | null;  // Minutes: arrival → start_time (waiting before unload)
   zone?: string;        // Unloading zone
   operator?: string;    // Operator name
   status: 'WAIT' | 'ACTIVE' | 'DONE';
