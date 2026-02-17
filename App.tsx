@@ -138,10 +138,9 @@ function App() {
     if (view === 'analytics') return <AnalyticsView t={t} />;
     // ✅ NEW: AGRL Views
     if (view === 'arrival') {
-      // Inline arrival terminal (not modal)
       return (
-        <div className="flex-1 flex items-center justify-center">
-          <ArrivalTerminal lang={lang} onClose={() => setView('dashboard')} />
+        <div className="flex-1 flex flex-col">
+          <ArrivalTerminal lang={lang} onClose={() => setView('dashboard')} inline={true} />
         </div>
       );
     }

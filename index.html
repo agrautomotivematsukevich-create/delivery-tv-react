@@ -4,6 +4,11 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="https://picsum.photos/32/32" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- iOS PWA meta -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#050507" />
     <title>Warehouse Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -33,18 +38,53 @@
       }
     </script>
     <style>
-      body {
+      /* ─── Base ─── */
+      html, body {
         background-color: #050507;
         color: white;
         background-image: 
           radial-gradient(circle at 20% 20%, rgba(30, 128, 125, 0.15) 0%, transparent 50%),
           radial-gradient(circle at 80% 80%, rgba(42, 157, 143, 0.1) 0%, transparent 50%);
         background-attachment: fixed;
+        /* Prevent iOS overscroll bounce */
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: touch;
       }
-      /* Custom scrollbar */
-      ::-webkit-scrollbar { width: 4px; }
+
+      /* ─── iOS Safe Area ─── */
+      body {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+      }
+
+      /* ─── Custom scrollbar ─── */
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
       ::-webkit-scrollbar-thumb { background: rgba(30, 128, 125, 0.4); border-radius: 4px; }
       ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); }
+
+      /* ─── Prevent text selection on UI elements ─── */
+      button, a { -webkit-tap-highlight-color: transparent; user-select: none; }
+
+      /* ─── Better font rendering on mobile ─── */
+      * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+      /* ─── Safe area bottom helper ─── */
+      .safe-area-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+      .safe-area-top { padding-top: max(1rem, env(safe-area-inset-top)); }
+
+      /* ─── Fix iOS input zoom (prevents zoom on focus for inputs < 16px) ─── */
+      input, textarea, select {
+        font-size: 16px !important;
+      }
+
+      /* ─── No scrollbar helper ─── */
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+      /* ─── Touch-friendly minimum tap target ─── */
+      .tap-target { min-height: 44px; min-width: 44px; }
     </style>
   <script type="importmap">
 {
