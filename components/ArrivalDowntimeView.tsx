@@ -217,18 +217,18 @@ export function ArrivalDowntimeView({ lang }: Props) {
   // Get status color
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'DONE': return 'text-green-600';
-      case 'ACTIVE': return 'text-blue-600';
-      default: return 'text-gray-600';
+      case 'DONE': return 'text-green-400';
+      case 'ACTIVE': return 'text-blue-400';
+      default: return 'text-gray-400';
     }
   };
 
   // Get downtime color (based on severity)
   const getDowntimeColor = (minutes: number | null): string => {
     if (minutes === null) return 'text-gray-400';
-    if (minutes < 30) return 'text-green-600';
-    if (minutes < 60) return 'text-yellow-600';
-    return 'text-red-600';
+    if (minutes < 30) return 'text-green-400';
+    if (minutes < 60) return 'text-yellow-400';
+    return 'text-red-400';
   };
 
   return (
@@ -259,14 +259,14 @@ export function ArrivalDowntimeView({ lang }: Props) {
           </div>
 
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               {t.analytics_date_to}
             </label>
             <input
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              className="w-full px-4 py-2 border border-white/10 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
@@ -322,7 +322,7 @@ export function ArrivalDowntimeView({ lang }: Props) {
       {/* Data Table */}
       <div className="bg-white/5 border border-white/10 rounded-lg shadow-md overflow-hidden">
         {/* Table Header with Export */}
-        <div className="bg-white/5 border border-white/10 rounded-lg shadow-md overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-white/10">
           <h3 className="text-lg font-semibold text-white">
             {records.length > 0 ? `${records.length} ${t.analytics_records_count}` : t.analytics_no_arrivals}
           </h3>
@@ -337,6 +337,7 @@ export function ArrivalDowntimeView({ lang }: Props) {
             </button>
           )}
         </div>
+        
 
         {/* Table Content */}
         {records.length === 0 ? (
@@ -357,32 +358,32 @@ export function ArrivalDowntimeView({ lang }: Props) {
                   <SortableHeader field="start_time" label={t.lbl_start} />
                   <SortableHeader field="end_time" label={t.analytics_col_end} />
                   <SortableHeader field="downtime" label={t.analytics_col_downtime} />
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">
                     {t.dtl_zone}
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">
                     {t.analytics_edit_arrival}
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
                 {sortedRecords.map((record) => (
-                  <tr key={`${record.date}-${record.id}`} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900">{record.date}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{record.id}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{record.type || '-'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900">{record.eta}</td>
-                    <td className="px-4 py-3 text-sm font-semibold text-blue-600">{record.arrival}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{record.start_time || '-'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{record.end_time || '-'}</td>
+                  <tr key={`${record.date}-${record.id}`} className="hover:bg-white/5 transition-colors">
+                    <td className="px-4 py-3 text-sm text-white/70">{record.date}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-white">{record.id}</td>
+                    <td className="px-4 py-3 text-sm text-white/60">{record.type || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-white/80">{record.eta}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-blue-400">{record.arrival}</td>
+                    <td className="px-4 py-3 text-sm text-white/60">{record.start_time || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-white/60">{record.end_time || '-'}</td>
                     <td className={`px-4 py-3 text-sm font-bold ${getDowntimeColor(record.downtime)}`}>
                       {formatDowntime(record.downtime)}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{record.zone || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-white/60">{record.zone || '-'}</td>
                     <td className="px-4 py-3 text-sm">
                       <button
                         onClick={() => handleEditArrival(record)}
-                        className="text-blue-600 hover:text-blue-800 transition-colors"
+                        className="text-blue-400 hover:text-blue-300 transition-colors"
                       >
                         <Edit className="w-4 h-4" />
                       </button>
@@ -397,15 +398,15 @@ export function ArrivalDowntimeView({ lang }: Props) {
 
       {/* Edit Modal */}
       {editingRecord && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full">
-            <div className="bg-blue-600 text-white p-4 rounded-t-lg">
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#0a0a0c] rounded-2xl shadow-2xl max-w-md w-full border border-white/10">
+            <div className="bg-blue-600 text-white p-4 rounded-t-2xl">
               <h3 className="text-xl font-bold">{t.analytics_edit_arrival}</h3>
               <p className="text-blue-100 text-sm mt-1">{editingRecord.id}</p>
             </div>
 
             <div className="p-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 {t.arrival_time} (HH:MM)
               </label>
               
@@ -414,7 +415,7 @@ export function ArrivalDowntimeView({ lang }: Props) {
                 value={newArrivalTime}
                 onChange={(e) => setNewArrivalTime(e.target.value)}
                 placeholder="14:30"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg font-mono text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-lg font-mono text-center text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 disabled={saving}
               />
 
@@ -422,7 +423,7 @@ export function ArrivalDowntimeView({ lang }: Props) {
                 <button
                   onClick={() => setEditingRecord(null)}
                   disabled={saving}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-white/10 transition-colors font-medium disabled:opacity-50"
+                  className="flex-1 px-4 py-2 bg-white/5 text-gray-300 border border-white/10 rounded-lg hover:bg-white/10 transition-colors font-medium disabled:opacity-50"
                 >
                   {t.btn_cancel}
                 </button>
@@ -449,7 +450,7 @@ export function ArrivalDowntimeView({ lang }: Props) {
     return (
       <th
         onClick={() => handleSort(field)}
-        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase cursor-pointer hover:bg-white/5 transition-colors select-none"
+        className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase cursor-pointer hover:bg-white/5 transition-colors select-none"
       >
         <div className="flex items-center gap-2">
           {label}

@@ -96,19 +96,19 @@ const Header: React.FC<HeaderProps> = ({
       <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
         {/* Navigation */}
         {user && (
-          <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/5 overflow-x-auto no-scrollbar max-w-full">
+          <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/5 overflow-x-auto no-scrollbar flex-shrink-0" style={{maxWidth: '100%'}}>
             <button
               onClick={() => setView('dashboard')}
-              className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'dashboard' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
+              className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap min-h-[36px] ${view === 'dashboard' ? 'bg-white/15 text-white shadow-sm' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
             >
-              <LayoutDashboard size={14} />
+              <LayoutDashboard size={13} />
               <span className="hidden sm:inline">{t.nav_dashboard}</span>
             </button>
             <button
               onClick={() => setView('history')}
-              className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'history' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
+              className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap min-h-[36px] ${view === 'history' ? 'bg-white/15 text-white shadow-sm' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
             >
-              <Archive size={14} />
+              <Archive size={13} />
               <span className="hidden sm:inline">{t.nav_history}</span>
             </button>
 
@@ -116,37 +116,46 @@ const Header: React.FC<HeaderProps> = ({
               <>
                 <button
                   onClick={() => setView('analytics')}
-                  className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'analytics' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap min-h-[36px] ${view === 'analytics' ? 'bg-white/15 text-white shadow-sm' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
                 >
-                  <BarChart2 size={14} />
+                  <BarChart2 size={13} />
                   <span className="hidden sm:inline">{t.nav_analytics}</span>
                 </button>
                 <button
                   onClick={() => setView('downtime')}
-                  className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'downtime' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap min-h-[36px] ${view === 'downtime' ? 'bg-white/15 text-white shadow-sm' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
                 >
-                  <TrendingDown size={14} />
+                  <TrendingDown size={13} />
                   <span className="hidden sm:inline">{t.nav_downtime}</span>
                 </button>
                 <button
                   onClick={() => setView('logistics')}
-                  className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'logistics' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap min-h-[36px] ${view === 'logistics' ? 'bg-white/15 text-white shadow-sm' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
                 >
-                  <Truck size={14} />
+                  <Truck size={13} />
                   <span className="hidden sm:inline">{t.nav_plan}</span>
                 </button>
               </>
             )}
             
-            {/* ✅ AGRL Navigation - ONLY shows "Arrival Analytics", Terminal button is separate */}
+            {/* ✅ AGRL Navigation */}
             {(user.role === 'AGRL' || user.role === 'ADMIN') && (
-              <button
-                onClick={() => setView('arrival-analytics')}
-                className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'arrival-analytics' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'}`}
-              >
-                <BarChart2 size={14} />
-                <span className="hidden sm:inline">{t.nav_arrival_analytics}</span>
-              </button>
+              <>
+                <button
+                  onClick={() => setView('arrival')}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap min-h-[36px] ${view === 'arrival' ? 'bg-white/15 text-white shadow-sm' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                >
+                  <Truck size={13} />
+                  <span className="hidden xs:inline">{t.arrival_mark || 'Arrival'}</span>
+                </button>
+                <button
+                  onClick={() => setView('arrival-analytics')}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap min-h-[36px] ${view === 'arrival-analytics' ? 'bg-white/15 text-white shadow-sm' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                >
+                  <BarChart2 size={13} />
+                  <span className="hidden sm:inline">{t.nav_arrival_analytics}</span>
+                </button>
+              </>
             )}
           </div>
         )}
@@ -170,33 +179,24 @@ const Header: React.FC<HeaderProps> = ({
 
           {user && (
             <>
-              {/* ✅ FIXED: Terminal/Arrival button - different for AGRL vs others */}
-              {user.role === 'AGRL' ? (
-                // AGRL: Opens arrival terminal (modal or view)
-                <button
-                  onClick={onArrivalTerminalClick || onTerminalClick}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider text-blue-600 bg-blue-600/10 border border-blue-600/20"
-                >
-                  <Truck size={16} />
-                  <span className="hidden xs:inline">{t.arrival_mark}</span>
-                </button>
-              ) : (
-                // OPERATOR/LOGISTIC/ADMIN: Opens operator terminal
+              {/* Terminal button - OPERATOR/LOGISTIC/ADMIN only (AGRL uses nav) */}
+              {user.role !== 'AGRL' && (
                 <button
                   onClick={onTerminalClick}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider text-accent-blue bg-accent-blue/10 border border-accent-blue/20"
+                  className="flex items-center gap-2 px-3 md:px-4 py-2.5 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider text-accent-blue bg-accent-blue/10 border border-accent-blue/20 hover:bg-accent-blue/20 transition-colors min-h-[40px]"
                 >
-                  <ScanBarcode size={16} />
+                  <ScanBarcode size={15} />
                   <span className="hidden xs:inline">{t.drv_title}</span>
                 </button>
               )}
               
-              {/* ✅ FIXED: Issue button - now calls onIssueClick (not onHistoryClick!) */}
+              {/* Issue report button - all users */}
               <button
                 onClick={onIssueClick}
-                className="p-2 rounded-xl text-accent-red bg-accent-red/10 md:bg-transparent border border-accent-red/20 md:border-transparent"
+                title={t.issue_title}
+                className="flex items-center justify-center w-10 h-10 rounded-xl text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors"
               >
-                <AlertTriangle size={18} />
+                <AlertTriangle size={17} />
               </button>
             </>
           )}

@@ -6,6 +6,7 @@ import { SCRIPT_URL, TRANSLATIONS } from '../constants';
 interface Props {
   lang: Lang;
   onClose: () => void;
+  inline?: boolean;
 }
 
 /**
@@ -16,7 +17,7 @@ interface Props {
  * - Pauses refresh when modal is open
  * - Dark theme matching the main site
  */
-export function ArrivalTerminal({ lang, onClose }: Props) {
+export function ArrivalTerminal({ lang, onClose, inline = false }: Props) {
   const t = TRANSLATIONS[lang];
   
   const [containers, setContainers] = useState<ContainerSchedule[]>([]);
@@ -180,8 +181,7 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
     );
   }
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+  const inner = (
       <div className="bg-[#0a0a0c] rounded-2xl shadow-2xl max-w-4xl w-full my-8 border border-white/10">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-2xl">
@@ -212,39 +212,39 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
               <p className="text-lg">{t.empty}</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {containers.map((container) => (
                 <div
                   key={container.id}
-                  className={`border rounded-xl p-4 transition-all ${
+                  className={`border rounded-xl p-3 sm:p-4 transition-all ${
                     container.arrival 
-                      ? 'bg-green-500/10 border-green-500/30 hover:bg-green-500/15' 
-                      : 'bg-white/5 border-white/10 hover:bg-white/10'
+                      ? 'bg-green-500/10 border-green-500/30' 
+                      : 'bg-white/5 border-white/10'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-start justify-between gap-3">
                     {/* Left: Container Info */}
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="font-bold text-lg text-white">{container.id}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                        <span className="font-bold text-sm sm:text-lg text-white">{container.id}</span>
                         {container.type && (
-                          <span className={`px-2 py-1 rounded border text-xs font-semibold ${getTypeColor(container.type)}`}>
+                          <span className={`px-2 py-0.5 rounded border text-xs font-semibold shrink-0 ${getTypeColor(container.type)}`}>
                             {container.type}
                           </span>
                         )}
-                        <span className={`text-sm font-medium ${getStatusColor(container.status)}`}>
+                        <span className={`text-xs font-medium shrink-0 ${getStatusColor(container.status)}`}>
                           {container.status}
                         </span>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-gray-400">
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs sm:text-sm text-gray-400">
                         {container.lot && (
-                          <div>
+                          <div className="truncate">
                             <span className="font-medium text-gray-500">{t.log_lot}:</span> {container.lot}
                           </div>
                         )}
                         {container.pallets && (
-                          <div>
+                          <div className="truncate">
                             <span className="font-medium text-gray-500">{t.log_pallets}:</span> {container.pallets}
                           </div>
                         )}
@@ -260,19 +260,19 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
                     </div>
 
                     {/* Right: Arrival Status & Action */}
-                    <div className="flex flex-col items-end gap-2">
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
                       {container.arrival ? (
                         <>
-                          <div className="flex items-center gap-2 text-green-400">
-                            <CheckCircle2 className="w-5 h-5" />
+                          <div className="flex items-center gap-1.5 text-green-400">
+                            <CheckCircle2 className="w-4 h-4" />
                             <div className="text-right">
-                              <div className="font-semibold">{t.arrival_marked}</div>
-                              <div className="text-sm">{container.arrival}</div>
+                              <div className="font-semibold text-xs">{t.arrival_marked}</div>
+                              <div className="text-sm font-bold tabular-nums">{container.arrival}</div>
                             </div>
                           </div>
                           <button
                             onClick={() => handleMarkArrival(container)}
-                            className="flex items-center gap-1 px-3 py-1 text-xs text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
+                            className="flex items-center gap-1 px-2 py-1 text-xs text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
                           >
                             <Edit className="w-3 h-3" />
                             {t.log_btn_edit}
@@ -281,7 +281,7 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
                       ) : (
                         <button
                           onClick={() => handleMarkArrival(container)}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+                          className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-1.5 text-xs sm:text-sm active:scale-95"
                         >
                           <Clock className="w-4 h-4" />
                           {t.arrival_mark}
@@ -363,6 +363,14 @@ export function ArrivalTerminal({ lang, onClose }: Props) {
           </div>
         </div>
       )}
+    </div>
+  );
+
+  if (inline) return inner;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+      {inner}
     </div>
   );
 }
