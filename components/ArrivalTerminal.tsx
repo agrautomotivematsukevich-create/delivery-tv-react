@@ -183,7 +183,7 @@ export function ArrivalTerminal({ lang, onClose, inline = false }: Props) {
 
   const inner = (
     <>
-      <div className="bg-[#0a0a0c] rounded-2xl shadow-2xl max-w-4xl w-full my-8 border border-white/10">
+      <div className="bg-[#0a0a0c] rounded-2xl shadow-2xl max-w-4xl w-full my-4 mx-auto border border-white/10">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-2xl">
           <div className="flex items-center justify-between">

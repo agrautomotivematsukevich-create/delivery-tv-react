@@ -56,6 +56,23 @@ export function ArrivalDowntimeView({ lang }: Props) {
     return `${day}.${month}.${year}`;
   };
 
+  // Parse time string HH:MM to minutes since midnight
+  const parseTimeToMinutes = (t: string): number | null => {
+    const m = t?.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    return parseInt(m[1]) * 60 + parseInt(m[2]);
+  };
+
+  // Calculate minutes between two HH:MM strings
+  const minutesBetween = (from: string, to: string): number | null => {
+    const a = parseTimeToMinutes(from);
+    const b = parseTimeToMinutes(to);
+    if (a === null || b === null) return null;
+    let diff = b - a;
+    if (diff < 0) diff += 1440; // handle overnight
+    return diff;
+  };
+
   // Load analytics data
   const loadAnalytics = async () => {
     if (!fromDate || !toDate) return;
@@ -71,7 +88,15 @@ export function ArrivalDowntimeView({ lang }: Props) {
       const response = await fetch(url);
       const data: ArrivalAnalyticsRecord[] = await response.json();
       
-      setRecords(data);
+      // Compute wait_time (arrival → start_time) on the frontend
+      const enriched = data.map(r => ({
+        ...r,
+        wait_time: (r.arrival && r.start_time)
+          ? minutesBetween(r.arrival, r.start_time)
+          : null,
+      }));
+      
+      setRecords(enriched);
     } catch (err) {
       console.error('Failed to load analytics:', err);
       alert('Failed to load data');
@@ -116,6 +141,8 @@ export function ArrivalDowntimeView({ lang }: Props) {
   // Calculate statistics
   const totalDowntime = records.reduce((sum, r) => sum + (r.downtime || 0), 0);
   const avgDowntime = records.length > 0 ? totalDowntime / records.length : 0;
+  const totalWait = records.reduce((sum, r) => sum + (r.wait_time || 0), 0);
+  const avgWait = records.length > 0 ? totalWait / records.length : 0;
 
   // Format minutes to readable format
   const formatDowntime = (minutes: number | null): string => {
@@ -182,6 +209,7 @@ export function ArrivalDowntimeView({ lang }: Props) {
       t.analytics_col_arrival,
       t.lbl_start,
       t.analytics_col_end,
+      `${t.analytics_col_wait} (${t.analytics_minutes})`,
       `${t.analytics_col_downtime} (${t.analytics_minutes})`,
       t.dtl_zone,
       t.dtl_operator
@@ -197,6 +225,7 @@ export function ArrivalDowntimeView({ lang }: Props) {
       r.arrival,
       r.start_time || '',
       r.end_time || '',
+      r.wait_time?.toString() || '',
       r.downtime?.toString() || '',
       r.zone || '',
       r.operator || ''
@@ -292,13 +321,14 @@ export function ArrivalDowntimeView({ lang }: Props) {
 
       {/* Statistics */}
       {records.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white/5 border border-white/10 rounded-lg shadow-md p-6">
             <div className="flex items-center gap-3 mb-2">
               <TrendingUp className="w-6 h-6 text-blue-600" />
               <h3 className="text-sm font-medium text-gray-300">{t.analytics_total_downtime}</h3>
             </div>
             <p className="text-3xl font-bold text-white">{formatDowntime(totalDowntime)}</p>
+            <p className="text-xs text-gray-500 mt-1">Прибытие → Окончание</p>
           </div>
 
           <div className="bg-white/5 border border-white/10 rounded-lg shadow-md p-6">
@@ -307,6 +337,16 @@ export function ArrivalDowntimeView({ lang }: Props) {
               <h3 className="text-sm font-medium text-gray-300">{t.analytics_avg_downtime}</h3>
             </div>
             <p className="text-3xl font-bold text-white">{formatDowntime(avgDowntime)}</p>
+            <p className="text-xs text-gray-500 mt-1">Прибытие → Окончание</p>
+          </div>
+
+          <div className="bg-white/5 border border-orange-500/20 rounded-lg shadow-md p-6">
+            <div className="flex items-center gap-3 mb-2">
+              <Clock className="w-6 h-6 text-orange-400" />
+              <h3 className="text-sm font-medium text-gray-300">Суммарное ожидание</h3>
+            </div>
+            <p className="text-3xl font-bold text-orange-300">{formatDowntime(totalWait)}</p>
+            <p className="text-xs text-gray-500 mt-1">Прибытие → Начало выгрузки</p>
           </div>
 
           <div className="bg-white/5 border border-white/10 rounded-lg shadow-md p-6">
@@ -357,6 +397,7 @@ export function ArrivalDowntimeView({ lang }: Props) {
                   <SortableHeader field="arrival" label={t.analytics_col_arrival} />
                   <SortableHeader field="start_time" label={t.lbl_start} />
                   <SortableHeader field="end_time" label={t.analytics_col_end} />
+                  <SortableHeader field="wait_time" label={t.analytics_col_wait} />
                   <SortableHeader field="downtime" label={t.analytics_col_downtime} />
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">
                     {t.dtl_zone}
@@ -376,6 +417,9 @@ export function ArrivalDowntimeView({ lang }: Props) {
                     <td className="px-4 py-3 text-sm font-semibold text-blue-400">{record.arrival}</td>
                     <td className="px-4 py-3 text-sm text-white/60">{record.start_time || '-'}</td>
                     <td className="px-4 py-3 text-sm text-white/60">{record.end_time || '-'}</td>
+                    <td className={`px-4 py-3 text-sm font-bold ${record.wait_time !== null ? getDowntimeColor(record.wait_time) : 'text-gray-400'}`}>
+                      {formatDowntime(record.wait_time ?? null)}
+                    </td>
                     <td className={`px-4 py-3 text-sm font-bold ${getDowntimeColor(record.downtime)}`}>
                       {formatDowntime(record.downtime)}
                     </td>
