@@ -1,7 +1,7 @@
 export interface User {
   user: string;
   name: string;
-  role: 'OPERATOR' | 'LOGISTIC' | 'ADMIN' | 'AGRL'; // ✅ Added AGRL (Arrival Agent)
+  role: "OPERATOR" | "LOGISTIC" | "ADMIN" | "AGRL"; // ✅ Added AGRL (Arrival Agent)
 }
 
 export interface Task {
@@ -10,7 +10,7 @@ export interface Task {
   pallets?: string;
   phone?: string;
   eta?: string;
-  status: 'WAIT' | 'ACTIVE' | 'DONE';
+  status: "WAIT" | "ACTIVE" | "DONE";
   time: string;
   start_time?: string;
   end_time?: string;
@@ -46,20 +46,20 @@ export interface DashboardData {
 }
 
 export interface TaskInput {
-  id: string;       // Col E: Container ID
-  lot: string;      // Col B: Lot No
-  ws: string;       // Col C: W/S (BS/AS/PS/Custom)
-  pallets: string;  // Col D: Pallets/Cases
-  phone: string;    // Col F: Driver Phone
-  eta: string;      // Col G: ETA
+  id: string; // Col E: Container ID
+  lot: string; // Col B: Lot No
+  ws: string; // Col C: W/S (BS/AS/PS/Custom)
+  pallets: string; // Col D: Pallets/Cases
+  phone: string; // Col F: Driver Phone
+  eta: string; // Col G: ETA
 }
 
 export interface PlanRow extends TaskInput {
   rowIndex: number; // For backend updates
-  index: number;    // Visual index (Col A)
+  index: number; // Visual index (Col A)
 }
 
-export type Lang = 'RU' | 'EN_CN';
+export type Lang = "RU" | "EN_CN";
 
 export interface TranslationSet {
   title: string;
@@ -104,7 +104,7 @@ export interface TranslationSet {
   history_title: string;
   history_empty: string;
   history_back: string;
-  
+
   // New additions
   menu_history: string;
   menu_logout: string;
@@ -119,24 +119,24 @@ export interface TranslationSet {
   nav_plan: string;
   nav_downtime: string;
   nav_analytics: string;
-  
+
   // TV mode
   tv_mode: string;
   tv_exit: string;
-  
+
   // Search
   search_placeholder: string;
-  
+
   // Export
   export_csv: string;
-  
+
   // Analytics
   analytics_title: string;
   analytics_week: string;
   analytics_avg_time: string;
   analytics_containers: string;
   analytics_no_data: string;
-  
+
   log_title: string;
   log_date: string;
   log_add_row: string;
@@ -148,7 +148,7 @@ export interface TranslationSet {
   log_phone: string;
   log_eta: string;
   log_id: string;
-  
+
   // Logistics Editor
   log_mode_create: string;
   log_mode_edit: string;
@@ -156,15 +156,15 @@ export interface TranslationSet {
   log_btn_edit: string;
   log_btn_save: string;
   log_no_data: string;
-  
+
   hist_select_date: string;
   hist_load: string;
   hist_no_data: string;
-  
+
   dtl_operator: string;
   dtl_zone: string;
   dtl_photos: string;
-  
+
   // ✅ NEW: AGRL Role
   nav_arrival: string;
   nav_arrival_analytics: string;
@@ -201,9 +201,40 @@ export interface TranslationSet {
 
 export interface TaskAction {
   id: string;
-  type: 'start' | 'finish';
+  type: "start" | "finish";
   zone?: string | null;
 }
+
+// ============================================
+// DOWNTIME REASONS TYPES
+// ============================================
+
+export interface DowntimeReason {
+  date: string; // DD.MM
+  zone: string;
+  start_time: string; // HH:MM (= end_time of last container)
+  reason: string;
+  author?: string;
+  updated_at?: string;
+}
+
+export interface ActiveDowntime {
+  zone: string;
+  lastContainerId: string;
+  lastEndTime: string; // HH:MM
+  idleMinutes: number;
+  startTime: string; // Same as lastEndTime (HH:MM), key for matching reasons
+}
+
+export const DOWNTIME_REASON_OPTIONS = [
+  "Зона выгрузки переполнена",
+  "Авто нет на парковке",
+  "Оператор не успевает",
+  "Техническая неисправность",
+  "Ожидание документов",
+  "Поставки закончились",
+  "Другое",
+] as const;
 
 // ============================================
 // ✅ NEW TYPES FOR AGRL ROLE
@@ -214,26 +245,26 @@ export interface TaskAction {
  * Represents one container's journey from arrival to completion
  */
 export interface ArrivalAnalyticsRecord {
-  id: string;           // Container ID
-  date: string;         // Date sheet name (DD.MM)
-  lot?: string;         // Lot number
-  type?: string;        // Container type (BS/AS/PS)
-  pallets?: string;     // Pallets count
-  eta: string;          // Expected time (HH:MM)
-  arrival: string;      // Actual arrival time (HH:MM)
-  start_time?: string;  // Unloading start (HH:MM)
-  end_time?: string;    // Unloading end (HH:MM)
-  downtime: number | null;   // Minutes: arrival → end_time (total on-site time)
-  wait_time: number | null;  // Minutes: arrival → start_time (waiting before unload)
-  zone?: string;        // Unloading zone
-  operator?: string;    // Operator name
-  status: 'WAIT' | 'ACTIVE' | 'DONE';
+  id: string; // Container ID
+  date: string; // Date sheet name (DD.MM)
+  lot?: string; // Lot number
+  type?: string; // Container type (BS/AS/PS)
+  pallets?: string; // Pallets count
+  eta: string; // Expected time (HH:MM)
+  arrival: string; // Actual arrival time (HH:MM)
+  start_time?: string; // Unloading start (HH:MM)
+  end_time?: string; // Unloading end (HH:MM)
+  downtime: number | null; // Minutes: arrival → end_time (total on-site time)
+  wait_time: number | null; // Minutes: arrival → start_time (waiting before unload)
+  zone?: string; // Unloading zone
+  operator?: string; // Operator name
+  status: "WAIT" | "ACTIVE" | "DONE";
 }
 
 /**
  * Simplified container info for Arrival Terminal
  */
 export interface ContainerSchedule extends Task {
-  index?: string;       // Visual index
-  lot?: string;         // Lot number
+  index?: string; // Visual index
+  lot?: string; // Lot number
 }

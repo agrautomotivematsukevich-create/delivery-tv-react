@@ -1,6 +1,6 @@
 import { Lang, TranslationSet } from "./types";
 
-export const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzQg1tkrETgB3t0b612vPH2T2OPA4StImyMam1ALNv-Lu188i8r9lLvSScJgcszNEYAcw/exec';
+export const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyr93urmvnJiYcDR0CcML92KR9dS0pAN8qdrI-wK9p1q8Z3Hn3JqkH1MRo4LgYtOy4QeA/exec';
 
 export const TRANSLATIONS: Record<Lang, TranslationSet> = {
   RU: {
