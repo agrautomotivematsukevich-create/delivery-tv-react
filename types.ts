@@ -224,6 +224,10 @@ export interface ActiveDowntime {
   lastEndTime: string; // HH:MM
   idleMinutes: number;
   startTime: string; // Same as lastEndTime (HH:MM), key for matching reasons
+  // Optional fields for historical intervals (used in Header.tsx and ZoneDowntimeView.tsx)
+  isHistorical?: boolean;
+  nextContainerId?: string;
+  nextStartTime?: string;
 }
 
 export const DOWNTIME_REASON_OPTIONS = [
