@@ -140,7 +140,8 @@ function handleGetHistory(ss, e) {
   var lr = sheet.getLastRow();
   if (lr < 5) return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
 
-  var data = sheet.getRange(5, 1, lr - 4, 15).getDisplayValues();
+  // Read 16 columns: A-P (includes col P = Arrival time on territory)
+  var data = sheet.getRange(5, 1, lr - 4, 16).getDisplayValues();
   var tasks = [];
 
   for (var i = 0; i < data.length; i++) {
@@ -164,7 +165,8 @@ function handleGetHistory(ss, e) {
         operator: row[11],
         photo_gen: row[12], 
         photo_seal: row[13], 
-        photo_empty: row[14]
+        photo_empty: row[14],
+        arrival_time: row[15]  // Col P: Время прибытия на территорию АГМ
       });
     }
   }

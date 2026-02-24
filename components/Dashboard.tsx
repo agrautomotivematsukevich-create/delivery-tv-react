@@ -1,51 +1,62 @@
 import React, { useState, useEffect } from 'react';
-import { DashboardData, TranslationSet, Task } from '../types';
-import { Package, Clock, AlertTriangle, Truck } from 'lucide-react';
-import { SCRIPT_URL } from '../constants';
+import { DashboardData, TranslationSet } from '../types';
+import { Package, Clock } from 'lucide-react';
 
 interface DashboardProps {
   data: DashboardData | null;
   t: TranslationSet;
 }
 
-// Живой счётчик времени для активных контейнеров
-const ElapsedTimer: React.FC<{ startTime: string }> = ({ startTime }) => {
-  const [elapsed, setElapsed] = useState(0);
+const SHIFT_NORM = 55;
+const SHIFT_LEN_MIN = 530; // 8ч 50м
 
-  useEffect(() => {
-    const calc = () => {
-      const [h, m] = startTime.split(':').map(Number);
-      if (isNaN(h) || isNaN(m)) return;
-      const start = new Date();
-      start.setHours(h, m, 0, 0);
-      setElapsed(Math.max(0, Math.floor((Date.now() - start.getTime()) / 60000)));
-    };
-    calc();
-    const id = setInterval(calc, 30000);
-    return () => clearInterval(id);
-  }, [startTime]);
+/**
+ * Сколько контейнеров ожидается к текущему моменту смены.
+ * Утренняя 7:50–16:40 → 55 шт., вечерняя 16:40–1:40 → ещё 55 шт.
+ */
+function getExpectedByNow(): number {
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const mornStart = 7 * 60 + 50;   // 470
+  const eveStart  = 16 * 60 + 40;  // 1000
 
-  const color = elapsed > 60 ? 'text-red-400' : elapsed > 30 ? 'text-yellow-400' : 'text-accent-green';
-  const label = elapsed >= 60
-    ? `${Math.floor(elapsed / 60)}ч ${elapsed % 60}м`
-    : `${elapsed}м`;
+  if (nowMin < mornStart) return 0;
 
-  return <span className={`font-mono text-xl font-bold tabular-nums ${color}`}>{label}</span>;
-};
+  if (nowMin < eveStart) {
+    // Идёт утренняя смена
+    const elapsed = nowMin - mornStart;
+    return Math.round((Math.min(elapsed, SHIFT_LEN_MIN) / SHIFT_LEN_MIN) * SHIFT_NORM);
+  }
+
+  // Вечерняя смена
+  const adjNow    = nowMin >= eveStart ? nowMin : nowMin + 1440;
+  const eveElapsed = Math.min(adjNow - eveStart, SHIFT_LEN_MIN);
+  return Math.round(SHIFT_NORM + (eveElapsed / SHIFT_LEN_MIN) * SHIFT_NORM);
+}
+
+/**
+ * Позиция маркера на баре: % прошедшего времени ТЕКУЩЕЙ смены (0–1).
+ */
+function getShiftBarFraction(): number {
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const mornStart = 7 * 60 + 50;
+  const eveStart  = 16 * 60 + 40;
+
+  if (nowMin < mornStart) return 0;
+  if (nowMin < eveStart)  return Math.min(1, (nowMin - mornStart) / SHIFT_LEN_MIN);
+
+  const adjNow = nowMin >= eveStart ? nowMin : nowMin + 1440;
+  return Math.min(1, (adjNow - eveStart) / SHIFT_LEN_MIN);
+}
 
 const formatMinutes = (totalMinutes: number, t: TranslationSet): string => {
   const absMinutes = Math.abs(totalMinutes);
   const hours = Math.floor(absMinutes / 60);
   const mins = absMinutes % 60;
-
   let timeString = "";
-  if (hours > 0) {
-    timeString += `${hours}ч `;
-  }
-  if (mins > 0 || hours === 0) {
-    timeString += `${mins} мин`;
-  }
-
+  if (hours > 0) timeString += `${hours}ч `;
+  if (mins > 0 || hours === 0) timeString += `${mins} мин`;
   const prefix = totalMinutes >= 0 ? t.eta_prefix : t.delay_prefix;
   return `${prefix}${timeString.trim()}`;
 };
@@ -54,94 +65,79 @@ const calculateTimeDiff = (timeStr: string, t: TranslationSet): string => {
   if (!timeStr || !timeStr.includes(':')) return "...";
   const match = timeStr.match(/(\d{1,2}):(\d{2})/);
   if (!match) return "...";
-  
   const targetH = parseInt(match[1]);
   const targetM = parseInt(match[2]);
   const now = new Date();
   let target = new Date();
-  
   target.setHours(targetH, targetM, 0, 0);
-  
   let diffMinutes = Math.round((target.getTime() - now.getTime()) / 60000);
-  
   if (diffMinutes < -720) diffMinutes += 1440;
   if (diffMinutes === 0) return "NOW";
-  
   return formatMinutes(diffMinutes, t);
 };
 
-// ✅ NEW: Calculate waiting time since arrival
-const calculateWaitingSinceArrival = (arrivalTime: string, t: TranslationSet): string => {
-  if (!arrivalTime || !arrivalTime.includes(':')) return "...";
-  const match = arrivalTime.match(/(\d{1,2}):(\d{2})/);
-  if (!match) return "...";
-  
-  const arrivalH = parseInt(match[1]);
-  const arrivalM = parseInt(match[2]);
-  const now = new Date();
-  const arrival = new Date();
-  
-  arrival.setHours(arrivalH, arrivalM, 0, 0);
-  
-  let waitingMinutes = Math.round((now.getTime() - arrival.getTime()) / 60000);
-  
-  // Handle next day case
-  if (waitingMinutes < 0) {
-    arrival.setDate(arrival.getDate() - 1);
-    waitingMinutes = Math.round((now.getTime() - arrival.getTime()) / 60000);
-  }
-  
-  if (waitingMinutes < 0) return "...";
-  
-  const hours = Math.floor(waitingMinutes / 60);
-  const mins = waitingMinutes % 60;
-  
-  let timeString = "";
-  if (hours > 0) {
-    timeString += `${hours}ч `;
-  }
-  if (mins > 0 || hours === 0) {
-    timeString += `${mins}мин`;
-  }
-  
-  return `${t.arrival_waiting_unload} ${timeString.trim()}`;
+// ── Виджет нормы смены ────────────────────────────────────────────────────────
+const ShiftNormWidget: React.FC<{ done: number; t: TranslationSet }> = ({ done, t }) => {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(n => n + 1), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  const expected = getExpectedByNow();
+  const barFraction = getShiftBarFraction(); // позиция маркера "где должны быть"
+  const delta = done - expected;
+
+  const isAhead   = delta >= 2;
+  const isBehind  = delta <= -3;
+  const normReached = done >= SHIFT_NORM;
+
+  const status = normReached
+    ? { label: '✓ НОРМА',       cls: 'text-emerald-400', bar: 'bg-emerald-400' }
+    : isAhead
+    ? { label: t.shift_ahead,   cls: 'text-emerald-400', bar: 'bg-emerald-400' }
+    : isBehind
+    ? { label: t.shift_behind,  cls: 'text-red-400',     bar: 'bg-red-400'     }
+    : { label: t.shift_on_track, cls: 'text-white/50',   bar: 'bg-white/30'    };
+
+  // Бар показывает done / SHIFT_NORM (до 100%)
+  const barPct  = Math.min(100, (done / SHIFT_NORM) * 100);
+  // Маркер — где мы должны быть по темпу текущей смены
+  const markPct = Math.min(100, barFraction * 100);
+
+  return (
+    <div className={`w-full mt-4 rounded-2xl px-5 py-4 space-y-2.5 border transition-colors duration-500 ${
+      isBehind      ? 'border-red-500/20 bg-red-500/5'
+      : (isAhead || normReached) ? 'border-emerald-500/20 bg-emerald-500/5'
+      : 'border-white/8 bg-white/4'
+    }`}>
+      <div className="flex items-baseline justify-between">
+        <span className={`text-5xl font-black tabular-nums leading-none ${status.cls}`}>
+          {done}
+        </span>
+        <span className={`text-sm font-bold uppercase tracking-widest ${status.cls} opacity-80`}>
+          {status.label}
+        </span>
+      </div>
+
+      <div className="relative h-2 w-full rounded-full bg-white/8 overflow-visible">
+        {/* Маркер темпа */}
+        <div
+          className="absolute top-1/2 -translate-y-1/2 w-0.5 h-4 bg-white/25 rounded-full z-10"
+          style={{ left: `${markPct}%` }}
+        />
+        {/* Фактический прогресс */}
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${status.bar}`}
+          style={{ width: `${barPct}%` }}
+        />
+      </div>
+    </div>
+  );
 };
+// ─────────────────────────────────────────────────────────────────────────────
 
 const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
-  // ✅ NEW: Track arrival info for next container
-  const [nextContainerArrival, setNextContainerArrival] = useState<string | null>(null);
-  
-  // ✅ NEW: Load arrival info for next container
-  useEffect(() => {
-    if (!data || !data.nextId || data.nextId === '---') {
-      setNextContainerArrival(null);
-      return;
-    }
-    
-    const loadNextContainerInfo = async () => {
-      try {
-        const response = await fetch(`${SCRIPT_URL}?mode=get_operator_tasks&nocache=${Date.now()}`);
-        const tasks: Task[] = await response.json();
-        
-        const nextTask = tasks.find(t => t.id === data.nextId);
-        if (nextTask && nextTask.arrival) {
-          setNextContainerArrival(nextTask.arrival);
-        } else {
-          setNextContainerArrival(null);
-        }
-      } catch (err) {
-        console.error('Failed to load next container arrival:', err);
-        setNextContainerArrival(null);
-      }
-    };
-    
-    loadNextContainerInfo();
-    
-    // Refresh every 30 seconds
-    const interval = setInterval(loadNextContainerInfo, 30000);
-    return () => clearInterval(interval);
-  }, [data?.nextId]);
-  
   if (!data) return <div className="text-white/30 animate-pulse text-center mt-20">Loading Dashboard...</div>;
 
   const percent = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
@@ -151,16 +147,6 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
 
   const isVictory = data.total > 0 && data.done === data.total;
   const isEmpty = data.total === 0;
-
-  // Проверка опоздания — ETA прошёл, а контейнер ещё не стартовал
-  const isOverdue = (timeStr: string): boolean => {
-    if (!timeStr || !timeStr.includes(':')) return false;
-    const [h, m] = timeStr.split(':').map(Number);
-    if (isNaN(h) || isNaN(m)) return false;
-    const target = new Date();
-    target.setHours(h, m, 0, 0);
-    return new Date() > target;
-  };
 
   const getStatusClass = (s: string) => {
     if (s === 'ACTIVE') return 'text-accent-green border-accent-green bg-accent-green/10 shadow-[0_0_20px_rgba(0,230,118,0.4)]';
@@ -195,49 +181,28 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
           </div>
         </div>
 
-        <div className="font-mono text-3xl text-white/50 font-medium mb-8">{data.done} / {data.total}</div>
+        <div className="font-mono text-3xl text-white/50 font-medium mb-6">{data.done} / {data.total}</div>
+
         <div className={`w-full py-5 rounded-2xl text-lg font-extrabold uppercase tracking-widest border transition-all duration-300 ${getStatusClass(data.status)}`}>
            {data.status === 'ACTIVE' ? t.status_active : data.status === 'PAUSE' ? t.status_pause : t.status_wait}
         </div>
+
+        {/* ── НОРМА СМЕНЫ ── */}
+        <ShiftNormWidget done={data.done} t={t} />
       </div>
 
       {/* Right Panel */}
       <div className="flex flex-col gap-6 h-full min-h-0">
         {!isVictory && !isEmpty && (
-          <div className={`${glassPanelClass} p-8 flex flex-col justify-center transition-all duration-300 ${
-            isOverdue(data.nextTime) && !nextContainerArrival ? 'border-red-500/60 animate-pulse' : 
-            nextContainerArrival ? 'border-blue-500/60' : ''
-          }`}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-xs font-bold text-white/30 uppercase tracking-[2px]">{t.next}</div>
-              {/* ✅ NEW: Show "On Site" badge if arrived */}
-              {nextContainerArrival ? (
-                <div className="flex items-center gap-1.5 bg-blue-500/15 border border-blue-500/30 rounded-full px-3 py-1">
-                  <Truck size={12} className="text-blue-400" />
-                  <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{t.arrival_on_site}</span>
-                </div>
-              ) : isOverdue(data.nextTime) && (
-                <div className="flex items-center gap-1.5 bg-red-500/15 border border-red-500/30 rounded-full px-3 py-1">
-                  <AlertTriangle size={12} className="text-red-400" />
-                  <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">Опаздывает</span>
-                </div>
-              )}
-            </div>
+          <div className={`${glassPanelClass} p-8 flex flex-col justify-center`}>
+            <div className="text-xs font-bold text-white/30 uppercase tracking-[2px] mb-2">{t.next}</div>
             <div className="font-mono text-6xl md:text-7xl font-bold tracking-tighter my-2 bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent break-all">
               {data.nextId}
             </div>
-            {/* ✅ MODIFIED: Show waiting time if arrived, else ETA countdown */}
-            {nextContainerArrival ? (
-              <div className="text-2xl font-semibold flex items-center gap-3 text-blue-400">
-                <Truck className="w-6 h-6" />
-                {calculateWaitingSinceArrival(nextContainerArrival, t)}
-              </div>
-            ) : (
-              <div className={`text-2xl font-semibold flex items-center gap-3 ${isOverdue(data.nextTime) ? 'text-red-400' : 'text-accent-blue'}`}>
-                <Clock className="w-6 h-6" />
-                {calculateTimeDiff(data.nextTime, t)}
-              </div>
-            )}
+            <div className="text-2xl text-accent-blue font-semibold flex items-center gap-3">
+               <Clock className="w-6 h-6" />
+               {calculateTimeDiff(data.nextTime, t)}
+            </div>
           </div>
         )}
 
@@ -261,10 +226,6 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
                    <div className="ml-auto flex flex-col items-end shrink-0">
                       <span className="text-[0.7rem] uppercase text-white/50 font-bold tracking-widest mb-1">{t.lbl_start}</span>
                       <span className="font-mono text-2xl font-bold text-accent-green">{item.start}</span>
-                      <div className="flex items-center gap-1 mt-1">
-                        <Clock size={11} className="text-white/30" />
-                        <ElapsedTimer startTime={item.start} />
-                      </div>
                    </div>
                 </div>
               ))}
@@ -298,3 +259,4 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t }) => {
 };
 
 export default Dashboard;
+
