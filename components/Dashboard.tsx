@@ -379,16 +379,21 @@ const TVClock: React.FC = () => {
 const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
 
-  // Загружаем все задачи для TV режима (нужен arrival_time и зоны)
+  // Загружаем данные через fetchHistory — тот же источник что и "Время простоя"
+  // fetchHistory читает get_history, который гарантированно отдаёт arrival_time (col P)
   useEffect(() => {
     const load = async () => {
-      const tasks = await api.fetchTasks('get_stats');
+      const now = new Date();
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const todayStr = `${dd}.${mm}`; // формат DD.MM как в get_history
+      const tasks = await api.fetchHistory(todayStr);
       setAllTasks(tasks);
     };
     load();
-    const id = setInterval(load, tvMode ? 15000 : 60000);
+    const id = setInterval(load, 15000);
     return () => clearInterval(id);
-  }, [tvMode]);
+  }, []);
 
   if (!data) return <div className="text-white/30 animate-pulse text-center mt-20">Loading…</div>;
 
@@ -398,10 +403,13 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
   const isVictory     = data.total > 0 && data.done === data.total;
   const isEmpty       = data.total === 0;
 
-  // Вычисляем авто на территории из реальных данных задач
-  // arrival_time есть + статус WAIT (не начата выгрузка)
+  // Авто на территории: arrival_time заполнен, выгрузка ещё не начата (нет start_time)
+  // fetchHistory возвращает status='WAIT' когда start_time пустой — используем оба условия
   const arrivedTasks = allTasks.filter(
-    tk => tk.status === 'WAIT' && tk.arrival_time && tk.arrival_time.trim() !== ''
+    tk =>
+      tk.arrival_time && tk.arrival_time.trim() !== '' &&
+      (!tk.start_time || tk.start_time.trim() === '') &&
+      (!tk.end_time   || tk.end_time.trim()   === '')
   );
 
   const getStatusClass = (s: string) => {
