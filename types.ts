@@ -31,6 +31,12 @@ export interface Issue {
   author: string;
 }
 
+export interface ShiftCounts {
+  morning: number;  // 07:50 – 16:50
+  evening: number;  // 16:50 – 01:50
+  night:   number;  // 01:50 – 07:50
+}
+
 export interface DashboardData {
   status: string;
   done: number;
@@ -42,6 +48,10 @@ export interface DashboardData {
     start: string;
     zone: string;
   }>;
+  /** Контейнеры прибывшие на территорию, ещё не начатые */
+  onTerritory: number;
+  /** Выгружено по каждой смене */
+  shiftCounts: ShiftCounts;
 }
 
 export interface TaskInput {

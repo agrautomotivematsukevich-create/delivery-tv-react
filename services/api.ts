@@ -29,13 +29,29 @@ export const parseDashboardData = (text: string): DashboardData | null => {
       }
     }
 
+    // Parse shift counts (r1[4] = "morning|evening|night")
+    let shiftCounts = { morning: 0, evening: 0, night: 0 };
+    if (r1[4]) {
+      const sc = r1[4].split('|');
+      shiftCounts = {
+        morning: parseInt(sc[0]) || 0,
+        evening: parseInt(sc[1]) || 0,
+        night:   parseInt(sc[2]) || 0,
+      };
+    }
+
+    // Parse on-territory count (r1[5])
+    const onTerritory = r1[5] ? (parseInt(r1[5]) || 0) : 0;
+
     return {
       status: r1[0].trim(),
       done,
       total,
       nextId: r1[2].trim(),
       nextTime: r1[3].trim(),
-      activeList
+      activeList,
+      shiftCounts,
+      onTerritory,
     };
   } catch (e) {
     console.error("Parse error", e);

@@ -22,6 +22,9 @@ function App() {
     const saved = localStorage.getItem('warehouse_user');
     return saved ? JSON.parse(saved) : null;
   });
+
+  // TV mode: add ?tv=1 to URL to enable TV layout (fullscreen, no header/footer)
+  const isTV = new URLSearchParams(window.location.search).get('tv') === '1';
   
   // ОБНОВЛЕНО: добавлен 'arrival' view
   const [view, setView] = useState<'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival'>('dashboard');
@@ -92,7 +95,7 @@ function App() {
     if (view === 'logistics') return <LogisticsView t={t} />;
     if (view === 'downtime') return <ZoneDowntimeView t={t} />;
     if (view === 'arrival') return <ArrivalAnalyticsView t={t} />;
-    return <Dashboard data={dashboardData} t={t} />;
+    return <Dashboard data={dashboardData} t={t} tvMode={isTV} />;
   };
 
   return (
@@ -137,59 +140,66 @@ function App() {
         </div>
       )}
 
-      <div className={`relative min-h-screen w-full flex flex-col p-4 md:p-8 bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="relative z-20 flex-1 flex flex-col max-w-[1920px] mx-auto w-full">
-          <div className="relative z-50"> 
-            <Header 
-              user={user} 
-              lang={lang} 
-              t={t}
-              view={view}
-              setView={setView}
-              title={t.title}
-              onToggleLang={handleLangToggle}
-              onLoginClick={() => setShowAuth(true)}
-              onLogoutClick={handleLogout}
-              onTerminalClick={() => setShowTerminal(true)}
-              onStatsClick={() => setShowStats(true)}
-              onIssueClick={() => setShowIssue(true)}
-              onHistoryClick={() => setShowIssueHistory(true)}
-            />
-          </div>
-
-          <main className="relative z-10 flex-1 mt-4 flex flex-col min-h-0">
-            {renderContent()}
-          </main>
+      {/* ── TV MODE: полный экран без header/footer ── */}
+      {isTV ? (
+        <div className={`fixed inset-0 bg-[#0A0A0C] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+          {renderContent()}
         </div>
+      ) : (
+        <div className={`relative min-h-screen w-full flex flex-col p-4 md:p-8 bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+          <div className="relative z-20 flex-1 flex flex-col max-w-[1920px] mx-auto w-full">
+            <div className="relative z-50"> 
+              <Header 
+                user={user} 
+                lang={lang} 
+                t={t}
+                view={view}
+                setView={setView}
+                title={t.title}
+                onToggleLang={handleLangToggle}
+                onLoginClick={() => setShowAuth(true)}
+                onLogoutClick={handleLogout}
+                onTerminalClick={() => setShowTerminal(true)}
+                onStatsClick={() => setShowStats(true)}
+                onIssueClick={() => setShowIssue(true)}
+                onHistoryClick={() => setShowIssueHistory(true)}
+              />
+            </div>
 
-        {showAuth && (
-          <AuthModal t={t} onClose={() => setShowAuth(false)} onLoginSuccess={handleLogin} />
-        )}
-        {showTerminal && (
-          <OperatorTerminal t={t} onClose={() => setShowTerminal(false)} onTaskAction={handleTaskActionRequest} />
-        )}
-        {showStats && (
-          <StatsModal t={t} onClose={() => setShowStats(false)} />
-        )}
-        {showIssue && (
-          <IssueModal t={t} user={user} onClose={() => setShowIssue(false)} />
-        )}
-        {showIssueHistory && (
-          <HistoryModal t={t} onClose={() => setShowIssueHistory(false)} />
-        )}
-        {currentAction && user && (
-          <ActionModal action={currentAction} user={user} t={t} onClose={() => setCurrentAction(null)} onSuccess={handleActionSuccess} />
-        )}
-
-        <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
-          <div className="flex flex-col items-center gap-1">
-            <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
-            <p className="text-[8px] font-medium tracking-[0.5em] text-white/30 uppercase text-center">
-              Developed by <span className="ml-2 text-white/50 font-black tracking-[0.2em]">Vladislav_Matsukevich</span>
-            </p>
+            <main className="relative z-10 flex-1 mt-4 flex flex-col min-h-0">
+              {renderContent()}
+            </main>
           </div>
-        </footer>
-      </div>
+
+          {showAuth && (
+            <AuthModal t={t} onClose={() => setShowAuth(false)} onLoginSuccess={handleLogin} />
+          )}
+          {showTerminal && (
+            <OperatorTerminal t={t} onClose={() => setShowTerminal(false)} onTaskAction={handleTaskActionRequest} />
+          )}
+          {showStats && (
+            <StatsModal t={t} onClose={() => setShowStats(false)} />
+          )}
+          {showIssue && (
+            <IssueModal t={t} user={user} onClose={() => setShowIssue(false)} />
+          )}
+          {showIssueHistory && (
+            <HistoryModal t={t} onClose={() => setShowIssueHistory(false)} />
+          )}
+          {currentAction && user && (
+            <ActionModal action={currentAction} user={user} t={t} onClose={() => setCurrentAction(null)} onSuccess={handleActionSuccess} />
+          )}
+
+          <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
+            <div className="flex flex-col items-center gap-1">
+              <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+              <p className="text-[8px] font-medium tracking-[0.5em] text-white/30 uppercase text-center">
+                Developed by <span className="ml-2 text-white/50 font-black tracking-[0.2em]">Vladislav_Matsukevich</span>
+              </p>
+            </div>
+          </footer>
+        </div>
+      )}
 
       <Analytics />
     </>

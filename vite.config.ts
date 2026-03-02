@@ -8,9 +8,10 @@ export default defineConfig(({ mode }) => {
       // Раскомментировано для корректной работы на GitHub Pages
       base: '/',
       server: {
-        port: 3000,
-        host: '0.0.0.0',
-      },
+  port: 5000,        // или 8080, 3001 и т.д.
+  host: '0.0.0.0',
+  allowedHosts: true,
+},
       plugins: [react()],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
