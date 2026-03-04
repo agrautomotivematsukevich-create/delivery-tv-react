@@ -44,6 +44,25 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=100${sizeParam}`;
   };
 
+  const calcDuration = (start?: string, end?: string): string => {
+    if (!start || !end) return '-';
+    try {
+      const parseTime = (t: string): number => {
+        const parts = t.split(':');
+        if (parts.length < 2) return NaN;
+        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+      };
+      const s = parseTime(start);
+      const e = parseTime(end);
+      if (isNaN(s) || isNaN(e)) return '-';
+      let diff = e - s;
+      if (diff < 0) diff += 24 * 60;
+      const h = Math.floor(diff / 60);
+      const m = diff % 60;
+      return h > 0 ? `${h}ч ${m.toString().padStart(2, '0')}мин` : `${m}мин`;
+    } catch { return '-'; }
+  };
+
   return (
     <div className="flex flex-col gap-6 h-full flex-1 min-h-0">
       {/* Дата и поиск */}
@@ -88,6 +107,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
                     </div>
                  </div>
                  <div className="flex items-center gap-4">
+                    {task.status === 'DONE' && task.start_time && task.end_time && (
+                      <div className="flex items-center gap-3 text-xs text-white/50 font-mono">
+                        <span title="Начало разгрузки">{task.start_time}</span>
+                        <span className="text-white/20">→</span>
+                        <span title="Конец разгрузки">{task.end_time}</span>
+                        <span className="bg-accent-blue/20 text-accent-blue px-1.5 py-0.5 rounded" title="Время разгрузки">{calcDuration(task.start_time, task.end_time)}</span>
+                      </div>
+                    )}
                     {task.status === 'DONE' && <span className="text-accent-green font-bold text-xs uppercase tracking-wider">{t.stat_done}</span>}
                     {task.zone && <span className="font-mono text-white/60 bg-white/5 px-2 py-1 rounded">{task.zone}</span>}
                  </div>
