@@ -93,7 +93,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
             // LIST VIEW
             <div className="p-4 md:p-6 space-y-3">
               {issues.length === 0 ? (
-                <div className="text-center text-white/30 text-xl font-bold mt-20">{t.history_empty}</div>
+                <div className="text-center text-white/50 text-xl font-bold mt-20">{t.history_empty}</div>
               ) : (
                 issues.map((issue, idx) => (
                   <div 
@@ -110,12 +110,12 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
                           <div className="font-mono text-xl font-bold text-white group-hover:text-accent-blue transition-colors">
                             {issue.id}
                           </div>
-                          <div className="text-xs text-white/40 font-bold uppercase tracking-wider flex items-center gap-1">
+                          <div className="text-xs text-white/60 font-bold uppercase tracking-wider flex items-center gap-1">
                              <User size={10} /> {issue.author}
                           </div>
                         </div>
                       </div>
-                      <span className="text-xs font-mono text-white/30 bg-white/5 px-2 py-1 rounded-lg border border-white/5">
+                      <span className="text-xs font-mono text-white/50 bg-white/5 px-2 py-1 rounded-lg border border-white/5">
                         {issue.timestamp.split(',')[0]}
                       </span>
                     </div>
@@ -139,7 +139,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
             // DETAIL VIEW
             <div className="p-6 md:p-8 space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
                <div className="flex flex-col gap-2 border-b border-white/10 pb-6">
-                  <div className="flex items-center gap-2 text-white/40 text-sm font-mono">
+                  <div className="flex items-center gap-2 text-white/60 text-sm font-mono">
                      <Calendar size={14} /> {selectedIssue.timestamp}
                      <span className="mx-2">|</span>
                      <User size={14} /> {selectedIssue.author}
@@ -147,13 +147,13 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
                </div>
 
                <div className="bg-white/5 rounded-2xl p-6 border border-white/5">
-                 <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-2">{t.lbl_description}</h3>
+                 <h3 className="text-xs font-bold text-white/50 uppercase tracking-widest mb-2">{t.lbl_description}</h3>
                  <p className="text-white text-lg leading-relaxed whitespace-pre-wrap">{selectedIssue.desc}</p>
                </div>
 
                {selectedIssue.photos.length > 0 && (
                  <div>
-                    <h3 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4">{t.lbl_photos_list}</h3>
+                    <h3 className="text-xs font-bold text-white/50 uppercase tracking-widest mb-4">{t.lbl_photos_list}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                        {selectedIssue.photos.map((url, idx) => {
                          // Используем прокси для превью и большого фото

@@ -82,9 +82,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
       {/* Список задач */}
       <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl flex-1 min-h-0 overflow-hidden flex flex-col">
          {loading ? (
-           <div className="flex-1 flex items-center justify-center text-white/30 animate-pulse">{t.msg_loading_history}</div>
+           <div className="flex-1 flex items-center justify-center text-white/50 animate-pulse">{t.msg_loading_history}</div>
          ) : tasks.length === 0 ? (
-           <div className="flex-1 flex flex-col items-center justify-center text-white/30 gap-4">
+           <div className="flex-1 flex flex-col items-center justify-center text-white/50 gap-4">
              <Package size={48} strokeWidth={1} />
              <div>{t.hist_no_data}</div>
            </div>
@@ -111,9 +111,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
                     </div>
                     {task.status === 'DONE' && task.start_time && task.end_time && (
                       <div className="flex items-center gap-2 text-xs text-white/50 font-mono mt-2">
-                        <span className="text-white/40">Разгрузка:</span>
+                        <span className="text-white/60">Разгрузка:</span>
                         <span>{task.start_time}</span>
-                        <span className="text-white/20">→</span>
+                        <span className="text-white/50">→</span>
                         <span>{task.end_time}</span>
                         <span className="bg-accent-blue/20 text-accent-blue px-1.5 py-0.5 rounded">{calcDuration(task.start_time, task.end_time)}</span>
                       </div>
@@ -142,10 +142,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
                   <div className="grid grid-cols-1 gap-8">
                      <div className="space-y-4">
                         <div className="bg-white/5 rounded-2xl p-5 border border-white/5 space-y-3">
-                           <div className="flex justify-between text-sm"><span className="text-white/40">Начало:</span><span className="text-white font-mono">{selectedTask.start_time || '-'}</span></div>
-                           <div className="flex justify-between text-sm"><span className="text-white/40">Конец:</span><span className="text-white font-mono">{selectedTask.end_time || '-'}</span></div>
-                           <div className="flex justify-between text-sm"><span className="text-white/40">Оператор:</span><span className="text-white">{selectedTask.operator || '-'}</span></div>
-                           <div className="flex justify-between text-sm"><span className="text-white/40">Зона:</span><span className="text-white font-mono bg-white/10 px-2 rounded">{selectedTask.zone || '-'}</span></div>
+                           <div className="flex justify-between text-sm"><span className="text-white/60">Начало:</span><span className="text-white font-mono">{selectedTask.start_time || '-'}</span></div>
+                           <div className="flex justify-between text-sm"><span className="text-white/60">Конец:</span><span className="text-white font-mono">{selectedTask.end_time || '-'}</span></div>
+                           <div className="flex justify-between text-sm"><span className="text-white/60">Оператор:</span><span className="text-white">{selectedTask.operator || '-'}</span></div>
+                           <div className="flex justify-between text-sm"><span className="text-white/60">Зона:</span><span className="text-white font-mono bg-white/10 px-2 rounded">{selectedTask.zone || '-'}</span></div>
                         </div>
 
                         <div className="grid grid-cols-3 gap-3">

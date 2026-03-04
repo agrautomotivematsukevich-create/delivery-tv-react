@@ -190,12 +190,12 @@ const ShiftStatsBlock: React.FC<{ data: DashboardData; tvMode?: boolean }> = ({ 
           <div key={sh.key} className={`rounded-2xl px-3 py-3 border transition-all duration-300 flex flex-col items-center gap-1 ${
             isActive ? `${sh.border} ${sh.bg}` : 'border-white/5 bg-white/2'
           }`}>
-            <div className={`flex items-center gap-1.5 ${isActive ? sh.color : 'text-white/25'}`}>
+            <div className={`flex items-center gap-1.5 ${isActive ? sh.color : 'text-white/50'}`}>
               <span className="text-sm">{sh.emoji}</span>
               <span className="font-black uppercase tracking-wider text-[9px]">{sh.label}</span>
               {isActive && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />}
             </div>
-            <div className={`font-black tabular-nums leading-none ${tvMode ? 'text-4xl' : 'text-3xl'} ${isActive ? sh.color : 'text-white/40'}`}>
+            <div className={`font-black tabular-nums leading-none ${tvMode ? 'text-4xl' : 'text-3xl'} ${isActive ? sh.color : 'text-white/60'}`}>
               {count}
             </div>
           </div>
@@ -267,10 +267,10 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-[10px] font-bold text-white/30 uppercase tracking-[2px]">Зоны выгрузки</div>
-          <div className="text-[10px] font-bold text-white/40 tracking-wider">
+          <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px]">Зоны выгрузки</div>
+          <div className="text-[10px] font-bold text-white/60 tracking-wider">
             <span className="text-emerald-400">{busyCount}</span>
-            <span className="text-white/20 mx-1">/</span>
+            <span className="text-white/50 mx-1">/</span>
             <span>{DOCK_ZONES.length}</span>
           </div>
         </div>
@@ -281,7 +281,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
 
             let borderCls = 'border-white/6 bg-white/[0.02]';
             let dotCls    = 'bg-white/15';
-            let nameCls   = 'text-white/25';
+            let nameCls   = 'text-white/50';
 
             if (z.active) {
               if (isOver) {
@@ -308,7 +308,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
                     <span className={`font-black text-base tracking-wider uppercase ${nameCls}`}>{z.name}</span>
                   </div>
                   {z.active && (
-                    <span className={`text-[9px] font-bold uppercase tracking-wider ${isOver ? 'text-red-400/60' : isWarn ? 'text-yellow-400/60' : 'text-emerald-400/60'}`}>
+                    <span className={`text-[9px] font-bold uppercase tracking-wider ${isOver ? 'text-red-400' : isWarn ? 'text-yellow-400' : 'text-emerald-400'}`}>
                       {isOver ? 'ПРЕВЫШЕН' : 'АКТИВНО'}
                     </span>
                   )}
@@ -316,7 +316,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
 
                 {z.active ? (
                   <div className="flex-1 flex flex-col justify-center">
-                    <div className={`font-mono text-sm font-bold truncate mt-2 ${isOver ? 'text-red-300/70' : isWarn ? 'text-yellow-300/70' : 'text-emerald-300/70'}`} title={z.containerId}>
+                    <div className={`font-mono text-sm font-bold truncate mt-2 ${isOver ? 'text-red-300' : isWarn ? 'text-yellow-300' : 'text-emerald-300'}`} title={z.containerId}>
                       {z.containerId}
                     </div>
                     <div className={`font-mono text-3xl font-black mt-1 tabular-nums ${isOver ? 'text-red-400' : isWarn ? 'text-yellow-400' : 'text-emerald-400'}`}>
@@ -328,15 +328,15 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
                   <div className="flex-1 flex flex-col justify-center items-center">
                     {z.idleMinutes !== undefined ? (
                       <>
-                        <div className="text-2xl font-black tabular-nums text-white/12 font-mono">
+                        <div className="text-2xl font-black tabular-nums text-white/60 font-mono">
                           {z.idleMinutes >= 60 
                             ? `${Math.floor(z.idleMinutes / 60)}ч ${(z.idleMinutes % 60).toString().padStart(2,'0')}м`
                             : `${z.idleMinutes} мин`}
                         </div>
-                        <div className="text-[9px] text-white/15 font-bold uppercase tracking-widest mt-1">простой</div>
+                        <div className="text-[9px] text-white/45 font-bold uppercase tracking-widest mt-1">простой</div>
                       </>
                     ) : (
-                      <div className="text-[10px] text-white/12 font-bold uppercase tracking-widest">свободно</div>
+                      <div className="text-[10px] text-white/60 font-bold uppercase tracking-widest">свободно</div>
                     )}
                   </div>
                 )}
@@ -351,7 +351,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
   // ── Non-TV (original compact) ──
   return (
     <div>
-      <div className="text-[10px] font-bold text-white/30 uppercase tracking-[2px] mb-2">Зоны выгрузки</div>
+      <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-2">Зоны выгрузки</div>
       <div className="grid grid-cols-3 gap-2">
         {zones.map(z => {
           const isOver = z.isOver ?? false;
@@ -359,8 +359,8 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
 
           let borderCls = 'border-white/6 bg-white/2';
           let dotCls    = 'bg-white/15';
-          let labelCls  = 'text-white/20';
-          let nameCls   = 'text-white/30';
+          let labelCls  = 'text-white/50';
+          let nameCls   = 'text-white/50';
 
           if (z.active) {
             if (isOver) {
@@ -397,7 +397,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
                   </div>
                 </>
               ) : (
-                <div className="text-[10px] text-white/15 font-medium mt-1">простой</div>
+                <div className="text-[10px] text-white/45 font-medium mt-1">простой</div>
               )}
             </div>
           );
@@ -419,7 +419,7 @@ const OnTerritoryBlock: React.FC<{ arrivedTasks: Task[]; tvMode?: boolean }> = (
       {/* Заголовок */}
       <div className="flex items-center gap-2.5 mb-1">
         <div className="relative shrink-0">
-          <Truck className={`${tvMode ? 'w-5 h-5' : 'w-4 h-4'} ${hasAuto ? 'text-blue-400' : 'text-white/20'}`} />
+          <Truck className={`${tvMode ? 'w-5 h-5' : 'w-4 h-4'} ${hasAuto ? 'text-blue-400' : 'text-white/50'}`} />
           {hasAuto && (
             <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center">
               <span className="text-[7px] font-black text-white leading-none">{count}</span>
@@ -433,7 +433,7 @@ const OnTerritoryBlock: React.FC<{ arrivedTasks: Task[]; tvMode?: boolean }> = (
             </span>
           </div>
         ) : (
-          <span className={`font-bold text-white/20 uppercase tracking-wider ${tvMode ? 'text-xs' : 'text-[10px]'}`}>
+          <span className={`font-bold text-white/50 uppercase tracking-wider ${tvMode ? 'text-xs' : 'text-[10px]'}`}>
             Нет авто на площадке
           </span>
         )}
@@ -450,10 +450,10 @@ const OnTerritoryBlock: React.FC<{ arrivedTasks: Task[]; tvMode?: boolean }> = (
               <span className="font-mono text-xs font-bold text-blue-200 flex-1 truncate">{task.id}</span>
               {task.arrival_time && (
                 <div className="flex items-center gap-1 shrink-0">
-                  <Clock className="w-3 h-3 text-blue-400/60" />
+                  <Clock className="w-3 h-3 text-blue-400" />
                   <span className="font-mono text-[10px] font-bold text-blue-400/80">{task.arrival_time}</span>
                   {/* Считаем сколько ждёт */}
-                  <span className="text-[9px] text-white/30 ml-1">
+                  <span className="text-[9px] text-white/50 ml-1">
                     ({Math.max(0, elapsedSince(task.arrival_time))} мин)
                   </span>
                 </div>
@@ -484,7 +484,7 @@ const TVClock: React.FC = () => {
   return (
     <div className="flex items-center justify-center gap-3 border-t border-white/5 pt-3 mt-3 shrink-0">
       <div className="font-mono text-4xl font-black text-white/80 tabular-nums tracking-tight">{time}</div>
-      <div className="text-xs font-medium text-white/30 capitalize">{date}</div>
+      <div className="text-xs font-medium text-white/50 capitalize">{date}</div>
     </div>
   );
 };
@@ -517,7 +517,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
     return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
   }, []);
 
-  if (!data) return <div className="text-white/30 animate-pulse text-center mt-20">Loading…</div>;
+  if (!data) return <div className="text-white/50 animate-pulse text-center mt-20">Loading…</div>;
 
   const percent       = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
   const circumference = 2 * Math.PI * 150;
@@ -550,7 +550,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
         {/* Колонка 1: Прогресс + Норма + Смены */}
         <div className={`${glass} relative flex flex-col items-center p-6 overflow-hidden`}>
           <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[160px] h-[160px] bg-accent-green blur-[100px] opacity-5 pointer-events-none" />
-          <div className="text-[10px] font-bold text-white/30 uppercase tracking-[2px] w-full mb-1">{t.progress}</div>
+          <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] w-full mb-1">{t.progress}</div>
 
           {/* Круг прогресса */}
           <div className="flex-1 flex items-center justify-center w-full">
@@ -562,7 +562,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
               </svg>
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10">
                 <span className="text-6xl font-extrabold tracking-tighter text-white">{percent}%</span>
-                <span className="text-lg text-white/35 font-mono mt-1">{data.done} / {data.total}</span>
+                <span className="text-lg text-white/50 font-mono mt-1">{data.done} / {data.total}</span>
               </div>
             </div>
           </div>
@@ -577,7 +577,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
 
           {/* Смены */}
           <div className="w-full mt-3">
-            <div className="text-[10px] font-bold text-white/30 uppercase tracking-[2px] mb-2">По сменам</div>
+            <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-2">По сменам</div>
             <ShiftStatsBlock data={data} tvMode />
           </div>
         </div>
@@ -587,7 +587,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
 
           {!isVictory && !isEmpty && (
             <div className={`${glass} p-5`}>
-              <div className="text-[10px] font-bold text-white/30 uppercase tracking-[2px] mb-1">{t.next}</div>
+              <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-1">{t.next}</div>
               <div className="font-mono font-bold tracking-tighter bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent break-all leading-tight"
                 style={{ fontSize: 'clamp(2.5rem, 5vw, 4.5rem)' }}>
                 {data.nextId}
@@ -603,10 +603,10 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
 
           {!isVictory && !isEmpty && (
             <div className={`${glass} flex-1 min-h-0 flex flex-col overflow-hidden`}>
-              <div className="text-[10px] font-bold text-white/30 uppercase tracking-[2px] p-4 pb-0">{t.list}</div>
+              <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] p-4 pb-0">{t.list}</div>
               <div className="flex-1 overflow-y-auto p-4 space-y-2 tv-scroll">
                 {data.activeList.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-white/15 text-sm">Нет активных</div>
+                  <div className="flex items-center justify-center h-full text-white/45 text-sm">Нет активных</div>
                 ) : data.activeList.map(item => {
                   const elapsed = elapsedSince(item.start);
                   const isOver  = elapsed > UNLOAD_TARGET;
@@ -624,7 +624,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
                         )}
                       </div>
                       <div className="ml-auto flex flex-col items-end shrink-0">
-                        <span className="text-[9px] uppercase text-white/40 font-bold tracking-widest mb-0.5">{t.lbl_start}</span>
+                        <span className="text-[9px] uppercase text-white/60 font-bold tracking-widest mb-0.5">{t.lbl_start}</span>
                         <span className="font-mono text-xl font-bold text-accent-green">{item.start}</span>
                       </div>
                     </div>
@@ -638,7 +638,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
             <div className={`${glass} flex-1 flex flex-col items-center justify-center text-center p-8`}>
               {isVictory
                 ? <><div className="text-8xl mb-5 animate-bounce">🏆</div><div className="text-5xl font-black text-white">{t.victory}</div></>
-                : <><div className="text-8xl mb-5 opacity-30">📅</div><div className="text-5xl font-black text-white/30">{t.empty}</div></>
+                : <><div className="text-8xl mb-5 opacity-30">📅</div><div className="text-5xl font-black text-white/50">{t.empty}</div></>
               }
             </div>
           )}
@@ -666,7 +666,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
 
       <div className={`${glass} relative flex flex-col items-center justify-between p-10 overflow-hidden text-center`}>
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[200px] bg-accent-green blur-[120px] opacity-5 pointer-events-none" />
-        <div className="text-xs font-bold text-white/30 uppercase tracking-[2px] w-full text-left mb-2">{t.progress}</div>
+        <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] w-full text-left mb-2">{t.progress}</div>
         <div className="flex-1 flex items-center justify-center w-full my-4">
           <div className="relative w-[85%] pb-[85%] h-0">
             <svg className="absolute top-0 left-0 w-full h-full -rotate-90" viewBox="0 0 350 350">
@@ -684,7 +684,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
         </div>
         <ShiftNormWidget done={data.done} t={t} />
         <div className="w-full mt-3">
-          <div className="text-[10px] font-bold text-white/30 uppercase tracking-[2px] mb-2">По сменам</div>
+          <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-2">По сменам</div>
           <ShiftStatsBlock data={data} />
         </div>
       </div>
@@ -692,7 +692,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
       <div className="flex flex-col gap-6 h-full min-h-0">
         {!isVictory && !isEmpty && (
           <div className={`${glass} p-8`}>
-            <div className="text-xs font-bold text-white/30 uppercase tracking-[2px] mb-2">{t.next}</div>
+            <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] mb-2">{t.next}</div>
             <div className="font-mono text-6xl md:text-7xl font-bold tracking-tighter my-2 bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent break-all">
               {data.nextId}
             </div>
@@ -705,7 +705,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
         )}
         {!isVictory && !isEmpty && (
           <div className={`${glass} flex-1 min-h-0 flex flex-col overflow-hidden`}>
-            <div className="text-xs font-bold text-white/30 uppercase tracking-[2px] p-6 pb-0">{t.list}</div>
+            <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] p-6 pb-0">{t.list}</div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
               {data.activeList.map(item => {
                 const elapsed = elapsedSince(item.start);
@@ -735,7 +735,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
           <div className={`${glass} flex-1 flex flex-col items-center justify-center text-center p-8`}>
             {isVictory
               ? <><div className="text-8xl mb-6 animate-bounce">🏆</div><div className="text-4xl md:text-5xl font-black text-white">{t.victory}</div></>
-              : <><div className="text-8xl mb-6 opacity-30">📅</div><div className="text-4xl md:text-5xl font-black text-white/30">{t.empty}</div></>
+              : <><div className="text-8xl mb-6 opacity-30">📅</div><div className="text-4xl md:text-5xl font-black text-white/50">{t.empty}</div></>
             }
           </div>
         )}
