@@ -192,3 +192,20 @@ export interface TaskAction {
   zone?: string | null;
   sealPhotoUrl?: string; // Передаётся при финише для превью
 }
+
+export interface LotContainer {
+  date: string;       // DD.MM — sheet date
+  index: string;
+  lot: string;
+  ws: string;
+  pallets: string;
+  id: string;
+  phone: string;
+  eta: string;
+  status: 'WAIT' | 'ACTIVE' | 'DONE';
+  start_time: string;
+  end_time: string;
+  zone: string;
+  operator: string;
+  arrival_time: string;
+}

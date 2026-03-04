@@ -51,6 +51,28 @@ function doGet(e) {
     }
   }
 
+  // 4b. GET LOT TRACKER (For TV2 - search lot across ALL date sheets)
+  if (e.parameter.mode === "get_lot_tracker") {
+    try {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      return handleGetLotTracker(ss, e);
+    } catch (err) {
+      return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  // 4c. GET PRIORITY LOT (read from DASHBOARD sheet A1)
+  if (e.parameter.mode === "get_priority_lot") {
+    try {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var ds = ss.getSheetByName('DASHBOARD');
+      var lot = ds ? ds.getRange("A1").getValue().toString().trim() : "";
+      return ContentService.createTextOutput(JSON.stringify({ lot: lot })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ lot: "" })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
   // 5. MAIN DASHBOARD READ
   if (!e.parameter.mode) {
      try {
@@ -96,6 +118,18 @@ function doGet(e) {
        }
     }
 
+    // 8b. SET PRIORITY LOT (write to DASHBOARD A1)
+    if (e.parameter.mode === "set_priority_lot") {
+       if (lock.tryLock(10000)) {
+         try {
+           var ds = ss.getSheetByName('DASHBOARD');
+           if (!ds) return ContentService.createTextOutput("NO_SHEET");
+           ds.getRange("A1").setValue((e.parameter.lot || "").trim());
+           return ContentService.createTextOutput("OK");
+         } finally { lock.releaseLock(); }
+       }
+    }
+
     // 9. LOGIN
     if (e.parameter.mode === "login") {
        var settingsSheet = ss.getSheetByName('DASHBOARD'); 
@@ -110,6 +144,9 @@ function doGet(e) {
          finally { lock.releaseLock(); }
        }
     }
+
+    // Unknown mode fallback
+    return ContentService.createTextOutput(JSON.stringify({error: "UNKNOWN_MODE: " + (e.parameter.mode || "none")})).setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) { 
     return ContentService.createTextOutput(JSON.stringify({error: err.toString()})).setMimeType(ContentService.MimeType.JSON); 
@@ -202,6 +239,59 @@ function handleGetFullPlan(ss, e) {
     }
   }
   return ContentService.createTextOutput(JSON.stringify(rows)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// ── LOT TRACKER: Search a lot across ALL date sheets ──────────────────────────
+function handleGetLotTracker(ss, e) {
+  var lotQuery = (e.parameter.lot || "").trim().toUpperCase();
+  if (!lotQuery) return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
+
+  var sheets = ss.getSheets();
+  var datePattern = /^\d{2}\.\d{2}$/;
+  var results = [];
+
+  for (var s = 0; s < sheets.length; s++) {
+    var sheetName = sheets[s].getName();
+    if (!datePattern.test(sheetName)) continue;
+
+    var sheet = sheets[s];
+    var lr = sheet.getLastRow();
+    if (lr < 5) continue;
+
+    // Read Cols A-P (1-16): Index, Lot, WS, Pallets, ID, Phone, ETA, Start, End, ?, Zone, Operator, pGen, pSeal, pEmpty, Arrival
+    var data = sheet.getRange(5, 1, lr - 4, 16).getDisplayValues();
+
+    for (var i = 0; i < data.length; i++) {
+      var row = data[i];
+      var lot = (row[1] || "").trim().toUpperCase();
+      var id  = row[4];
+      // Поиск по подстроке: ввёл "CT13J20260113" — найдёт "43115-CT13J20260113"
+      if (!id || lot.indexOf(lotQuery) === -1) continue;
+
+      var status = "WAIT";
+      if (row[8] !== "") status = "DONE";
+      else if (row[7] !== "") status = "ACTIVE";
+
+      results.push({
+        date: sheetName,
+        index: row[0],
+        lot: row[1],
+        ws: row[2],
+        pallets: row[3],
+        id: id,
+        phone: row[5],
+        eta: row[6],
+        status: status,
+        start_time: row[7],
+        end_time: row[8],
+        zone: row[10],
+        operator: row[11],
+        arrival_time: row[15]
+      });
+    }
+  }
+
+  return ContentService.createTextOutput(JSON.stringify(results)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function handleUpdateContainerRow(e, ss) {

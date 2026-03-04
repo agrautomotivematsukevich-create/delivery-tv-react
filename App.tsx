@@ -12,6 +12,8 @@ import HistoryView from './components/HistoryView';
 import LogisticsView from './components/LogisticsView';
 import ZoneDowntimeView from './components/ZoneDowntimeView'; // НОВЫЙ ИМПОРТ
 import ArrivalAnalyticsView from './components/ArrivalAnalyticsView'; // АНАЛИТИКА ПРОСТОЯ
+import LotTrackerTV from './components/LotTrackerTV';
+import LotTrackerView from './components/LotTrackerView';
 import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
 import { DashboardData, Lang, User, Task, TaskAction } from './types';
@@ -24,10 +26,13 @@ function App() {
   });
 
   // TV mode: add ?tv=1 to URL to enable TV layout (fullscreen, no header/footer)
-  const isTV = new URLSearchParams(window.location.search).get('tv') === '1';
+  const urlParams = new URLSearchParams(window.location.search);
+  const isTV = urlParams.get('tv') === '1';
+  const isTV2 = urlParams.get('tv') === '2';
+  const tv2Lot = urlParams.get('lot') || '';
   
   // ОБНОВЛЕНО: добавлен 'arrival' view
-  const [view, setView] = useState<'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival' | 'lotTracker'>('dashboard');
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isAppReady, setIsAppReady] = useState(false);
 
@@ -48,14 +53,19 @@ function App() {
 
   // Initial load
   useEffect(() => {
+    if (isTV2) {
+      // TV2 doesn't need dashboard data
+      setTimeout(() => setIsAppReady(true), 800);
+      return;
+    }
     refreshDashboard().then(() => {
       setTimeout(() => setIsAppReady(true), 1200);
     });
-  }, [refreshDashboard]);
+  }, [refreshDashboard, isTV2]);
 
-  // Polling only when on dashboard AND tab is visible
+  // Polling only when on dashboard AND tab is visible (skip for TV2)
   useEffect(() => {
-    if (view !== 'dashboard') return;
+    if (view !== 'dashboard' || isTV2) return;
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -80,7 +90,7 @@ function App() {
       stopPolling();
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [refreshDashboard, view]);
+  }, [refreshDashboard, view, isTV2]);
 
   const handleLangToggle = () => {
     const newLang = lang === 'RU' ? 'EN_CN' : 'RU';
@@ -119,6 +129,7 @@ function App() {
     if (view === 'logistics') return <LogisticsView t={t} />;
     if (view === 'downtime') return <ZoneDowntimeView t={t} />;
     if (view === 'arrival') return <ArrivalAnalyticsView t={t} />;
+    if (view === 'lotTracker') return <LotTrackerView user={user} t={t} />;
     return <Dashboard data={dashboardData} t={t} tvMode={isTV} />;
   };
 
@@ -165,7 +176,11 @@ function App() {
       )}
 
       {/* ── TV MODE: полный экран без header/footer ── */}
-      {isTV ? (
+      {isTV2 ? (
+        <div className={`fixed inset-0 bg-[#0A0A0C] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+          <LotTrackerTV lot={tv2Lot} />
+        </div>
+      ) : isTV ? (
         <div className={`fixed inset-0 bg-[#0A0A0C] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
           {renderContent()}
         </div>
