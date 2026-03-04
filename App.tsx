@@ -217,7 +217,7 @@ function App() {
           <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
             <div className="flex flex-col items-center gap-1">
               <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
-              <p className="text-[8px] font-medium tracking-[0.5em] text-white/30 uppercase text-center">
+              <p className="text-[8px] font-medium tracking-[0.5em] text-white/50 uppercase text-center">
                 Developed by <span className="ml-2 text-white/50 font-black tracking-[0.2em]">Vladislav_Matsukevich</span>
               </p>
             </div>
