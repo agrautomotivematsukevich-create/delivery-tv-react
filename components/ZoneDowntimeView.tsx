@@ -55,12 +55,16 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
   }, [date]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (isToday(date)) {
-        loadDowntimeData();
-      }
-    }, 60000);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (!interval) interval = setInterval(() => { if (isToday(date)) loadDowntimeData(); }, 60000);
+    };
+    const stop = () => { if (interval) { clearInterval(interval); interval = null; } };
+    const onVis = () => { if (document.hidden) stop(); else { if (isToday(date)) loadDowntimeData(); start(); } };
+
+    start();
+    document.addEventListener('visibilitychange', onVis);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
   }, [date]);
 
   const isToday = (dateStr: string): boolean => {

@@ -24,7 +24,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
   useEffect(() => {
     fetchQueue();
-    const interval = setInterval(fetchQueue, 5000);
+    const interval = setInterval(fetchQueue, 15000);
     return () => clearInterval(interval);
   }, [fetchQueue]);
 

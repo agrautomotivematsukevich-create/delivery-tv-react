@@ -391,8 +391,15 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
       setAllTasks(tasks);
     };
     load();
-    const id = setInterval(load, 15000);
-    return () => clearInterval(id);
+
+    let id: ReturnType<typeof setInterval> | null = null;
+    const start = () => { if (!id) id = setInterval(load, 60000); };
+    const stop = () => { if (id) { clearInterval(id); id = null; } };
+    const onVis = () => { if (document.hidden) stop(); else { load(); start(); } };
+
+    start();
+    document.addEventListener('visibilitychange', onVis);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
   }, []);
 
   if (!data) return <div className="text-white/30 animate-pulse text-center mt-20">Loading…</div>;
