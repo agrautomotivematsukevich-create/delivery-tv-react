@@ -7,6 +7,28 @@ export const hashPassword = async (p: string): Promise<string> => {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
+// ── Simple request cache + in-flight dedup ──
+const _cache: Record<string, { data: unknown; ts: number }> = {};
+const _inflight: Record<string, Promise<unknown>> = {};
+
+async function cachedFetch<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+  // Return cached if fresh
+  const cached = _cache[key];
+  if (cached && Date.now() - cached.ts < ttlMs) return cached.data as T;
+  // Dedup in-flight requests
+  if (_inflight[key]) return _inflight[key] as Promise<T>;
+  const promise = fn().then(data => {
+    _cache[key] = { data, ts: Date.now() };
+    delete _inflight[key];
+    return data;
+  }).catch(err => {
+    delete _inflight[key];
+    throw err;
+  });
+  _inflight[key] = promise;
+  return promise;
+}
+
 export const parseDashboardData = (text: string): DashboardData | null => {
   try {
     if (!text || text.includes("DOCTYPE")) return null;
@@ -61,37 +83,42 @@ export const parseDashboardData = (text: string): DashboardData | null => {
 
 export const api = {
   fetchDashboard: async (): Promise<DashboardData | null> => {
-    try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}`);
-      const text = await res.text();
-      return parseDashboardData(text);
-    } catch (e) {
-      console.error(e);
-      return null;
-    }
+    return cachedFetch('dashboard', 10000, async () => {
+      try {
+        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}`);
+        const text = await res.text();
+        return parseDashboardData(text);
+      } catch (e) {
+        console.error(e);
+        return null;
+      }
+    });
   },
 
   fetchTasks: async (mode: 'get_operator_tasks' | 'get_stats'): Promise<Task[]> => {
-    try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=${mode}`);
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch (e) {
-      console.error(e);
-      return [];
-    }
+    return cachedFetch(`tasks_${mode}`, 10000, async () => {
+      try {
+        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=${mode}`);
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch (e) {
+        console.error(e);
+        return [];
+      }
+    });
   },
 
   fetchHistory: async (dateStr: string): Promise<Task[]> => {
-    // dateStr in DD.MM format expected by backend
-    try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch (e) {
-      console.error(e);
-      return [];
-    }
+    return cachedFetch(`history_${dateStr}`, 20000, async () => {
+      try {
+        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch (e) {
+        console.error(e);
+        return [];
+      }
+    });
   },
 
   // Logistics: Get full plan for editing
