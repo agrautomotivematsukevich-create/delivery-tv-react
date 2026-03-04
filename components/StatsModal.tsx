@@ -82,11 +82,11 @@ const StatsModal: React.FC<StatsModalProps> = ({ onClose, t }) => {
                  <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white/5 rounded-2xl p-4 md:p-6 text-center border border-white/5">
                        <div className="text-2xl md:text-4xl font-mono font-bold text-accent-green mb-1 tabular-nums">{doneCount}</div>
-                       <div className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{t.stat_done}</div>
+                       <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{t.stat_done}</div>
                     </div>
                     <div className="bg-white/5 rounded-2xl p-4 md:p-6 text-center border border-white/5">
                        <div className="text-2xl md:text-4xl font-mono font-bold text-white mb-1 tabular-nums">{waitCount}</div>
-                       <div className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{t.stat_queue}</div>
+                       <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{t.stat_queue}</div>
                     </div>
                  </div>
               </div>
@@ -97,13 +97,13 @@ const StatsModal: React.FC<StatsModalProps> = ({ onClose, t }) => {
                  <div className="bg-white/5 rounded-3xl border border-white/5 flex flex-col min-h-[300px] overflow-hidden text-sm">
                     <div className="p-4 md:p-6 border-b border-white/5 bg-white/5 flex justify-between items-center">
                        <span className="font-bold text-accent-green uppercase tracking-wider">{t.list_done}</span>
-                       <span className="font-bold text-white/50 tabular-nums">{doneCount}</span>
+                       <span className="font-bold text-white/30 tabular-nums">{doneCount}</span>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2 custom-scrollbar">
                        {tasks.filter(t => t.status === 'DONE').map(task => (
                           <div key={task.id} className="flex justify-between items-center p-3 md:p-4 bg-white/5 rounded-xl">
                              <span className="font-mono font-bold text-white">{task.id}</span>
-                             <span className="font-mono text-xs text-white/60 tabular-nums">{task.end_time || task.time}</span>
+                             <span className="font-mono text-xs text-white/40 tabular-nums">{task.end_time || task.time}</span>
                           </div>
                        ))}
                     </div>
@@ -113,7 +113,7 @@ const StatsModal: React.FC<StatsModalProps> = ({ onClose, t }) => {
                  <div className="bg-white/5 rounded-3xl border border-white/5 flex flex-col min-h-[300px] overflow-hidden text-sm">
                     <div className="p-4 md:p-6 border-b border-white/5 bg-white/5 flex justify-between items-center">
                        <span className="font-bold text-white/50 uppercase tracking-wider">{t.list_wait}</span>
-                       <span className="font-bold text-white/50 tabular-nums">{waitCount}</span>
+                       <span className="font-bold text-white/30 tabular-nums">{waitCount}</span>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2 custom-scrollbar">
                        {tasks.filter(t => t.status !== 'DONE').map(task => (
@@ -122,7 +122,7 @@ const StatsModal: React.FC<StatsModalProps> = ({ onClose, t }) => {
                                 <span className="font-mono font-bold text-white">{task.id}</span>
                                 {task.type && <span className="text-[9px] px-1 py-0.5 rounded border border-white/20 text-white/60">{task.type}</span>}
                              </div>
-                             <span className="font-mono text-xs text-white/60 tabular-nums">{task.start_time || task.eta || task.time}</span>
+                             <span className="font-mono text-xs text-white/40 tabular-nums">{task.start_time || task.eta || task.time}</span>
                           </div>
                        ))}
                     </div>

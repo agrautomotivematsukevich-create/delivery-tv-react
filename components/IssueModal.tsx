@@ -120,14 +120,14 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
         
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-extrabold text-white uppercase tracking-wider">{t.issue_title}</h2>
-          <button onClick={onClose} className="text-white/60 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
             <X size={24} />
           </button>
         </div>
 
         {/* Container Selection */}
         <div>
-          <label className="text-xs font-bold text-white/60 mb-2 block uppercase tracking-wider">Container ID</label>
+          <label className="text-xs font-bold text-white/40 mb-2 block uppercase tracking-wider">Container ID</label>
           <select 
             value={selectedId}
             onChange={(e) => setSelectedId(e.target.value)}
@@ -143,18 +143,18 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
 
         {/* Description */}
         <div>
-           <label className="text-xs font-bold text-white/60 mb-2 block uppercase tracking-wider">Description</label>
+           <label className="text-xs font-bold text-white/40 mb-2 block uppercase tracking-wider">Description</label>
            <textarea
              value={description}
              onChange={e => setDescription(e.target.value)}
              placeholder={t.issue_desc_ph}
-             className="w-full h-32 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/50 focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all resize-none"
+             className="w-full h-32 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/30 focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all resize-none"
            />
         </div>
 
         {/* Photos */}
         <div>
-           <label className="text-xs font-bold text-white/60 mb-2 block uppercase tracking-wider">Photos (Max 3)</label>
+           <label className="text-xs font-bold text-white/40 mb-2 block uppercase tracking-wider">Photos (Max 3)</label>
            <div className="grid grid-cols-3 gap-3">
               {photos.map((p, idx) => (
                 <div 
@@ -176,7 +176,7 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
                        </button>
                      </>
                    ) : (
-                     <Camera className="text-white/50 w-6 h-6" />
+                     <Camera className="text-white/30 w-6 h-6" />
                    )}
                 </div>
               ))}

@@ -103,16 +103,16 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
         {/* Строка поиска */}
         <div className="px-6 py-3 border-b border-white/5 shrink-0">
           <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-2.5 focus-within:border-accent-blue/50 transition-colors">
-            <Search size={16} className="text-white/50 shrink-0" />
+            <Search size={16} className="text-white/30 shrink-0" />
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Поиск по ID или типу..."
-              className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-white/50"
+              className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-white/20"
             />
             {search && (
-              <button onClick={() => setSearch('')} className="text-white/50 hover:text-white transition-colors">
+              <button onClick={() => setSearch('')} className="text-white/30 hover:text-white transition-colors">
                 <X size={14} />
               </button>
             )}
@@ -123,10 +123,10 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2 custom-scrollbar">
           {loading ? (
             <div className="flex items-center justify-center h-full">
-              <div className="text-white/60 animate-pulse text-sm">Загрузка...</div>
+              <div className="text-white/40 animate-pulse text-sm">Загрузка...</div>
             </div>
           ) : sorted.length === 0 ? (
-            <div className="text-center text-white/50 text-lg font-bold mt-20">
+            <div className="text-center text-white/30 text-lg font-bold mt-20">
               {search ? 'Ничего не найдено' : t.empty}
             </div>
           ) : (
@@ -154,7 +154,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                         <span className="font-mono text-lg font-bold text-white truncate">{task.id}</span>
                         {getTypeBadge(task.type)}
                       </div>
-                      <div className="flex items-center gap-3 mt-0.5 text-white/60 text-xs">
+                      <div className="flex items-center gap-3 mt-0.5 text-white/40 text-xs">
                         <span className="font-mono">{task.eta || task.time || '—'}</span>
                         {task.pallets && (
                           <span className="flex items-center gap-1">
@@ -203,7 +203,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
         {/* Счётчик внизу */}
         {!loading && sorted.length > 0 && (
           <div className="px-6 py-3 border-t border-white/5 shrink-0 flex items-center justify-between">
-            <span className="text-xs text-white/50 font-mono">
+            <span className="text-xs text-white/25 font-mono">
               {sorted.filter(t => t.status === 'ACTIVE').length} активных · {sorted.filter(t => t.status === 'WAIT').length} в очереди
             </span>
             {hasActive && (

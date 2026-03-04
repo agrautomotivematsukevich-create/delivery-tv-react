@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { User, Lang, TranslationSet } from '../types';
-import { Globe, User as UserIcon, LogOut, ChevronDown, ScanBarcode, LogIn, AlertTriangle, History, LayoutDashboard, Archive, Truck, TrendingDown, Timer } from 'lucide-react';
+import { Globe, User as UserIcon, LogOut, ChevronDown, ScanBarcode, LogIn, AlertTriangle, History, LayoutDashboard, Archive, Truck, TrendingDown, Timer, Package } from 'lucide-react';
 
 interface HeaderProps {
   user: User | null;
   lang: Lang;
   t: TranslationSet;
-  view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival';
-  setView: (view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival') => void;
+  view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival' | 'lotTracker';
+  setView: (view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival' | 'lotTracker') => void;
   onToggleLang: () => void;
   onLoginClick: () => void;
   onLogoutClick: () => void;
@@ -163,6 +163,9 @@ const Header: React.FC<HeaderProps> = ({
               <div className="absolute top-full right-0 mt-2 w-48 bg-[#1A1A1F] border border-white/10 rounded-xl shadow-2xl z-50 p-1">
                 <button onClick={() => { onHistoryClick(); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-3 text-sm font-bold text-white/70 hover:text-white hover:bg-white/5 rounded-lg text-left">
                   <History size={16} /> {t.menu_history}
+                </button>
+                <button onClick={() => { setView('lotTracker'); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-3 text-sm font-bold text-white/70 hover:text-white hover:bg-white/5 rounded-lg text-left">
+                  <Package size={16} /> Отслеживание Lot
                 </button>
                 <div className="h-px bg-white/5 my-1"></div>
                 <button onClick={() => { onLogoutClick(); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-3 text-sm font-bold text-accent-red hover:bg-accent-red/10 rounded-lg text-left">

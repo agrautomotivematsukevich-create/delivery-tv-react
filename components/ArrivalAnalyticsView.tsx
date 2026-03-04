@@ -41,8 +41,8 @@ function formatWait(minutes: number): string {
 function getWaitStyle(minutes: number | null): {
   bg: string; text: string; dot: string;
 } {
-  if (minutes === null) return { bg: 'bg-white/5', text: 'text-white/50', dot: 'bg-white/20' };
-  if (minutes <= 0)     return { bg: 'bg-white/5', text: 'text-white/50', dot: 'bg-white/20' };
+  if (minutes === null) return { bg: 'bg-white/5', text: 'text-white/30', dot: 'bg-white/20' };
+  if (minutes <= 0)     return { bg: 'bg-white/5', text: 'text-white/30', dot: 'bg-white/20' };
   if (minutes <= 30)    return { bg: 'bg-emerald-500/10', text: 'text-emerald-400', dot: 'bg-emerald-400' };
   if (minutes <= 60)    return { bg: 'bg-amber-500/10', text: 'text-amber-400', dot: 'bg-amber-400' };
   return { bg: 'bg-red-500/10', text: 'text-red-400', dot: 'bg-red-400' };
@@ -148,7 +148,7 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
           </div>
           <div>
             <div className="font-black text-white text-base uppercase tracking-wider">{t.arr_title}</div>
-            <div className="text-xs text-white/60 mt-0.5">Колонка P таблицы → время ожидания разгрузки</div>
+            <div className="text-xs text-white/40 mt-0.5">Колонка P таблицы → время ожидания разгрузки</div>
           </div>
         </div>
 
@@ -160,7 +160,7 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
                 key={ws}
                 onClick={() => setWsFilter(ws)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                  wsFilter === ws ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'
+                  wsFilter === ws ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white'
                 }`}
               >
                 {ws}
@@ -170,7 +170,7 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
 
           {/* Дата */}
           <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-4 py-2">
-            <Calendar size={14} className="text-white/60" />
+            <Calendar size={14} className="text-white/40" />
             <input
               type="date"
               value={date}
@@ -187,11 +187,11 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
           {/* Всего машин */}
           <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-2xl p-5">
             <div className="flex items-center gap-2 mb-3">
-              <Package size={16} className="text-white/60" />
-              <span className="text-xs text-white/60 uppercase tracking-wider">{t.arr_vehicles_total}</span>
+              <Package size={16} className="text-white/40" />
+              <span className="text-xs text-white/40 uppercase tracking-wider">{t.arr_vehicles_total}</span>
             </div>
             <div className="text-3xl font-black text-white tabular-nums">{stats.total}</div>
-            <div className="text-xs text-white/50 mt-1">
+            <div className="text-xs text-white/30 mt-1">
               {stats.withDataCount} {t.arr_vehicles_with_data}
             </div>
           </div>
@@ -200,32 +200,32 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
           <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-2xl p-5">
             <div className="flex items-center gap-2 mb-3">
               <Clock size={16} className="text-amber-400/60" />
-              <span className="text-xs text-white/60 uppercase tracking-wider">{t.arr_avg_wait}</span>
+              <span className="text-xs text-white/40 uppercase tracking-wider">{t.arr_avg_wait}</span>
             </div>
             <div className={`text-3xl font-black tabular-nums ${
-              stats.avg === null ? 'text-white/50' :
+              stats.avg === null ? 'text-white/30' :
               stats.avg <= 30 ? 'text-emerald-400' :
               stats.avg <= 60 ? 'text-amber-400' : 'text-red-400'
             }`}>
               {stats.avg !== null ? formatWait(stats.avg) : '—'}
             </div>
-            <div className="text-xs text-white/50 mt-1">по машинам с данными</div>
+            <div className="text-xs text-white/30 mt-1">по машинам с данными</div>
           </div>
 
           {/* Макс. ожидание */}
           <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-2xl p-5">
             <div className="flex items-center gap-2 mb-3">
-              <TrendingUp size={16} className="text-red-400" />
-              <span className="text-xs text-white/60 uppercase tracking-wider">{t.arr_max_wait}</span>
+              <TrendingUp size={16} className="text-red-400/60" />
+              <span className="text-xs text-white/40 uppercase tracking-wider">{t.arr_max_wait}</span>
             </div>
             <div className={`text-3xl font-black tabular-nums ${
-              stats.max === null ? 'text-white/50' :
+              stats.max === null ? 'text-white/30' :
               stats.max <= 30 ? 'text-emerald-400' :
               stats.max <= 60 ? 'text-amber-400' : 'text-red-400'
             }`}>
               {stats.max !== null ? formatWait(stats.max) : '—'}
             </div>
-            <div className="text-xs text-white/50 mt-1">максимальный зафиксированный</div>
+            <div className="text-xs text-white/30 mt-1">максимальный зафиксированный</div>
           </div>
 
           {/* Критичных > 1 часа */}
@@ -235,13 +235,13 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
               : 'bg-card-bg border-white/10'
           }`}>
             <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle size={16} className={stats.overHour > 0 ? 'text-red-400' : 'text-white/60'} />
-              <span className="text-xs text-white/60 uppercase tracking-wider">&gt; 60 мин</span>
+              <AlertTriangle size={16} className={stats.overHour > 0 ? 'text-red-400' : 'text-white/40'} />
+              <span className="text-xs text-white/40 uppercase tracking-wider">&gt; 60 мин</span>
             </div>
-            <div className={`text-3xl font-black tabular-nums ${stats.overHour > 0 ? 'text-red-400' : 'text-white/50'}`}>
+            <div className={`text-3xl font-black tabular-nums ${stats.overHour > 0 ? 'text-red-400' : 'text-white/30'}`}>
               {stats.overHour}
             </div>
-            <div className="text-xs text-white/50 mt-1">{t.arr_over_hour}</div>
+            <div className="text-xs text-white/30 mt-1">{t.arr_over_hour}</div>
           </div>
         </div>
       )}
@@ -253,7 +253,7 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
         const maxVal = Math.max(...withData.map(t => t.waitMinutes ?? 0));
         return (
           <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl p-6">
-            <div className="text-xs font-bold uppercase tracking-widest text-white/60 mb-4">
+            <div className="text-xs font-bold uppercase tracking-widest text-white/40 mb-4">
               Распределение времени простоя
             </div>
             <div className="flex flex-col gap-2">
@@ -285,12 +285,12 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
       {/* ── Таблица ── */}
       <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl flex-1 min-h-0 overflow-hidden flex flex-col">
         {loading ? (
-          <div className="flex-1 flex items-center justify-center text-white/50 animate-pulse gap-3">
+          <div className="flex-1 flex items-center justify-center text-white/30 animate-pulse gap-3">
             <Timer size={24} strokeWidth={1} className="animate-spin" />
             <span>{t.msg_loading_history}</span>
           </div>
         ) : tasks.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-white/50 gap-4">
+          <div className="flex-1 flex flex-col items-center justify-center text-white/30 gap-4">
             <Package size={48} strokeWidth={1} />
             <div>{t.arr_no_data}</div>
           </div>
@@ -306,16 +306,16 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
               ].map(item => (
                 <div key={item.label} className="flex items-center gap-1.5">
                   <div className={`w-2 h-2 rounded-full ${item.dot}`} />
-                  <span className="text-[10px] text-white/60 uppercase tracking-wider">{item.label}</span>
+                  <span className="text-[10px] text-white/40 uppercase tracking-wider">{item.label}</span>
                 </div>
               ))}
-              <div className="ml-auto text-xs text-white/50">
+              <div className="ml-auto text-xs text-white/30">
                 {filtered.length} из {enriched.length}
               </div>
             </div>
 
             {/* Шапка таблицы */}
-            <div className="grid grid-cols-[2.5rem_1fr_4rem_4rem_5rem_5rem_5rem_4rem_1fr] gap-2 px-4 py-2 text-[9px] font-bold uppercase tracking-widest text-white/50 border-b border-white/5">
+            <div className="grid grid-cols-[2.5rem_1fr_4rem_4rem_5rem_5rem_5rem_4rem_1fr] gap-2 px-4 py-2 text-[9px] font-bold uppercase tracking-widest text-white/30 border-b border-white/5">
               <div className="text-center">#</div>
               {[
                 { key: 'id' as SortKey, label: t.arr_col_container },
@@ -351,7 +351,7 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
                     }`}
                   >
                     {/* Индекс */}
-                    <div className="text-center text-xs text-white/50 font-mono">{idx + 1}</div>
+                    <div className="text-center text-xs text-white/20 font-mono">{idx + 1}</div>
 
                     {/* Container ID */}
                     <div className="flex items-center gap-2 min-w-0">
@@ -359,7 +359,7 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
                       <div>
                         <div className="font-mono text-sm font-bold text-white truncate">{task.id}</div>
                         {task.status !== 'DONE' && (
-                          <div className="text-[9px] text-white/50 uppercase tracking-wider">
+                          <div className="text-[9px] text-white/30 uppercase tracking-wider">
                             {task.status === 'ACTIVE' ? 'в работе' : 'ожидание'}
                           </div>
                         )}
@@ -376,20 +376,20 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
 
                     {/* Прибытие */}
                     <div className="text-xs font-mono text-white/70 text-center font-bold">
-                      {task.arrival_time || <span className="text-white/50">—</span>}
+                      {task.arrival_time || <span className="text-white/20">—</span>}
                     </div>
 
                     {/* Начало разгрузки */}
                     <div className="text-xs font-mono text-white/70 text-center font-bold">
-                      {task.start_time || <span className="text-white/50">—</span>}
+                      {task.start_time || <span className="text-white/20">—</span>}
                     </div>
 
                     {/* Простой */}
                     <div className={`text-sm font-black text-center rounded-lg py-1 ${style.bg} ${style.text}`}>
                       {task.waitMinutes === null
-                        ? <span className="text-xs font-normal text-white/50">{t.arr_no_arrival}</span>
+                        ? <span className="text-xs font-normal text-white/20">{t.arr_no_arrival}</span>
                         : task.waitMinutes <= 0
-                          ? <span className="text-xs text-white/50">0м</span>
+                          ? <span className="text-xs text-white/30">0м</span>
                           : formatWait(task.waitMinutes)
                       }
                     </div>

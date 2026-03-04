@@ -138,7 +138,7 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
         {mode === 'create' && (
           <>
             <div className="flex-1 overflow-y-auto custom-scrollbar -mr-4 pr-4">
-              <div className="grid grid-cols-[40px_100px_80px_100px_1fr_120px_80px_40px] gap-4 mb-2 text-[10px] font-bold text-white/50 uppercase tracking-widest px-2 min-w-[800px]">
+              <div className="grid grid-cols-[40px_100px_80px_100px_1fr_120px_80px_40px] gap-4 mb-2 text-[10px] font-bold text-white/30 uppercase tracking-widest px-2 min-w-[800px]">
                   <div className="flex items-center justify-center">#</div>
                   <div>{t.log_lot}</div>
                   <div>{t.log_ws}</div>
@@ -152,7 +152,7 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
               <div className="space-y-2 min-w-[800px]">
                 {createRows.map((row, idx) => (
                   <div key={idx} className="grid grid-cols-[40px_100px_80px_100px_1fr_120px_80px_40px] gap-4 items-center bg-white/5 border border-white/5 rounded-xl p-3 hover:bg-white/10 transition-colors">
-                      <div className="text-white/50 font-mono text-center">{idx + 1}</div>
+                      <div className="text-white/30 font-mono text-center">{idx + 1}</div>
                       <input type="text" value={row.lot} onChange={(e) => updateCreateRow(idx, 'lot', e.target.value)} placeholder="Lot..." className="bg-transparent border-b border-white/10 text-white text-sm focus:border-accent-purple outline-none w-full" />
                       <div className="relative">
                         <input list={`ws-options-${idx}`} value={row.ws} onChange={(e) => updateCreateRow(idx, 'ws', e.target.value)} className="bg-black/20 border border-white/10 rounded text-white text-sm p-1 w-full text-center uppercase font-bold" />
@@ -162,7 +162,7 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
                       <input type="text" value={row.id} onChange={(e) => updateCreateRow(idx, 'id', e.target.value)} placeholder="WSDU..." className="bg-transparent border-b border-white/10 text-white font-mono font-bold focus:border-accent-purple outline-none w-full uppercase" />
                       <input type="text" value={row.phone} onChange={(e) => updateCreateRow(idx, 'phone', e.target.value)} placeholder="89..." className="bg-transparent border-b border-white/10 text-white text-sm focus:border-accent-purple outline-none w-full" />
                       <input type="time" value={row.eta} onChange={(e) => updateCreateRow(idx, 'eta', e.target.value)} className="bg-transparent border-b border-white/10 text-white text-sm focus:border-accent-purple outline-none w-full [color-scheme:dark]" />
-                      <button onClick={() => removeCreateRow(idx)} className="text-white/50 hover:text-accent-red transition-colors flex justify-center"><Trash2 size={18} /></button>
+                      <button onClick={() => removeCreateRow(idx)} className="text-white/20 hover:text-accent-red transition-colors flex justify-center"><Trash2 size={18} /></button>
                   </div>
                 ))}
               </div>
@@ -184,16 +184,16 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
         {mode === 'edit' && (
           <div className="flex-1 flex flex-col min-h-0">
              {loadingPlan ? (
-               <div className="flex-1 flex items-center justify-center text-white/50 animate-pulse">Loading plan...</div>
+               <div className="flex-1 flex items-center justify-center text-white/30 animate-pulse">Loading plan...</div>
              ) : planRows.length === 0 ? (
-               <div className="flex-1 flex items-center justify-center text-white/50">{t.log_no_data}</div>
+               <div className="flex-1 flex items-center justify-center text-white/30">{t.log_no_data}</div>
              ) : (
                <div className="flex-1 overflow-auto custom-scrollbar">
                   <table className="w-full text-left border-collapse">
                     <thead className="sticky top-0 bg-[#16161d] z-10 shadow-md">
                       <tr>
                         {['#', t.log_lot, t.log_ws, t.log_pallets, t.log_id, t.log_phone, t.log_eta, ''].map((h, i) => (
-                          <th key={i} className="p-4 text-xs font-bold text-white/60 uppercase tracking-widest border-b border-white/10">{h}</th>
+                          <th key={i} className="p-4 text-xs font-bold text-white/40 uppercase tracking-widest border-b border-white/10">{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -237,27 +237,27 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
               
               <div className="grid grid-cols-2 gap-4">
                  <div className="col-span-1">
-                    <label className="text-xs font-bold text-white/60 mb-1 block">{t.log_lot}</label>
+                    <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_lot}</label>
                     <input type="text" value={editingItem.lot} onChange={e => setEditingItem({...editingItem, lot: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none" />
                  </div>
                  <div className="col-span-1">
-                    <label className="text-xs font-bold text-white/60 mb-1 block">{t.log_ws}</label>
+                    <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_ws}</label>
                     <input type="text" value={editingItem.ws} onChange={e => setEditingItem({...editingItem, ws: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none uppercase" />
                  </div>
                  <div className="col-span-2">
-                    <label className="text-xs font-bold text-white/60 mb-1 block">{t.log_id}</label>
+                    <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_id}</label>
                     <input type="text" value={editingItem.id} onChange={e => setEditingItem({...editingItem, id: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white font-mono font-bold focus:border-accent-purple outline-none uppercase" />
                  </div>
                  <div className="col-span-1">
-                    <label className="text-xs font-bold text-white/60 mb-1 block">{t.log_pallets}</label>
+                    <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_pallets}</label>
                     <input type="text" value={editingItem.pallets} onChange={e => setEditingItem({...editingItem, pallets: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none" />
                  </div>
                  <div className="col-span-1">
-                    <label className="text-xs font-bold text-white/60 mb-1 block">{t.log_eta}</label>
+                    <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_eta}</label>
                     <input type="time" value={editingItem.eta} onChange={e => setEditingItem({...editingItem, eta: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none [color-scheme:dark]" />
                  </div>
                  <div className="col-span-2">
-                    <label className="text-xs font-bold text-white/60 mb-1 block">{t.log_phone}</label>
+                    <label className="text-xs font-bold text-white/40 mb-1 block">{t.log_phone}</label>
                     <input type="text" value={editingItem.phone} onChange={e => setEditingItem({...editingItem, phone: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white focus:border-accent-purple outline-none" />
                  </div>
               </div>

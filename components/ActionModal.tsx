@@ -189,7 +189,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           {processingPhoto && currentPhotoTarget.current === (label.includes('пломб') ? 2 : 1)
             ? <Loader2 className="w-7 h-7 text-accent-blue animate-spin" />
             : icon}
-          <span className="font-bold text-white/60 text-xs uppercase text-center leading-tight">{label}</span>
+          <span className="font-bold text-white/40 text-xs uppercase text-center leading-tight">{label}</span>
         </div>
       )}
     </div>
@@ -256,7 +256,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
         {/* Заголовок + ID */}
         <div className="text-center">
-          <div className="text-xs text-white/50 uppercase tracking-widest mb-1">
+          <div className="text-xs text-white/30 uppercase tracking-widest mb-1">
             {isStart ? 'Начало разгрузки' : 'Завершение разгрузки'}
           </div>
           <h2 className="text-2xl font-extrabold text-white font-mono tracking-tight">{action.id}</h2>
@@ -267,7 +267,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
             className={`mt-3 mx-auto flex items-center gap-2 px-4 py-2 rounded-full border transition-all duration-300 ${
               isLocalManual
                 ? 'bg-orange-500 border-orange-400 text-white shadow-lg shadow-orange-500/20'
-                : 'bg-white/5 border-white/10 text-white/60 hover:text-white'
+                : 'bg-white/5 border-white/10 text-white/40 hover:text-white'
             } disabled:opacity-50`}
           >
             <Truck size={14} />
@@ -280,14 +280,14 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         {/* Выбор зоны */}
         {isStart && (
           <div>
-            <p className="text-[10px] font-black text-white/50 mb-2 uppercase tracking-[0.2em] text-center">Зона выгрузки</p>
+            <p className="text-[10px] font-black text-white/30 mb-2 uppercase tracking-[0.2em] text-center">Зона выгрузки</p>
             <div className="grid grid-cols-3 gap-2">
               {AVAILABLE_ZONES.map(z => (
                 <button key={z} onClick={() => setZone(z)} disabled={isSubmitting}
                   className={`py-3.5 rounded-xl font-bold text-sm border transition-all ${
                     zone === z
                       ? (isLocalManual ? 'bg-orange-500 border-orange-400 text-white' : 'bg-blue-600 border-blue-500 text-white')
-                      : 'bg-white/5 text-white/60 border-transparent hover:bg-white/10'
+                      : 'bg-white/5 text-white/40 border-transparent hover:bg-white/10'
                   } disabled:opacity-50`}>
                   {z}
                 </button>
@@ -300,8 +300,8 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         {!isStart && sealPhotoUrl && (
           <div className="rounded-2xl overflow-hidden border border-white/10 bg-black">
             <div className="px-4 py-2 bg-white/5 border-b border-white/5 flex items-center gap-2">
-              <ImageIcon size={13} className="text-white/60" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Фото пломбы</span>
+              <ImageIcon size={13} className="text-white/40" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Фото пломбы</span>
             </div>
             <img
               src={sealPhotoUrl.replace('view?usp=drivesdk', 'view').replace(
@@ -334,14 +334,14 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
               src={photo1?.data ?? null}
               label={isStart ? 'Общее фото (сзади)' : 'Фото пустого'}
               onTap={() => triggerFile(1)}
-              icon={<Camera className="text-white/50 w-7 h-7" />}
+              icon={<Camera className="text-white/20 w-7 h-7" />}
             />
             {isStart && (
               <PhotoPreview
                 src={photo2?.data ?? null}
                 label="Фото пломбы"
                 onTap={() => triggerFile(2)}
-                icon={<Lock className="text-white/50 w-7 h-7" />}
+                icon={<Lock className="text-white/20 w-7 h-7" />}
               />
             )}
           </div>
@@ -358,7 +358,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
             {isSubmitting ? 'Загрузка...' : processingPhoto ? 'Обработка фото...' : 'Подтвердить'}
           </button>
           <button onClick={onClose} disabled={isSubmitting}
-            className="text-white/50 hover:text-white py-2 text-[10px] font-bold uppercase tracking-widest transition-colors disabled:opacity-50">
+            className="text-white/20 hover:text-white py-2 text-[10px] font-bold uppercase tracking-widest transition-colors disabled:opacity-50">
             Отмена
           </button>
         </div>
@@ -375,7 +375,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           <div className="w-full max-w-sm bg-[#1c1c1e] rounded-3xl overflow-hidden animate-in slide-in-from-bottom-4 duration-200"
             onClick={e => e.stopPropagation()}>
             <div className="px-4 pt-4 pb-1 text-center">
-              <p className="text-white/60 text-xs font-semibold uppercase tracking-widest">
+              <p className="text-white/40 text-xs font-semibold uppercase tracking-widest">
                 {showPhotoMenu.target === 2 ? 'Фото пломбы' : (isStart ? 'Общее фото' : 'Фото пустого')}
               </p>
             </div>

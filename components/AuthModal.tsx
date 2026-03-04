@@ -59,7 +59,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
               placeholder="Name" 
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-white placeholder:text-white/50 focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-white placeholder:text-white/30 focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all"
             />
           )}
           <input 
@@ -67,14 +67,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
             placeholder="Username" 
             value={username}
             onChange={e => setUsername(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-white placeholder:text-white/50 focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all"
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-white placeholder:text-white/30 focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all"
           />
           <input 
             type="password" 
             placeholder="Password" 
             value={password}
             onChange={e => setPassword(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-white placeholder:text-white/50 focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all"
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-white placeholder:text-white/30 focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all"
           />
           
           {error && <div className="text-accent-red text-center text-sm font-bold">{error}</div>}
@@ -92,11 +92,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
           <button 
              type="button"
              onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}
-             className="text-white/60 hover:text-white transition-colors"
+             className="text-white/40 hover:text-white transition-colors"
           >
              {mode === 'login' ? t.reg_title : t.login_title}
           </button>
-          <button onClick={onClose} className="text-white/60 hover:text-white transition-colors">{t.btn_cancel}</button>
+          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">{t.btn_cancel}</button>
         </div>
       </div>
     </div>
