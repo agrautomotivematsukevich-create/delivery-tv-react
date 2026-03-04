@@ -213,9 +213,17 @@ interface ZoneInfo {
   containerId?: string;
   elapsed?: number;
   isOver?: boolean;
+  idleMinutes?: number; // сколько минут зона свободна
 }
 
-const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; tvMode?: boolean }> = ({ activeList, tvMode }) => {
+const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTasks?: Task[]; tvMode?: boolean }> = ({ activeList, allTasks = [], tvMode }) => {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!tvMode) return;
+    const id = setInterval(() => setTick(n => n + 1), 60000);
+    return () => clearInterval(id);
+  }, [tvMode]);
+
   // Строим map зона → активная задача
   const zoneMap = new Map<string, { id: string; start: string; elapsed: number }>();
   for (const item of activeList) {
@@ -225,14 +233,122 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; tvMode?
     }
   }
 
+  // Строим map зона → время последнего завершения (для расчёта простоя)
+  const lastDoneMap = new Map<string, number>(); // zone → end_time in minutes
+  for (const task of allTasks) {
+    if (task.status === 'DONE' && task.zone && task.end_time) {
+      const endMin = hhmm(task.end_time);
+      if (endMin !== null) {
+        const prev = lastDoneMap.get(task.zone);
+        if (prev === undefined || endMin > prev) lastDoneMap.set(task.zone, endMin);
+      }
+    }
+  }
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+
   const zones: ZoneInfo[] = DOCK_ZONES.map(name => {
     const task = zoneMap.get(name);
     if (task) {
       return { name, active: true, containerId: task.id, elapsed: task.elapsed, isOver: task.elapsed > UNLOAD_TARGET };
     }
-    return { name, active: false };
+    // idle — рассчитываем время простоя
+    const lastEnd = lastDoneMap.get(name);
+    let idleMinutes: number | undefined;
+    if (lastEnd !== undefined) {
+      idleMinutes = nowMin - lastEnd;
+      if (idleMinutes < 0) idleMinutes += 1440;
+    }
+    return { name, active: false, idleMinutes };
   });
 
+  const busyCount = zones.filter(z => z.active).length;
+
+  if (tvMode) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[10px] font-bold text-white/30 uppercase tracking-[2px]">Зоны выгрузки</div>
+          <div className="text-[10px] font-bold text-white/40 tracking-wider">
+            <span className="text-emerald-400">{busyCount}</span>
+            <span className="text-white/20 mx-1">/</span>
+            <span>{DOCK_ZONES.length}</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5 flex-1">
+          {zones.map(z => {
+            const isOver = z.isOver ?? false;
+            const isWarn = z.active && !isOver && (z.elapsed ?? 0) >= UNLOAD_TARGET - 5;
+
+            let borderCls = 'border-white/6 bg-white/[0.02]';
+            let dotCls    = 'bg-white/15';
+            let nameCls   = 'text-white/25';
+
+            if (z.active) {
+              if (isOver) {
+                borderCls = 'border-red-500/40 bg-red-500/[0.06] shadow-[0_0_20px_rgba(248,113,113,0.1)]';
+                dotCls    = 'bg-red-400 animate-pulse';
+                nameCls   = 'text-red-300';
+              } else if (isWarn) {
+                borderCls = 'border-yellow-500/40 bg-yellow-500/[0.06]';
+                dotCls    = 'bg-yellow-400 animate-pulse';
+                nameCls   = 'text-yellow-300';
+              } else {
+                borderCls = 'border-emerald-500/40 bg-emerald-500/[0.06] shadow-[0_0_15px_rgba(0,230,118,0.06)]';
+                dotCls    = 'bg-emerald-400';
+                nameCls   = 'text-emerald-300';
+              }
+            }
+
+            return (
+              <div key={z.name} className={`rounded-2xl border transition-all duration-500 flex flex-col justify-between p-4 ${borderCls}`}>
+                {/* Заголовок */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} />
+                    <span className={`font-black text-base tracking-wider uppercase ${nameCls}`}>{z.name}</span>
+                  </div>
+                  {z.active && (
+                    <span className={`text-[9px] font-bold uppercase tracking-wider ${isOver ? 'text-red-400/60' : isWarn ? 'text-yellow-400/60' : 'text-emerald-400/60'}`}>
+                      {isOver ? 'ПРЕВЫШЕН' : 'АКТИВНО'}
+                    </span>
+                  )}
+                </div>
+
+                {z.active ? (
+                  <div className="flex-1 flex flex-col justify-center">
+                    <div className={`font-mono text-sm font-bold truncate mt-2 ${isOver ? 'text-red-300/70' : isWarn ? 'text-yellow-300/70' : 'text-emerald-300/70'}`} title={z.containerId}>
+                      {z.containerId}
+                    </div>
+                    <div className={`font-mono text-3xl font-black mt-1 tabular-nums ${isOver ? 'text-red-400' : isWarn ? 'text-yellow-400' : 'text-emerald-400'}`}>
+                      {isOver ? `+${(z.elapsed ?? 0) - UNLOAD_TARGET}` : `${Math.max(0, UNLOAD_TARGET - (z.elapsed ?? 0))}`}
+                      <span className="text-sm font-bold ml-1 opacity-60">мин</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col justify-center items-center">
+                    {z.idleMinutes !== undefined ? (
+                      <>
+                        <div className="text-2xl font-black tabular-nums text-white/12 font-mono">
+                          {z.idleMinutes >= 60 
+                            ? `${Math.floor(z.idleMinutes / 60)}ч ${(z.idleMinutes % 60).toString().padStart(2,'0')}м`
+                            : `${z.idleMinutes} мин`}
+                        </div>
+                        <div className="text-[9px] text-white/15 font-bold uppercase tracking-widest mt-1">простой</div>
+                      </>
+                    ) : (
+                      <div className="text-[10px] text-white/12 font-bold uppercase tracking-widest">свободно</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Non-TV (original compact) ──
   return (
     <div>
       <div className="text-[10px] font-bold text-white/30 uppercase tracking-[2px] mb-2">Зоны выгрузки</div>
@@ -266,8 +382,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; tvMode?
           }
 
           return (
-            <div key={z.name} className={`rounded-xl border transition-all duration-500 overflow-hidden ${borderCls} ${tvMode ? 'p-3' : 'p-2.5'}`}>
-              {/* Заголовок зоны */}
+            <div key={z.name} className={`rounded-xl border transition-all duration-500 overflow-hidden ${borderCls} p-2.5`}>
               <div className="flex items-center gap-1.5 mb-1.5">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotCls}`} />
                 <span className={`font-black text-xs tracking-wider uppercase ${nameCls}`}>{z.name}</span>
@@ -367,9 +482,9 @@ const TVClock: React.FC = () => {
     return () => clearInterval(id);
   }, []);
   return (
-    <div className="flex flex-col items-center border-t border-white/5 pt-4 mt-auto">
-      <div className="font-mono text-5xl font-black text-white/80 tabular-nums tracking-tight">{time}</div>
-      <div className="text-sm font-medium text-white/30 mt-1 capitalize">{date}</div>
+    <div className="flex items-center justify-center gap-3 border-t border-white/5 pt-3 mt-3 shrink-0">
+      <div className="font-mono text-4xl font-black text-white/80 tabular-nums tracking-tight">{time}</div>
+      <div className="text-xs font-medium text-white/30 capitalize">{date}</div>
     </div>
   );
 };
@@ -530,8 +645,10 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
         </div>
 
         {/* Колонка 3: Зоны выгрузки + Часы */}
-        <div className={`${glass} flex flex-col p-5 gap-4 overflow-hidden`}>
-          <DockZonesGrid activeList={data.activeList} tvMode />
+        <div className={`${glass} flex flex-col p-5 overflow-hidden`}>
+          <div className="flex-1 min-h-0">
+            <DockZonesGrid activeList={data.activeList} allTasks={allTasks} tvMode />
+          </div>
           <TVClock />
         </div>
 
