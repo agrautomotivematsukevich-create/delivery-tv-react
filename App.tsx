@@ -46,16 +46,40 @@ function App() {
     return data;
   }, []);
 
+  // Initial load
   useEffect(() => {
     refreshDashboard().then(() => {
       setTimeout(() => setIsAppReady(true), 1200);
     });
+  }, [refreshDashboard]);
 
-    const interval = setInterval(() => {
-      if (view === 'dashboard') refreshDashboard();
-    }, 5000);
+  // Polling only when on dashboard AND tab is visible
+  useEffect(() => {
+    if (view !== 'dashboard') return;
 
-    return () => clearInterval(interval);
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      if (!intervalId) {
+        intervalId = setInterval(refreshDashboard, 15000);
+      }
+    };
+    const stopPolling = () => {
+      if (intervalId) { clearInterval(intervalId); intervalId = null; }
+    };
+
+    const onVisibility = () => {
+      if (document.hidden) { stopPolling(); }
+      else { refreshDashboard(); startPolling(); }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [refreshDashboard, view]);
 
   const handleLangToggle = () => {
