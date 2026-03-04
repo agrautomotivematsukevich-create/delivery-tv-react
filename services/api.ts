@@ -1,5 +1,5 @@
 import { SCRIPT_URL } from "../constants";
-import { DashboardData, Task, Issue, TaskInput, PlanRow } from "../types";
+import { DashboardData, Task, Issue, TaskInput, PlanRow, LotContainer } from "../types";
 
 export const hashPassword = async (p: string): Promise<string> => {
   const msgBuffer = new TextEncoder().encode(p);
@@ -133,6 +133,26 @@ export const api = {
     }
   },
 
+  // Lot Tracker: fetch all containers for a specific lot across all dates
+  fetchLotTracker: async (lot: string): Promise<LotContainer[]> => {
+    return cachedFetch(`lot_${lot}`, 15000, async () => {
+      try {
+        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_lot_tracker&lot=${encodeURIComponent(lot)}`);
+        const txt = await res.text();
+        try {
+          const data = JSON.parse(txt);
+          return Array.isArray(data) ? data : [];
+        } catch {
+          console.error('get_lot_tracker returned non-JSON:', txt.substring(0, 100));
+          return [];
+        }
+      } catch (e) {
+        console.error(e);
+        return [];
+      }
+    });
+  },
+
   // Logistics: Create new plan
   createPlan: async (dateStr: string, tasks: TaskInput[]): Promise<boolean> => {
     try {
@@ -163,6 +183,40 @@ export const api = {
        const txt = await res.text();
        return txt.includes("UPDATED");
     } catch(e) {
+      console.error(e);
+      return false;
+    }
+  },
+
+  // Priority Lot: read from DASHBOARD sheet
+  getPriorityLot: async (): Promise<string> => {
+    return cachedFetch('priority_lot', 10000, async () => {
+      try {
+        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_priority_lot`);
+        const txt = await res.text();
+        try {
+          const data = JSON.parse(txt);
+          return (data?.lot || '') as string;
+        } catch {
+          console.error('get_priority_lot returned non-JSON:', txt.substring(0, 100));
+          return '';
+        }
+      } catch (e) {
+        console.error(e);
+        return '';
+      }
+    });
+  },
+
+  // Priority Lot: write to DASHBOARD sheet
+  setPriorityLot: async (lot: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=set_priority_lot&lot=${encodeURIComponent(lot)}`);
+      const txt = await res.text();
+      // Invalidate cache
+      delete _cache['priority_lot'];
+      return txt.includes("OK");
+    } catch (e) {
       console.error(e);
       return false;
     }
