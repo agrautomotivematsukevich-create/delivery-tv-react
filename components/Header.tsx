@@ -39,9 +39,11 @@ const Header: React.FC<HeaderProps> = ({
       <div className="flex justify-between items-center w-full md:w-auto">
         <div 
           onClick={onStatsClick}
-          className="flex items-center gap-2 cursor-pointer group"
+          className="flex items-center gap-3 cursor-pointer group"
         >
-          <span className="text-xl md:text-3xl font-extrabold tracking-tight text-white group-hover:text-accent-blue transition-colors uppercase whitespace-nowrap">
+          <img src="/agr-logo-white.svg" alt="AGR" className="h-7 md:h-8 opacity-80 group-hover:opacity-100 transition-opacity" />
+          <div className="h-5 w-px bg-white/15 hidden md:block"></div>
+          <span className="text-base md:text-xl font-extrabold tracking-tight text-white/80 group-hover:text-white transition-colors uppercase whitespace-nowrap hidden md:block">
             {title}
           </span>
           <ChevronDown className="text-white/50 w-5 h-5 group-hover:text-white transition-colors" />
@@ -160,7 +162,7 @@ const Header: React.FC<HeaderProps> = ({
           {isDropdownOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)}></div>
-              <div className="absolute top-full right-0 mt-2 w-48 bg-[#1A1A1F] border border-white/10 rounded-xl shadow-2xl z-50 p-1">
+              <div className="absolute top-full right-0 mt-2 w-48 bg-[#252736] border border-white/10 rounded-xl shadow-2xl z-50 p-1">
                 <button onClick={() => { onHistoryClick(); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-3 text-sm font-bold text-white/70 hover:text-white hover:bg-white/5 rounded-lg text-left">
                   <History size={16} /> {t.menu_history}
                 </button>

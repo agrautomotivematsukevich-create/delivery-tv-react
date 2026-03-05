@@ -86,7 +86,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
   const waiting = sorted.filter(c => c.status === 'WAIT');
   const today = todayDDMM();
 
-  const glass = "bg-[rgba(20,20,25,0.6)] backdrop-blur-xl border border-white/10 border-t-white/15 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.4)]";
+  const glass = "bg-[rgba(58,60,78,0.35)] backdrop-blur-xl border border-white/10 border-t-white/15 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.4)]";
 
   return (
     <div className="flex flex-col gap-4 flex-1 min-h-0">

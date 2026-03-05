@@ -152,7 +152,7 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
 
   const percent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
-  const glass = "bg-[rgba(20,20,25,0.6)] backdrop-blur-xl border border-white/10 border-t-white/15 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.4)]";
+  const glass = "bg-[rgba(58,60,78,0.35)] backdrop-blur-xl border border-white/10 border-t-white/15 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.4)]";
 
   if (loading) {
     return (
