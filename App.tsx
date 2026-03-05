@@ -137,31 +137,28 @@ function App() {
     <>
       {/* ПРИВЕТСТВЕННЫЙ ЭКРАН ЗАГРУЗКИ */}
       {!isAppReady && (
-        <div className="fixed inset-0 z-[100] bg-[#0A0A0C] flex flex-col items-center justify-center overflow-hidden">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-600/10 blur-[120px] rounded-full"></div>
+        <div className="fixed inset-0 z-[100] bg-[#191B25] flex flex-col items-center justify-center overflow-hidden">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#1E7D7D]/10 blur-[120px] rounded-full"></div>
           
           <div className="relative flex flex-col items-center z-10 text-center">
-            <div className="relative w-24 h-24 mb-10 mx-auto">
-              <div className="absolute inset-0 border-[3px] border-white/5 rounded-2xl rotate-45"></div>
-              <div className="absolute inset-0 border-[3px] border-blue-500 rounded-2xl rotate-45 animate-spin shadow-[0_0_20px_rgba(59,130,246,0.5)]"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-              </div>
+            {/* AGR Logo */}
+            <div className="mb-8">
+              <img src="/agr-logo-white.svg" alt="AGR" className="h-16 md:h-20 opacity-90" />
             </div>
 
-            <h1 className="text-4xl md:text-5xl font-black tracking-[0.2em] mb-4 bg-gradient-to-b from-white via-white to-white/20 bg-clip-text text-transparent">
-              WAREHOUSE
-              <span className="block text-center text-lg tracking-[0.6em] text-blue-500 mt-2 font-light">DASHBOARD</span>
+            <h1 className="text-2xl md:text-3xl font-black tracking-[0.15em] mb-2 text-white/90 uppercase">
+              Warehouse
+              <span className="block text-center text-sm tracking-[0.5em] text-[#1E7D7D] mt-1.5 font-medium">Monitoring System</span>
             </h1>
 
             <div className="w-48 h-[2px] bg-white/5 rounded-full mt-6 overflow-hidden mx-auto">
-              <div className="h-full bg-blue-500 animate-[loading-bar_1.5s_ease-in-out_forwards]"></div>
+              <div className="h-full bg-[#1E7D7D] animate-[loading-bar_1.5s_ease-in-out_forwards]"></div>
             </div>
 
-            <div className="mt-12 flex flex-col items-center gap-2 transition-opacity duration-1000 opacity-60">
+            <div className="mt-10 flex flex-col items-center gap-2 transition-opacity duration-1000 opacity-60">
               <span className="text-[8px] font-bold uppercase tracking-[0.4em] text-white/50">System Initializing</span>
               <p className="text-[10px] font-medium tracking-[0.2em] text-white">
-                Developed by <span className="font-black text-blue-400">Vladislav_Matsukevich</span>
+                Developed by <span className="font-black text-[#1E7D7D]">Vladislav_Matsukevich</span>
               </p>
             </div>
           </div>
@@ -177,11 +174,11 @@ function App() {
 
       {/* ── TV MODE: полный экран без header/footer ── */}
       {isTV2 ? (
-        <div className={`fixed inset-0 bg-[#0A0A0C] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+        <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
           <LotTrackerTV lot={tv2Lot} />
         </div>
       ) : isTV ? (
-        <div className={`fixed inset-0 bg-[#0A0A0C] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+        <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
           {renderContent()}
         </div>
       ) : (
