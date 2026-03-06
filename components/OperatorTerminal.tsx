@@ -194,15 +194,25 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
               const isUndoing = undoingId === task.id;
               const showUndoConfirm = undoConfirm === task.id;
 
+              // Определяем, является ли паллет-показатель критическим (>0.55)
+              const palletMatch = task.pallets?.match(/^(\d+)\s*\/\s*(\d+)$/);
+              const isPalletOver = palletMatch
+                ? parseInt(palletMatch[1], 10) / parseInt(palletMatch[2], 10) > 0.55
+                : false;
+
+              // Формируем классы для карточки
+              const cardClasses = `rounded-2xl p-4 flex flex-col gap-2 transition-all border ${
+                isPalletOver
+                  ? 'bg-red-500/10 border-red-500/30 shadow-[0_0_20px_rgba(239,68,68,0.1)] hover:bg-red-500/20'
+                  : isActive
+                    ? isOvertime
+                      ? 'bg-red-500/5 border-red-500/20 shadow-[0_0_20px_rgba(239,68,68,0.05)]'
+                      : 'bg-accent-green/5 border-accent-green/20 shadow-[0_0_20px_rgba(0,230,118,0.05)]'
+                    : 'bg-white/5 border-white/5 hover:bg-white/8'
+              }`;
+
               return (
-                <div key={task.id} ref={isFirstActive ? activeRef : undefined}
-                  className={`rounded-2xl p-4 flex flex-col gap-2 transition-all border ${
-                    isActive
-                      ? isOvertime
-                        ? 'bg-red-500/5 border-red-500/20 shadow-[0_0_20px_rgba(239,68,68,0.05)]'
-                        : 'bg-accent-green/5 border-accent-green/20 shadow-[0_0_20px_rgba(0,230,118,0.05)]'
-                      : 'bg-white/5 border-white/5 hover:bg-white/8'
-                  }`}>
+                <div key={task.id} ref={isFirstActive ? activeRef : undefined} className={cardClasses}>
 
                   {/* Main row */}
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -218,7 +228,10 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                         <div className="flex items-center gap-3 mt-0.5 text-white/60 text-xs">
                           <span className="font-mono">{task.eta || task.time || '—'}</span>
                           {task.pallets && (
-                            <span className="flex items-center gap-1"><Layers size={10} />{task.pallets}</span>
+                            <span className={`flex items-center gap-1 ${isPalletOver ? 'text-red-500 font-bold' : ''}`}>
+                              <Layers size={10} className={isPalletOver ? 'text-red-500' : ''} />
+                              {task.pallets}
+                            </span>
                           )}
                           {isActive && task.start_time && (
                             <span className="text-accent-green font-bold">▶ {task.start_time}</span>
