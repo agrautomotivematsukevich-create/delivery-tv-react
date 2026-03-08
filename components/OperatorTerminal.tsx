@@ -113,6 +113,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     setProcessingIds(prev => [...prev, task.id]);
     try {
       await onTaskAction(task, action);
+      await fetchQueue();
     } catch (e) {
       console.error('Task action error:', e);
     } finally {
