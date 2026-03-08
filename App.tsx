@@ -14,6 +14,7 @@ import ZoneDowntimeView from './components/ZoneDowntimeView'; // НОВЫЙ ИМ
 import ArrivalAnalyticsView from './components/ArrivalAnalyticsView'; // АНАЛИТИКА ПРОСТОЯ
 import LotTrackerTV from './components/LotTrackerTV';
 import LotTrackerView from './components/LotTrackerView';
+import SplashScreen from './components/SplashScreen';
 import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
 import { DashboardData, Lang, User, Task, TaskAction } from './types';
@@ -34,6 +35,7 @@ function App() {
   const [view, setView] = useState<'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival' | 'lotTracker'>('dashboard');
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isAppReady, setIsAppReady] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
 
   const [showAuth, setShowAuth] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
@@ -143,34 +145,8 @@ function App() {
   return (
     <>
       {/* ПРИВЕТСТВЕННЫЙ ЭКРАН ЗАГРУЗКИ */}
-      {!isAppReady && (
-        <div className="fixed inset-0 z-[100] bg-[#191B25] flex flex-col items-center justify-center overflow-hidden">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#1E7D7D]/10 blur-[120px] rounded-full"></div>
+      {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
 
-          <div className="relative flex flex-col items-center z-10 text-center">
-            {/* AGR Logo */}
-            <div className="mb-8">
-              <img src="/agr-logo-white.svg" alt="AGR" className="h-16 md:h-20 opacity-90" />
-            </div>
-
-            <h1 className="text-2xl md:text-3xl font-black tracking-[0.15em] mb-2 text-white/90 uppercase">
-              Warehouse
-              <span className="block text-center text-sm tracking-[0.5em] text-[#1E7D7D] mt-1.5 font-medium">Monitoring System</span>
-            </h1>
-
-            <div className="w-48 h-[2px] bg-white/5 rounded-full mt-6 overflow-hidden mx-auto">
-              <div className="h-full bg-[#1E7D7D] animate-[loading-bar_1.5s_ease-in-out_forwards]"></div>
-            </div>
-
-            <div className="mt-10 flex flex-col items-center gap-2 transition-opacity duration-1000 opacity-60">
-              <span className="text-[8px] font-bold uppercase tracking-[0.4em] text-white/50">System Initializing</span>
-              <p className="text-[10px] font-medium tracking-[0.2em] text-white">
-                Developed by <span className="font-black text-[#1E7D7D]">Vladislav_Matsukevich</span>
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── TV MODE: полный экран без header/footer ── */}
       {isTV2 ? (
