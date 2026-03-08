@@ -109,16 +109,26 @@ function App() {
   };
 
   const handleTaskActionRequest = (task: Task, actionType: 'start' | 'finish') => {
-    setCurrentAction({
-      id: task.id,
-      type: actionType,
-      sealPhotoUrl: actionType === 'finish' ? task.photo_seal : undefined,
+    return new Promise<void>((resolve, reject) => {
+      setCurrentAction({
+        id: task.id,
+        type: actionType,
+        sealPhotoUrl: actionType === 'finish' ? task.photo_seal : undefined,
+        onResolve: resolve,
+        onReject: reject,
+      });
     });
   };
 
   const handleActionSuccess = () => {
+    if (currentAction?.onResolve) currentAction.onResolve();
     setCurrentAction(null);
     refreshDashboard();
+  };
+
+  const handleActionClose = () => {
+    if (currentAction?.onReject) currentAction.onReject();
+    setCurrentAction(null);
   };
 
   const renderContent = () => {
@@ -213,7 +223,7 @@ function App() {
             <HistoryModal t={t} onClose={() => setShowIssueHistory(false)} />
           )}
           {currentAction && user && (
-            <ActionModal action={currentAction} user={user} t={t} onClose={() => setCurrentAction(null)} onSuccess={handleActionSuccess} />
+            <ActionModal action={currentAction} user={user} t={t} onClose={handleActionClose} onSuccess={handleActionSuccess} />
           )}
 
           <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">

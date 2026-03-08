@@ -189,6 +189,8 @@ export interface TaskAction {
   type: 'start' | 'finish';
   zone?: string | null;
   sealPhotoUrl?: string; // Передаётся при финише для превью
+  onResolve?: () => void;
+  onReject?: () => void;
 }
 
 export interface LotContainer {
