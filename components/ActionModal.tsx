@@ -1,9 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { api } from '../services/api';
 import { TranslationSet, TaskAction, User } from '../types';
-import { Camera, Lock, CheckCircle, Clock, Truck, Upload, AlertCircle, Loader2, Image as ImageIcon } from 'lucide-react';
-import { vibrate } from './OperatorTerminal';
-import { offlineQueue } from '../services/offlineQueue';
+import { Camera, Lock, CheckCircle, Clock, Truck, Upload, AlertCircle, Loader2 } from 'lucide-react';
 
 interface ActionModalProps {
   action: TaskAction;
@@ -13,65 +11,31 @@ interface ActionModalProps {
   onSuccess: () => void;
 }
 
-type UploadStatus =
+// Типы статусов загрузки
+type UploadStatus = 
   | { state: 'idle' }
   | { state: 'uploading'; step: string; progress: number }
   | { state: 'success' }
   | { state: 'error'; message: string };
 
-type PhotoData = { data: string; mime: string; name: string };
-
-// ── Вспомогательная функция: сжатие фото ──────────────────────────────────────
-// maxW=1200 и quality=0.72 — быстрее и достаточно для архива
-async function compressImage(file: File, maxW = 1200, quality = 0.72, suffix = ''): Promise<PhotoData> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = evt => {
-      const img = new Image();
-      img.onload = () => {
-        const scale = Math.min(1, maxW / img.width);
-        const canvas = document.createElement('canvas');
-        canvas.width  = Math.round(img.width  * scale);
-        canvas.height = Math.round(img.height * scale);
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return reject(new Error('Canvas error'));
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve({
-          data: canvas.toDataURL('image/jpeg', quality),
-          mime: 'image/jpeg',
-          name: suffix ? `${suffix}.jpg` : file.name,
-        });
-      };
-      img.onerror = () => reject(new Error('Image load error'));
-      if (evt.target?.result) img.src = evt.target.result as string;
-    };
-    reader.onerror = () => reject(new Error('File read error'));
-    reader.readAsDataURL(file);
-  });
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
 const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onSuccess }) => {
-  const [zone, setZone]     = useState<string | null>(null);
-  const [photo1, setPhoto1] = useState<PhotoData | null>(null); // General / Empty
-  const [photo2, setPhoto2] = useState<PhotoData | null>(null); // Seal (только start)
+  const [zone, setZone] = useState<string | null>(null);
+  const [photo1, setPhoto1] = useState<{data: string, mime: string, name: string} | null>(null);
+  const [photo2, setPhoto2] = useState<{data: string, mime: string, name: string} | null>(null);
+  
+  // Новое: детальный статус загрузки
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>({ state: 'idle' });
+  
   const [isLocalManual, setIsLocalManual] = useState(false);
-  const [manualTime, setManualTime] = useState(
-    new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-  );
-  const [showPhotoMenu, setShowPhotoMenu] = useState<{ target: 1 | 2 } | null>(null);
-  const [processingPhoto, setProcessingPhoto] = useState(false);
-
-  const fileInputRef   = useRef<HTMLInputElement>(null);
+  const [manualTime, setManualTime] = useState(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const currentPhotoTarget = useRef<1 | 2>(1);
+  const [showPhotoMenu, setShowPhotoMenu] = useState<{ target: 1 | 2 } | null>(null);
 
   const isStart = action.type === 'start';
   const AVAILABLE_ZONES = ['G4', 'G5', 'G7', 'G8', 'G9', 'P70'];
-
-  // Превью пломбы при финише (если передали)
-  const sealPhotoUrl: string | undefined = (action as any).sealPhotoUrl;
 
   const triggerFile = (target: 1 | 2) => {
     currentPhotoTarget.current = target;
@@ -80,6 +44,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   const triggerGallery = () => {
     setShowPhotoMenu(null);
+    // небольшая задержка чтобы меню успело закрыться до открытия пикера
     setTimeout(() => fileInputRef.current?.click(), 50);
   };
 
@@ -88,22 +53,28 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
     setTimeout(() => cameraInputRef.current?.click(), 50);
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    // Сбрасываем input чтобы повторный выбор того же файла работал
-    e.target.value = '';
-    setProcessingPhoto(true);
-    try {
-      const t1 = currentPhotoTarget.current;
-      const suffix = isStart
-        ? (t1 === 1 ? `${action.id}_General` : `${action.id}_Seal`)
-        : `${action.id}_Empty`;
-      const compressed = await compressImage(file, 1200, 0.72, suffix);
-      if (t1 === 1) setPhoto1(compressed);
-      else setPhoto2(compressed);
-    } finally {
-      setProcessingPhoto(false);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          const scale = 1600 / img.width;
+          canvas.width = 1600;
+          canvas.height = img.height * scale;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const suffix = isStart ? (currentPhotoTarget.current === 1 ? "_General" : "_Seal") : "_Empty";
+          const photoData = { data: canvas.toDataURL('image/jpeg', 0.8), mime: 'image/jpeg', name: `${action.id}${suffix}.jpg` };
+          if (currentPhotoTarget.current === 1) setPhoto1(photoData);
+          else setPhoto2(photoData);
+        };
+        if (evt.target?.result) img.src = evt.target.result as string;
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -115,174 +86,196 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   const handleSubmit = async () => {
     if (!isFormValid()) return;
+    
     try {
-      setUploadStatus({ state: 'uploading', step: 'Подготовка...', progress: 5 });
-      let urlGen = '', urlSeal = '', urlEmpty = '';
-
+      setUploadStatus({ state: 'uploading', step: 'Подготовка...', progress: 0 });
+      
+      let urlGen = "", urlSeal = "", urlEmpty = "";
+      
       if (!isLocalManual) {
-        if (isStart) {
-          // ── Параллельная загрузка обоих фото ──
-          setUploadStatus({ state: 'uploading', step: 'Загрузка фото...', progress: 15 });
-          const [r1, r2] = await Promise.all([
-            photo1 ? api.uploadPhoto(photo1.data, photo1.mime, photo1.name) : Promise.resolve(''),
-            photo2 ? api.uploadPhoto(photo2.data, photo2.mime, photo2.name) : Promise.resolve(''),
-          ]);
-          // If upload failed but we're offline, queue photos for later
-          if (photo1 && !r1) {
-            if (!navigator.onLine) {
-              await offlineQueue.enqueue('photo_upload', {
-                image: photo1.data, mimeType: photo1.mime, filename: photo1.name,
-                taskId: action.id, photoField: 'pGen',
-              });
-            } else {
-              throw new Error('Не удалось загрузить фото 1. Проверьте интернет.');
-            }
+        const totalPhotos = isStart ? 2 : 1;
+        let uploadedPhotos = 0;
+        
+        // Загрузка фото 1
+        if (photo1) {
+          setUploadStatus({ 
+            state: 'uploading', 
+            step: isStart ? 'Загрузка общего фото...' : 'Загрузка фото пустого...',
+            progress: 10 
+          });
+          
+          urlGen = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name);
+          
+          if (!urlGen) {
+            throw new Error('Не удалось загрузить фото 1. Проверьте интернет.');
           }
-          if (photo2 && !r2) {
-            if (!navigator.onLine) {
-              await offlineQueue.enqueue('photo_upload', {
-                image: photo2.data, mimeType: photo2.mime, filename: photo2.name,
-                taskId: action.id, photoField: 'pSeal',
-              });
-            } else {
-              throw new Error('Не удалось загрузить фото 2. Проверьте интернет.');
-            }
+          
+          uploadedPhotos++;
+          setUploadStatus({ 
+            state: 'uploading', 
+            step: `Фото ${uploadedPhotos}/${totalPhotos} загружено`,
+            progress: (uploadedPhotos / totalPhotos) * 60 
+          });
+        }
+        
+        // Загрузка фото 2 (только для start)
+        if (isStart && photo2) {
+          setUploadStatus({ 
+            state: 'uploading', 
+            step: 'Загрузка фото пломбы...',
+            progress: 40 
+          });
+          
+          urlSeal = await api.uploadPhoto(photo2.data, photo2.mime, photo2.name);
+          
+          if (!urlSeal) {
+            throw new Error('Не удалось загрузить фото 2. Проверьте интернет.');
           }
-          urlGen  = r1;
-          urlSeal = r2;
-        } else {
-          // Финиш — одно фото
-          setUploadStatus({ state: 'uploading', step: 'Загрузка фото...', progress: 20 });
-          if (photo1) {
-            urlEmpty = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name);
-            if (!urlEmpty) {
-              if (!navigator.onLine) {
-                await offlineQueue.enqueue('photo_upload', {
-                  image: photo1.data, mimeType: photo1.mime, filename: photo1.name,
-                  taskId: action.id, photoField: 'pEmpty',
-                });
-              } else {
-                throw new Error('Не удалось загрузить фото. Проверьте интернет.');
-              }
-            }
-          }
+          
+          uploadedPhotos++;
+          setUploadStatus({ 
+            state: 'uploading', 
+            step: `Фото ${uploadedPhotos}/${totalPhotos} загружено`,
+            progress: 70 
+          });
+        }
+        
+        if (!isStart && photo1) { 
+          urlEmpty = urlGen; 
+          urlGen = ""; 
         }
       }
 
-      setUploadStatus({ state: 'uploading', step: 'Сохранение...', progress: 85 });
+      // Сохранение данных
+      setUploadStatus({ 
+        state: 'uploading', 
+        step: 'Сохранение данных...',
+        progress: 80 
+      });
 
-      const actionType = isLocalManual
-        ? `${action.type}_manual_${manualTime}`
+      const actionTypeToSend = isLocalManual 
+        ? `${action.type}_manual_${manualTime}` 
         : action.type;
 
-      await api.taskAction(action.id, actionType, user.name, zone || '', urlGen, urlSeal, urlEmpty);
+      await api.taskAction(
+        action.id,
+        actionTypeToSend,
+        user.name,
+        zone || "",
+        urlGen,
+        urlSeal,
+        urlEmpty
+      );
 
-      setUploadStatus({ state: 'uploading', step: 'Готово!', progress: 100 });
+      setUploadStatus({ 
+        state: 'uploading', 
+        step: 'Готово!',
+        progress: 100 
+      });
+
+      // Показать успех на 1 секунду
       setTimeout(() => {
         setUploadStatus({ state: 'success' });
-        vibrate([100, 50, 100]); // Success vibration pattern
-        setTimeout(onSuccess, 700);
-      }, 400);
-
+        setTimeout(() => {
+          onSuccess();
+        }, 800);
+      }, 500);
+      
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Неизвестная ошибка. Попробуйте снова.';
       
-      // If it's a network error, queue for offline retry
-      if (!navigator.onLine || errMsg.includes('интернет') || errMsg.includes('fetch')) {
-        vibrate([50, 30, 50, 30, 50]); // Offline warning vibration
-        
-        // Queue the task action for later
-        await offlineQueue.enqueue('task_action', {
-          id: action.id,
-          act: isLocalManual ? `${action.type}_manual_${manualTime}` : action.type,
-          op: user.name,
-          zone: zone || '',
-        });
-        
-        setUploadStatus({ state: 'success' }); // Show success — it's queued
-        setTimeout(onSuccess, 700);
-        return;
-      }
-      
-      vibrate([200, 100, 200]); // Error vibration
-      setUploadStatus({
-        state: 'error',
-        message: errMsg,
+      setUploadStatus({ 
+        state: 'error', 
+        message: errorMessage 
       });
+      
+      console.error('Submit error:', error);
     }
   };
 
-  const isSubmitting = uploadStatus.state === 'uploading';
-  const isSuccess    = uploadStatus.state === 'success';
-  const isError      = uploadStatus.state === 'error';
+  const resetError = () => {
+    setUploadStatus({ state: 'idle' });
+  };
 
-  // ─── Превью миниатюры из base64 или URL ──────────────────────────────────────
-  const PhotoPreview: React.FC<{ src: string | null; label: string; onTap: () => void; icon: React.ReactNode }> = ({ src, label, onTap, icon }) => (
-    <div
-      onClick={() => !isSubmitting && !processingPhoto && onTap()}
-      className={`relative border-2 border-dashed rounded-2xl overflow-hidden transition-all cursor-pointer group ${
-        src ? 'border-emerald-500 bg-black' : 'border-white/10 hover:border-accent-blue bg-white/3'
-      } ${(isSubmitting || processingPhoto) ? 'opacity-50 cursor-not-allowed' : ''}`}
-      style={{ aspectRatio: '4/3' }}
-    >
-      {src ? (
-        <>
-          <img src={src} alt="" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-            <CheckCircle className="text-emerald-400 w-8 h-8 opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
-          </div>
-          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent py-2 px-3">
-            <span className="text-xs font-bold text-white/80 uppercase tracking-wide">{label}</span>
-          </div>
-        </>
-      ) : (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3">
-          {processingPhoto && currentPhotoTarget.current === (label.includes('пломб') ? 2 : 1)
-            ? <Loader2 className="w-7 h-7 text-accent-blue animate-spin" />
-            : icon}
-          <span className="font-bold text-white/60 text-xs uppercase text-center leading-tight">{label}</span>
-        </div>
-      )}
-    </div>
-  );
+  const isSubmitting = uploadStatus.state === 'uploading';
+  const isSuccess = uploadStatus.state === 'success';
+  const isError = uploadStatus.state === 'error';
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-[#0F0F12] border border-white/10 p-6 rounded-3xl w-full max-w-[480px] flex flex-col gap-5 shadow-2xl relative max-h-[95vh] overflow-y-auto">
-
-        {/* Overlay загрузки / успех */}
+      <div className="bg-[#0F0F12] border border-white/10 p-8 rounded-3xl w-full max-w-[480px] flex flex-col gap-6 shadow-2xl relative">
+        
+        {/* Overlay при загрузке */}
         {(isSubmitting || isSuccess) && (
-          <div className="absolute inset-0 bg-black/85 backdrop-blur-sm rounded-3xl z-10 flex flex-col items-center justify-center gap-4 p-8">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm rounded-3xl z-10 flex flex-col items-center justify-center gap-4 p-8">
             {isSubmitting && uploadStatus.state === 'uploading' && (
               <>
-                <div className="relative w-28 h-28">
+                {/* Анимированный индикатор */}
+                <div className="relative w-32 h-32">
+                  {/* Круговой прогресс */}
                   <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-                    <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="8" />
-                    <circle cx="60" cy="60" r="54" fill="none" stroke="#00d4ff" strokeWidth="8"
+                    <circle 
+                      cx="60" 
+                      cy="60" 
+                      r="54" 
+                      fill="none" 
+                      stroke="rgba(255,255,255,0.1)" 
+                      strokeWidth="8"
+                    />
+                    <circle 
+                      cx="60" 
+                      cy="60" 
+                      r="54" 
+                      fill="none" 
+                      stroke="#00d4ff" 
+                      strokeWidth="8"
                       strokeLinecap="round"
                       strokeDasharray={`${2 * Math.PI * 54}`}
                       strokeDashoffset={`${2 * Math.PI * 54 * (1 - uploadStatus.progress / 100)}`}
                       className="transition-all duration-500"
                     />
                   </svg>
+                  
+                  {/* Иконка в центре */}
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <Upload className="w-9 h-9 text-[#00d4ff] animate-bounce" />
+                    <Upload className="w-10 h-10 text-[#00d4ff] animate-bounce" />
                   </div>
                 </div>
-                <div className="text-4xl font-black text-white tabular-nums">{Math.round(uploadStatus.progress)}%</div>
-                <div className="text-sm font-bold text-white/80">{uploadStatus.step}</div>
-                <div className="w-full max-w-[260px] h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-[#1E7D7D] to-[#28A5A2] transition-all duration-500 rounded-full"
-                    style={{ width: `${uploadStatus.progress}%` }} />
+
+                {/* Процент */}
+                <div className="text-5xl font-black text-white tabular-nums">
+                  {Math.round(uploadStatus.progress)}%
+                </div>
+
+                {/* Статус */}
+                <div className="text-center">
+                  <div className="text-lg font-bold text-white/90 mb-1">
+                    {uploadStatus.step}
+                  </div>
+                  <div className="text-xs text-white/40 uppercase tracking-widest">
+                    Пожалуйста, ожидайте...
+                  </div>
+                </div>
+
+                {/* Прогресс-бар */}
+                <div className="w-full max-w-[300px] h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-500 rounded-full"
+                    style={{ width: `${uploadStatus.progress}%` }}
+                  />
                 </div>
               </>
             )}
+
             {isSuccess && (
               <div className="flex flex-col items-center gap-4 animate-in zoom-in duration-300">
-                <div className="w-24 h-24 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <CheckCircle className="w-16 h-16 text-emerald-500" strokeWidth={2.5} />
+                <div className="w-24 h-24 rounded-full bg-green-500/20 flex items-center justify-center">
+                  <CheckCircle className="w-16 h-16 text-green-500 animate-in zoom-in duration-300" strokeWidth={2.5} />
                 </div>
                 <div className="text-3xl font-black text-white">Успешно!</div>
+                <div className="text-sm text-white/60">Данные сохранены</div>
               </div>
             )}
           </div>
@@ -291,55 +284,54 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         {/* Ошибка */}
         {isError && (
           <div className="absolute inset-0 bg-black/90 backdrop-blur-sm rounded-3xl z-10 flex flex-col items-center justify-center gap-4 p-8">
-            <div className="w-20 h-20 rounded-full bg-red-500/20 flex items-center justify-center animate-in zoom-in">
-              <AlertCircle className="w-14 h-14 text-red-500" strokeWidth={2.5} />
+            <div className="w-24 h-24 rounded-full bg-red-500/20 flex items-center justify-center animate-in zoom-in duration-300">
+              <AlertCircle className="w-16 h-16 text-red-500" strokeWidth={2.5} />
             </div>
-            <div className="text-xl font-black text-white text-center">Ошибка!</div>
-            <div className="text-sm text-white/70 text-center max-w-[280px]">
+            <div className="text-2xl font-black text-white text-center">Ошибка!</div>
+            <div className="text-sm text-white/80 text-center max-w-[300px]">
               {uploadStatus.state === 'error' && uploadStatus.message}
             </div>
-            <button onClick={() => setUploadStatus({ state: 'idle' })}
-              className="mt-2 px-6 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-all">
+            <button 
+              onClick={resetError}
+              className="mt-4 px-6 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-all"
+            >
               Попробовать снова
             </button>
           </div>
         )}
 
-        {/* Заголовок + ID */}
+        {/* Основной контент */}
         <div className="text-center">
-          <div className="text-xs text-white/50 uppercase tracking-widest mb-1">
-            {isStart ? 'Начало разгрузки' : 'Завершение разгрузки'}
-          </div>
-          <h2 className="text-2xl font-extrabold text-white font-mono tracking-tight">{action.id}</h2>
-
-          <button
+          <h2 className="text-2xl font-extrabold text-white mb-1 leading-tight tracking-tight">{action.id}</h2>
+          <button 
             onClick={() => setIsLocalManual(!isLocalManual)}
             disabled={isSubmitting}
-            className={`mt-3 mx-auto flex items-center gap-2 px-4 py-2 rounded-full border transition-all duration-300 ${
-              isLocalManual
-                ? 'bg-orange-500 border-orange-400 text-white shadow-lg shadow-orange-500/20'
-                : 'bg-white/5 border-white/10 text-white/60 hover:text-white'
+            className={`mt-4 mx-auto flex items-center gap-2 px-5 py-2.5 rounded-full border transition-all duration-300 ${
+              isLocalManual ? 'bg-orange-500 border-orange-400 text-white shadow-lg shadow-orange-500/20' : 'bg-white/5 border-white/10 text-white/50 hover:text-white'
             } disabled:opacity-50`}
           >
-            <Truck size={14} />
-            <span className="text-[10px] font-black uppercase tracking-[0.1em]">
-              {isLocalManual ? 'Локальный режим: ВКЛ' : 'Режим без фото'}
+            <Truck size={16} />
+            <span className="text-[11px] font-black uppercase tracking-[0.1em]">
+              {isLocalManual ? "Локальный режим: ВКЛ" : "Обычный (Фото) / Переключить"}
             </span>
           </button>
         </div>
 
-        {/* Выбор зоны */}
         {isStart && (
-          <div>
-            <p className="text-[10px] font-black text-white/50 mb-2 uppercase tracking-[0.2em] text-center">Зона выгрузки</p>
+          <div className="animate-in slide-in-from-top-2">
+            <p className="text-[10px] font-black text-white/30 mb-3 uppercase tracking-[0.2em] text-center">Выбор зоны выгрузки</p>
             <div className="grid grid-cols-3 gap-2">
               {AVAILABLE_ZONES.map(z => (
-                <button key={z} onClick={() => setZone(z)} disabled={isSubmitting}
-                  className={`py-3.5 rounded-xl font-bold text-sm border transition-all ${
-                    zone === z
-                      ? (isLocalManual ? 'bg-orange-500 border-orange-400 text-white' : 'bg-[#1E7D7D] border-[#1E7D7D] text-white')
-                      : 'bg-white/5 text-white/60 border-transparent hover:bg-white/10'
-                  } disabled:opacity-50`}>
+                <button 
+                  key={z} 
+                  onClick={() => setZone(z)}
+                  disabled={isSubmitting}
+                  className={`py-4 rounded-xl font-bold text-sm border transition-all ${
+                    zone === z 
+                    ? (isLocalManual ? 'bg-orange-500 border-orange-400 text-white' : 'bg-blue-600 border-blue-500 text-white') 
+                    : 'bg-white/5 text-white/40 border-transparent hover:bg-white/10'
+                  } disabled:opacity-50`}
+                >
                   {z}
                 </button>
               ))}
@@ -347,104 +339,124 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           </div>
         )}
 
-        {/* Превью пломбы при финише */}
-        {!isStart && sealPhotoUrl && (
-          <div className="rounded-2xl overflow-hidden border border-white/10 bg-black">
-            <div className="px-4 py-2 bg-white/5 border-b border-white/5 flex items-center gap-2">
-              <ImageIcon size={13} className="text-white/60" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-white/60">Фото пломбы</span>
-            </div>
-            <img
-              src={sealPhotoUrl.replace('view?usp=drivesdk', 'view').replace(
-                /https:\/\/drive\.google\.com\/file\/d\/([^/]+)\/.*/,
-                (_, id) => `https://wsrv.nl/?url=${encodeURIComponent(`https://drive.google.com/uc?export=download&id=${id}`)}&w=800`
-              )}
-              alt="Пломба"
-              className="w-full max-h-48 object-cover"
-              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-            />
-          </div>
-        )}
-
-        {/* Фото-блок */}
         {isLocalManual ? (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col items-center gap-4">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col items-center gap-4 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-2 text-orange-400">
-              <Clock size={16} />
+              <Clock size={18} />
               <span className="font-bold uppercase text-[10px] tracking-widest">
-                {isStart ? 'Время начала (Факт)' : 'Время завершения (Факт)'}
+                {isStart ? "Время начала (Факт)" : "Время завершения (Факт)"}
               </span>
             </div>
-            <input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)}
+            <input 
+              type="time" 
+              value={manualTime} 
+              onChange={(e) => setManualTime(e.target.value)}
               disabled={isSubmitting}
-              className="bg-transparent text-white text-5xl font-mono text-center outline-none [color-scheme:dark] disabled:opacity-50" />
+              className="bg-transparent text-white text-5xl font-mono text-center outline-none [color-scheme:dark] disabled:opacity-50" 
+            />
           </div>
         ) : (
-          <div className={`grid gap-3 ${isStart ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            <PhotoPreview
-              src={photo1?.data ?? null}
-              label={isStart ? 'Общее фото (сзади)' : 'Фото пустого'}
-              onTap={() => triggerFile(1)}
-              icon={<Camera className="text-white/50 w-7 h-7" />}
-            />
+          <div className="space-y-3">
+            <div 
+              onClick={() => !isSubmitting && triggerFile(1)} 
+              className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center gap-2 transition-all ${
+                photo1 ? 'border-green-500 bg-green-500/5' : 'border-white/10 hover:border-blue-500'
+              } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              {photo1 ? <CheckCircle className="text-green-500 w-8 h-8" /> : <Camera className="text-white/20 w-8 h-8" />}
+              <span className="font-bold text-white/60 text-xs uppercase text-center leading-tight">
+                {isStart ? t.lbl_photo1 : t.lbl_photo_empty}
+              </span>
+            </div>
             {isStart && (
-              <PhotoPreview
-                src={photo2?.data ?? null}
-                label="Фото пломбы"
-                onTap={() => triggerFile(2)}
-                icon={<Lock className="text-white/50 w-7 h-7" />}
-              />
+              <div 
+                onClick={() => !isSubmitting && triggerFile(2)} 
+                className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center gap-2 transition-all ${
+                  photo2 ? 'border-green-500 bg-green-500/5' : 'border-white/10 hover:border-blue-500'
+                } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                {photo2 ? <CheckCircle className="text-green-500 w-8 h-8" /> : <Lock className="text-white/20 w-8 h-8" />}
+                <span className="font-bold text-white/60 text-xs uppercase">{t.lbl_photo2}</span>
+              </div>
             )}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              hidden 
+              accept="image/*" 
+              onChange={handleFileChange}
+              disabled={isSubmitting}
+            />
+            {/* Отдельный input для камеры (работает на Android) */}
+            <input 
+              type="file" 
+              ref={cameraInputRef} 
+              hidden 
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileChange}
+              disabled={isSubmitting}
+            />
           </div>
         )}
 
-        {/* Кнопки */}
-        <div className="flex flex-col gap-2">
-          <button onClick={handleSubmit}
-            disabled={isSubmitting || processingPhoto || !isFormValid()}
-            className={`w-full py-4 font-black text-sm rounded-2xl transition-all uppercase tracking-widest active:scale-95 flex items-center justify-center gap-2 ${
-              isLocalManual ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-[#1E7D7D] hover:bg-[#1E7D7D]/80 text-white'
-            } disabled:opacity-20`}>
-            {(isSubmitting || processingPhoto) && <Loader2 className="w-4 h-4 animate-spin" />}
-            {isSubmitting ? 'Загрузка...' : processingPhoto ? 'Обработка фото...' : 'Подтвердить'}
+        <div className="flex flex-col gap-3">
+          <button 
+            onClick={handleSubmit} 
+            disabled={isSubmitting || !isFormValid()} 
+            className={`w-full py-5 font-black text-sm rounded-2xl transition-all ${
+              isLocalManual ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'
+            } disabled:opacity-20 uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2`}
+          >
+            {isSubmitting && <Loader2 className="w-5 h-5 animate-spin" />}
+            {isSubmitting ? "Загрузка..." : "Подтвердить"}
           </button>
-          <button onClick={onClose} disabled={isSubmitting}
-            className="text-white/50 hover:text-white py-2 text-[10px] font-bold uppercase tracking-widest transition-colors disabled:opacity-50">
+          <button 
+            onClick={onClose} 
+            disabled={isSubmitting}
+            className="text-white/20 hover:text-white py-2 text-[10px] font-bold uppercase tracking-widest transition-colors disabled:opacity-50"
+          >
             Отмена
           </button>
         </div>
-
-        {/* Hidden inputs */}
-        <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileChange} disabled={isSubmitting} />
-        <input type="file" ref={cameraInputRef} hidden accept="image/*" capture="environment" onChange={handleFileChange} disabled={isSubmitting} />
       </div>
 
-      {/* Меню выбора источника фото */}
+      {/* Кастомное меню выбора фото — работает одинаково на iOS и Android */}
       {showPhotoMenu && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
-          onClick={() => setShowPhotoMenu(null)}>
-          <div className="w-full max-w-sm bg-[#252736] rounded-3xl overflow-hidden animate-in slide-in-from-bottom-4 duration-200"
-            onClick={e => e.stopPropagation()}>
+        <div 
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+          onClick={() => setShowPhotoMenu(null)}
+        >
+          <div 
+            className="w-full max-w-sm bg-[#1c1c1e] rounded-3xl overflow-hidden animate-in slide-in-from-bottom-4 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="px-4 pt-4 pb-1 text-center">
-              <p className="text-white/60 text-xs font-semibold uppercase tracking-widest">
-                {showPhotoMenu.target === 2 ? 'Фото пломбы' : (isStart ? 'Общее фото' : 'Фото пустого')}
+              <p className="text-white/40 text-xs font-semibold uppercase tracking-widest">
+                Фото {showPhotoMenu.target}
               </p>
             </div>
             <div className="flex flex-col divide-y divide-white/5">
-              <button onClick={triggerCamera}
-                className="flex items-center gap-4 px-6 py-4 text-white hover:bg-white/5 transition-colors active:bg-white/10">
-                <Camera className="w-5 h-5 text-[#1E7D7D]" />
-                <span className="font-semibold">Камера</span>
+              <button
+                onClick={triggerCamera}
+                className="flex items-center gap-4 px-6 py-5 text-white hover:bg-white/5 transition-colors active:bg-white/10"
+              >
+                <Camera className="w-6 h-6 text-blue-400" />
+                <span className="font-semibold text-base">Камера</span>
               </button>
-              <button onClick={triggerGallery}
-                className="flex items-center gap-4 px-6 py-4 text-white hover:bg-white/5 transition-colors active:bg-white/10">
-                <Upload className="w-5 h-5 text-[#1E7D7D]" />
-                <span className="font-semibold">Галерея</span>
+              <button
+                onClick={triggerGallery}
+                className="flex items-center gap-4 px-6 py-5 text-white hover:bg-white/5 transition-colors active:bg-white/10"
+              >
+                <Upload className="w-6 h-6 text-blue-400" />
+                <span className="font-semibold text-base">Галерея</span>
               </button>
             </div>
             <div className="p-3 pt-1">
-              <button onClick={() => setShowPhotoMenu(null)}
-                className="w-full py-3.5 rounded-2xl bg-white/5 text-white/50 font-bold text-sm hover:bg-white/10 transition-colors">
+              <button
+                onClick={() => setShowPhotoMenu(null)}
+                className="w-full py-4 rounded-2xl bg-white/5 text-white/50 font-bold text-sm hover:bg-white/10 transition-colors active:bg-white/15"
+              >
                 Отмена
               </button>
             </div>

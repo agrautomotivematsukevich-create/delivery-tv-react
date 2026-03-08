@@ -44,25 +44,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=100${sizeParam}`;
   };
 
-  const calcDuration = (start?: string, end?: string): string => {
-    if (!start || !end) return '-';
-    try {
-      const parseTime = (t: string): number => {
-        const parts = t.split(':');
-        if (parts.length < 2) return NaN;
-        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-      };
-      const s = parseTime(start);
-      const e = parseTime(end);
-      if (isNaN(s) || isNaN(e)) return '-';
-      let diff = e - s;
-      if (diff < 0) diff += 24 * 60;
-      const h = Math.floor(diff / 60);
-      const m = diff % 60;
-      return h > 0 ? `${h}ч ${m.toString().padStart(2, '0')}мин` : `${m}мин`;
-    } catch { return '-'; }
-  };
-
   return (
     <div className="flex flex-col gap-6 h-full flex-1 min-h-0">
       {/* Дата и поиск */}
@@ -94,30 +75,21 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
                <div 
                  key={task.id} 
                  onClick={() => setSelectedTask(task)}
-                 className="bg-white/5 border border-white/5 rounded-2xl p-4 flex items-center gap-4 hover:bg-white/10 cursor-pointer transition-all active:scale-[0.99]"
+                 className="bg-white/5 border border-white/5 rounded-2xl p-4 flex items-center justify-between hover:bg-white/10 cursor-pointer transition-all active:scale-[0.99]"
                >
-                 <div className={`w-2 self-stretch rounded-full shrink-0 ${task.status === 'DONE' ? 'bg-accent-green' : 'bg-white/20'}`}></div>
-                 <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-mono text-xl font-bold text-white truncate">{task.id}</div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {task.status === 'DONE' && <span className="text-accent-green font-bold text-xs uppercase tracking-wider">{t.stat_done}</span>}
-                        {task.zone && <span className="font-mono text-white/60 bg-white/5 px-2 py-1 rounded text-sm">{task.zone}</span>}
+                 <div className="flex items-center gap-4">
+                    <div className={`w-2 h-12 rounded-full ${task.status === 'DONE' ? 'bg-accent-green' : 'bg-white/20'}`}></div>
+                    <div>
+                      <div className="font-mono text-xl font-bold text-white">{task.id}</div>
+                      <div className="flex items-center gap-3 text-sm text-white/50 mt-1">
+                        <span className="bg-white/10 px-1.5 rounded text-xs border border-white/10">{task.type}</span>
+                        {task.time && <span>{task.time}</span>}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 text-sm text-white/50 mt-1">
-                      <span className="bg-white/10 px-1.5 rounded text-xs border border-white/10">{task.type}</span>
-                      {task.time && <span>{task.time}</span>}
-                    </div>
-                    {task.status === 'DONE' && task.start_time && task.end_time && (
-                      <div className="flex items-center gap-2 text-xs text-white/50 font-mono mt-2">
-                        <span className="text-white/40">Разгрузка:</span>
-                        <span>{task.start_time}</span>
-                        <span className="text-white/20">→</span>
-                        <span>{task.end_time}</span>
-                        <span className="bg-accent-blue/20 text-accent-blue px-1.5 py-0.5 rounded">{calcDuration(task.start_time, task.end_time)}</span>
-                      </div>
-                    )}
+                 </div>
+                 <div className="flex items-center gap-4">
+                    {task.status === 'DONE' && <span className="text-accent-green font-bold text-xs uppercase tracking-wider">{t.stat_done}</span>}
+                    {task.zone && <span className="font-mono text-white/60 bg-white/5 px-2 py-1 rounded">{task.zone}</span>}
                  </div>
                </div>
              ))}

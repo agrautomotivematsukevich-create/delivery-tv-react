@@ -1,33 +1,11 @@
 import { SCRIPT_URL } from "../constants";
-import { DashboardData, Task, Issue, TaskInput, PlanRow, LotContainer } from "../types";
+import { DashboardData, Task, Issue, TaskInput, PlanRow } from "../types";
 
 export const hashPassword = async (p: string): Promise<string> => {
   const msgBuffer = new TextEncoder().encode(p);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 };
-
-// ── Simple request cache + in-flight dedup ──
-const _cache: Record<string, { data: unknown; ts: number }> = {};
-const _inflight: Record<string, Promise<unknown>> = {};
-
-async function cachedFetch<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
-  // Return cached if fresh
-  const cached = _cache[key];
-  if (cached && Date.now() - cached.ts < ttlMs) return cached.data as T;
-  // Dedup in-flight requests
-  if (_inflight[key]) return _inflight[key] as Promise<T>;
-  const promise = fn().then(data => {
-    _cache[key] = { data, ts: Date.now() };
-    delete _inflight[key];
-    return data;
-  }).catch(err => {
-    delete _inflight[key];
-    throw err;
-  });
-  _inflight[key] = promise;
-  return promise;
-}
 
 export const parseDashboardData = (text: string): DashboardData | null => {
   try {
@@ -51,29 +29,13 @@ export const parseDashboardData = (text: string): DashboardData | null => {
       }
     }
 
-    // Parse shift counts (r1[4] = "morning|evening|night")
-    let shiftCounts = { morning: 0, evening: 0, night: 0 };
-    if (r1[4]) {
-      const sc = r1[4].split('|');
-      shiftCounts = {
-        morning: parseInt(sc[0]) || 0,
-        evening: parseInt(sc[1]) || 0,
-        night:   parseInt(sc[2]) || 0,
-      };
-    }
-
-    // Parse on-territory count (r1[5])
-    const onTerritory = r1[5] ? (parseInt(r1[5]) || 0) : 0;
-
     return {
       status: r1[0].trim(),
       done,
       total,
       nextId: r1[2].trim(),
       nextTime: r1[3].trim(),
-      activeList,
-      shiftCounts,
-      onTerritory,
+      activeList
     };
   } catch (e) {
     console.error("Parse error", e);
@@ -83,42 +45,37 @@ export const parseDashboardData = (text: string): DashboardData | null => {
 
 export const api = {
   fetchDashboard: async (): Promise<DashboardData | null> => {
-    return cachedFetch('dashboard', 10000, async () => {
-      try {
-        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}`);
-        const text = await res.text();
-        return parseDashboardData(text);
-      } catch (e) {
-        console.error(e);
-        return null;
-      }
-    });
+    try {
+      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}`);
+      const text = await res.text();
+      return parseDashboardData(text);
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
   },
 
   fetchTasks: async (mode: 'get_operator_tasks' | 'get_stats'): Promise<Task[]> => {
-    return cachedFetch(`tasks_${mode}`, 10000, async () => {
-      try {
-        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=${mode}`);
-        const data = await res.json();
-        return Array.isArray(data) ? data : [];
-      } catch (e) {
-        console.error(e);
-        return [];
-      }
-    });
+    try {
+      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=${mode}`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
   },
 
   fetchHistory: async (dateStr: string): Promise<Task[]> => {
-    return cachedFetch(`history_${dateStr}`, 20000, async () => {
-      try {
-        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
-        const data = await res.json();
-        return Array.isArray(data) ? data : [];
-      } catch (e) {
-        console.error(e);
-        return [];
-      }
-    });
+    // dateStr in DD.MM format expected by backend
+    try {
+      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.error(e);
+      return [];
+    }
   },
 
   // Logistics: Get full plan for editing
@@ -131,26 +88,6 @@ export const api = {
       console.error(e);
       return [];
     }
-  },
-
-  // Lot Tracker: fetch all containers for a specific lot across all dates
-  fetchLotTracker: async (lot: string): Promise<LotContainer[]> => {
-    return cachedFetch(`lot_${lot}`, 15000, async () => {
-      try {
-        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_lot_tracker&lot=${encodeURIComponent(lot)}`);
-        const txt = await res.text();
-        try {
-          const data = JSON.parse(txt);
-          return Array.isArray(data) ? data : [];
-        } catch {
-          console.error('get_lot_tracker returned non-JSON:', txt.substring(0, 100));
-          return [];
-        }
-      } catch (e) {
-        console.error(e);
-        return [];
-      }
-    });
   },
 
   // Logistics: Create new plan
@@ -183,40 +120,6 @@ export const api = {
        const txt = await res.text();
        return txt.includes("UPDATED");
     } catch(e) {
-      console.error(e);
-      return false;
-    }
-  },
-
-  // Priority Lot: read from DASHBOARD sheet
-  getPriorityLot: async (): Promise<string> => {
-    return cachedFetch('priority_lot', 10000, async () => {
-      try {
-        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_priority_lot`);
-        const txt = await res.text();
-        try {
-          const data = JSON.parse(txt);
-          return (data?.lot || '') as string;
-        } catch {
-          console.error('get_priority_lot returned non-JSON:', txt.substring(0, 100));
-          return '';
-        }
-      } catch (e) {
-        console.error(e);
-        return '';
-      }
-    });
-  },
-
-  // Priority Lot: write to DASHBOARD sheet
-  setPriorityLot: async (lot: string): Promise<boolean> => {
-    try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=set_priority_lot&lot=${encodeURIComponent(lot)}`);
-      const txt = await res.text();
-      // Invalidate cache
-      delete _cache['priority_lot'];
-      return txt.includes("OK");
-    } catch (e) {
       console.error(e);
       return false;
     }
@@ -282,8 +185,13 @@ export const api = {
   },
 
   taskAction: async (id: string, act: string, user: string, zone: string = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
-    const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${zone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
-    await fetch(url);
+    try {
+      const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${zone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
+      await fetch(url);
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
   },
 
   reportIssue: async (id: string, desc: string, photos: string[], author: string): Promise<void> => {

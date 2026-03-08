@@ -1,6 +1,6 @@
 import { Lang, TranslationSet } from "./types";
 
-export const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwhDDR-QHaRhEYfZYqCxrLLiLKtpO2iIn8TgnE7LZMi3PXP-DXJaIggCQfyKI-9jQ0/exec';
+export const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyr93urmvnJiYcDR0CcML92KR9dS0pAN8qdrI-wK9p1q8Z3Hn3JqkH1MRo4LgYtOy4QeA/exec';
 
 export const TRANSLATIONS: Record<Lang, TranslationSet> = {
   RU: {
@@ -56,35 +56,7 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     
     dtl_operator: "Оператор",
     dtl_zone: "Зона",
-    dtl_photos: "Фотоотчет",
-
-    nav_arrival: "Время простоя",
-    arr_title: "Аналитика простоя машин",
-    arr_avg_wait: "Среднее ожидание",
-    arr_max_wait: "Макс. ожидание",
-    arr_vehicles_total: "Всего машин",
-    arr_no_data: "Нет данных за эту дату",
-    arr_col_container: "Контейнер",
-    arr_col_ws: "W/S",
-    arr_col_eta: "ETA",
-    arr_col_arrival: "Прибытие на АГМ",
-    arr_col_unload_start: "Начало разгрузки",
-    arr_col_wait: "Простой",
-    arr_col_zone: "Зона",
-    arr_col_operator: "Оператор",
-    arr_status_ok: "Норма",
-    arr_status_warn: "Задержка",
-    arr_status_crit: "Критично",
-    arr_no_arrival: "Нет данных",
-    arr_vehicles_with_data: "с данными о прибытии",
-    arr_over_hour: "простой > 1 часа",
-
-    shift_morning: "Утренняя смена",
-    shift_evening: "Вечерняя смена",
-    shift_norm: "НОРМА",
-    shift_ahead: "опережение",
-    shift_behind: "отставание",
-    shift_on_track: "в графике",
+    dtl_photos: "Фотоотчет"
   },
   EN_CN: {
     title: "Warehouse Monitor / 仓库监控", progress: "PROGRESS / 进度", next: "NEXT / 下一个", list: "ACTIVE TASKS / 任务",
@@ -139,34 +111,6 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     
     dtl_operator: "Operator / 操作员",
     dtl_zone: "Zone / 区域",
-    dtl_photos: "Report Photos / 报告照片",
-
-    nav_arrival: "Wait Time / 等待时间",
-    arr_title: "Vehicle Wait Time Analytics / 车辆等待分析",
-    arr_avg_wait: "Avg Wait / 平均等待",
-    arr_max_wait: "Max Wait / 最大等待",
-    arr_vehicles_total: "Total Vehicles / 总车辆",
-    arr_no_data: "No data for this date / 无数据",
-    arr_col_container: "Container / 集装箱",
-    arr_col_ws: "W/S",
-    arr_col_eta: "ETA",
-    arr_col_arrival: "Arrival at AGM / 到达时间",
-    arr_col_unload_start: "Unload Start / 开始卸货",
-    arr_col_wait: "Wait / 等待",
-    arr_col_zone: "Zone / 区域",
-    arr_col_operator: "Operator / 操作员",
-    arr_status_ok: "OK / 正常",
-    arr_status_warn: "Delay / 延迟",
-    arr_status_crit: "Critical / 严重",
-    arr_no_arrival: "No data / 无数据",
-    arr_vehicles_with_data: "with arrival data / 有到达数据",
-    arr_over_hour: "wait > 1 hour / 等待超1小时",
-
-    shift_morning: "Morning Shift / 早班",
-    shift_evening: "Evening Shift / 晚班",
-    shift_norm: "NORM / 标准",
-    shift_ahead: "ahead / 提前",
-    shift_behind: "behind / 落后",
-    shift_on_track: "on track / 正常",
+    dtl_photos: "Report Photos / 报告照片"
   }
 };
