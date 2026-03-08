@@ -1,5 +1,5 @@
 import { SCRIPT_URL } from "../constants";
-import { DashboardData, Task, Issue, TaskInput, PlanRow } from "../types";
+import { DashboardData, Task, Issue, TaskInput, PlanRow, LotContainer } from "../types";
 
 export const hashPassword = async (p: string): Promise<string> => {
   const msgBuffer = new TextEncoder().encode(p);
@@ -70,6 +70,37 @@ export const api = {
     // dateStr in DD.MM format expected by backend
     try {
       const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.error(e);
+      return [];
+    }
+  },
+
+  getPriorityLot: async (): Promise<string> => {
+    try {
+      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_priority_lot`);
+      return await res.text();
+    } catch (e) {
+      console.error(e);
+      return '';
+    }
+  },
+
+  setPriorityLot: async (lot: string): Promise<boolean> => {
+    try {
+      await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=set_priority_lot&lot=${encodeURIComponent(lot)}`);
+      return true;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  },
+
+  fetchLotTracker: async (lot: string): Promise<LotContainer[]> => {
+    try {
+      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_lot_tracker&lot=${encodeURIComponent(lot)}`);
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     } catch (e) {
@@ -178,6 +209,17 @@ export const api = {
       });
       const data = await res.json();
       return data.status === "SUCCESS" ? data.url : "";
+    } catch (e) {
+      console.error(e);
+      return "";
+    }
+  },
+
+  getProxyImage: async (url: string): Promise<string> => {
+    try {
+      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=proxy_image&url=${encodeURIComponent(url)}`);
+      const data = await res.json();
+      return data.status === "SUCCESS" ? data.dataUrl : "";
     } catch (e) {
       console.error(e);
       return "";

@@ -10,6 +10,7 @@ export interface Task {
   pallets?: string;
   phone?: string;
   eta?: string;
+  arrival_time?: string;
   status: 'WAIT' | 'ACTIVE' | 'DONE';
   time: string;
   start_time?: string;
@@ -144,10 +145,44 @@ export interface TranslationSet {
   dtl_operator: string;
   dtl_zone: string;
   dtl_photos: string;
+
+  // Arrival Analytics
+  arr_title: string;
+  arr_vehicles_total: string;
+  arr_vehicles_with_data: string;
+  arr_avg_wait: string;
+  arr_max_wait: string;
+  arr_over_hour: string;
+  arr_no_data: string;
+  arr_no_arrival: string;
+  arr_status_ok: string;
+  arr_status_warn: string;
+  arr_status_crit: string;
+  arr_col_container: string;
+  arr_col_ws: string;
+  arr_col_eta: string;
+  arr_col_arrival: string;
+  arr_col_unload_start: string;
+  arr_col_wait: string;
+  arr_col_zone: string;
+  arr_col_operator: string;
 }
 
 export interface TaskAction {
   id: string;
   type: 'start' | 'finish';
   zone?: string | null;
+}
+
+export interface LotContainer {
+  id: string;
+  date: string;
+  index: string;
+  status: 'DONE' | 'ACTIVE' | 'WAIT';
+  eta?: string;
+  start_time?: string;
+  end_time?: string;
+  ws?: string;
+  pallets?: string;
+  zone?: string;
 }

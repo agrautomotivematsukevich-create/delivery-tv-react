@@ -56,7 +56,28 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     
     dtl_operator: "Оператор",
     dtl_zone: "Зона",
-    dtl_photos: "Фотоотчет"
+    dtl_photos: "Фотоотчет",
+
+    // Arrival Analytics
+    arr_title: "Ожидание выгрузки",
+    arr_vehicles_total: "Всего машин",
+    arr_vehicles_with_data: "с данными",
+    arr_avg_wait: "Среднее ожидание",
+    arr_max_wait: "Макс. ожидание",
+    arr_over_hour: "машин > 1 часа",
+    arr_no_data: "Нет данных",
+    arr_no_arrival: "Нет прибытия",
+    arr_status_ok: "В норме",
+    arr_status_warn: "Внимание",
+    arr_status_crit: "Критично",
+    arr_col_container: "Контейнер",
+    arr_col_ws: "W/S",
+    arr_col_eta: "ETA",
+    arr_col_arrival: "Прибытие",
+    arr_col_unload_start: "Начало",
+    arr_col_wait: "Простой",
+    arr_col_zone: "Зона",
+    arr_col_operator: "Оператор"
   },
   EN_CN: {
     title: "Warehouse Monitor / 仓库监控", progress: "PROGRESS / 进度", next: "NEXT / 下一个", list: "ACTIVE TASKS / 任务",
@@ -111,6 +132,27 @@ export const TRANSLATIONS: Record<Lang, TranslationSet> = {
     
     dtl_operator: "Operator / 操作员",
     dtl_zone: "Zone / 区域",
-    dtl_photos: "Report Photos / 报告照片"
+    dtl_photos: "Report Photos / 报告照片",
+
+    // Arrival Analytics
+    arr_title: "Wait Time / 等待时间",
+    arr_vehicles_total: "Total Vehicles / 总车辆",
+    arr_vehicles_with_data: "with data / 有数据",
+    arr_avg_wait: "Avg Wait / 平均等待",
+    arr_max_wait: "Max Wait / 最大等待",
+    arr_over_hour: "over 1h / 超1小时",
+    arr_no_data: "No data / 无数据",
+    arr_no_arrival: "No arrival / 未到达",
+    arr_status_ok: "OK / 正常",
+    arr_status_warn: "Warning / 警告",
+    arr_status_crit: "Critical / 严重",
+    arr_col_container: "Container / 集装箱",
+    arr_col_ws: "W/S / 批次",
+    arr_col_eta: "ETA / 预计",
+    arr_col_arrival: "Arrival / 到达",
+    arr_col_unload_start: "Start / 开始",
+    arr_col_wait: "Wait / 等待",
+    arr_col_zone: "Zone / 区域",
+    arr_col_operator: "Operator / 操作员"
   }
 };
