@@ -1,90 +1,136 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface SplashScreenProps {
   onComplete: () => void;
 }
 
 const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
-  const [stage, setStage] = useState(0);
-
   useEffect(() => {
-    // Stage 1: Truck drives in (0 - 1.5s)
-    const t1 = setTimeout(() => setStage(1), 100);
-    
-    // Stage 2: Logo and text appear (1.5s - 3s)
-    const t2 = setTimeout(() => setStage(2), 1500);
-    
-    // Stage 3: Fade out to main app (3s - 4s)
-    const t3 = setTimeout(() => {
-      setStage(3);
-      setTimeout(onComplete, 500); // 500ms for fade out
-    }, 3500);
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
+    // Запускаем процесс завершения через 4 секунды
+    const timer = setTimeout(onComplete, 4000);
+    return () => clearTimeout(timer);
   }, [onComplete]);
 
   return (
-    <div 
-      className={`fixed inset-0 z-[100] bg-[#191B25] flex flex-col items-center justify-center transition-opacity duration-500 ease-in-out ${
-        stage === 3 ? 'opacity-0 pointer-events-none' : 'opacity-100'
-      }`}
-    >
-      <div className="relative w-full max-w-[600px] h-[300px] flex flex-col items-center justify-center">
-        
-        {/* Truck Animation */}
-        <div 
-          className="absolute top-1/2 -translate-y-[80px] flex items-end transition-transform duration-[1400ms] ease-out drop-shadow-2xl"
-          style={{
-            transform: stage >= 1 ? 'translate(-50%, -80px)' : 'translate(-150vw, -80px)',
-            left: '50%'
+    <div className="fixed inset-0 z-[999] bg-[#0A0A0C] overflow-hidden flex items-center justify-center">
+      {/* 1. Глубокий фоновый градиент и "живое" свечение */}
+      <div className="absolute inset-0">
+        <motion.div 
+          animate={{ 
+            scale: [1, 1.2, 1],
+            opacity: [0.1, 0.15, 0.1] 
           }}
+          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#1E7D7D] rounded-full blur-[140px]"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#191B25]/50 to-[#0A0A0C]" />
+      </div>
+
+      {/* 2. Основная 3D Сцена */}
+      <div className="relative flex flex-col items-center" style={{ perspective: '1200px' }}>
+        
+        {/* Изометрическая фура */}
+        <motion.div
+          initial={{ z: -500, x: -200, opacity: 0, rotateY: -45, rotateX: 15 }}
+          animate={{ z: 0, x: 0, opacity: 1, rotateY: -25, rotateX: 10 }}
+          transition={{ duration: 1.8, ease: [0.16, 1, 0.3, 1] }}
+          className="relative w-72 h-36 mb-16"
+          style={{ transformStyle: 'preserve-3d' }}
         >
-          {/* Truck Cabin (#3A3C4E) */}
-          <div className="w-16 h-20 bg-[#3A3C4E] rounded-tr-xl rounded-tl-sm relative z-10 border-r border-[#191B25]">
-            <div className="absolute top-2 right-1 w-6 h-8 bg-[#191B25]/50 rounded-tr-md" /> {/* Window */}
-            <div className="absolute -bottom-2 right-2 w-6 h-6 bg-[#0F0F12] rounded-full border-2 border-[#5C5E74]" /> {/* Front Wheel */}
+          {/* Тень под фурой */}
+          <div className="absolute -bottom-6 left-10 right-0 h-4 bg-black/60 blur-xl rounded-full transform -rotate-12" />
+
+          {/* Контейнер (AGR Green) */}
+          <div className="absolute left-0 bottom-0 w-56 h-28 bg-[#1E7D7D] rounded-lg border border-white/20 shadow-2xl flex items-center justify-center overflow-hidden">
+            {/* Световой блик, пробегающий по борту */}
+            <motion.div 
+              animate={{ x: [-200, 400] }}
+              transition={{ repeat: Infinity, duration: 2.5, ease: "linear", repeatDelay: 0.5 }}
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-20"
+            />
+            <span className="text-white/10 font-black text-3xl tracking-tighter uppercase italic select-none">Logistics</span>
           </div>
+
+          {/* Кабина (#3A3C4E) */}
+          <div className="absolute -right-4 bottom-0 w-20 h-24 bg-[#3A3C4E] rounded-xl border border-white/10 shadow-lg" style={{ transform: 'translateZ(20px)' }}>
+            <div className="absolute top-3 right-2 w-10 h-10 bg-[#191B25]/80 rounded-lg border border-white/5" /> {/* Окно */}
+            <div className="absolute bottom-4 -right-2 w-4 h-8 bg-gradient-to-b from-orange-500 to-transparent blur-[2px] opacity-50" /> {/* Фара */}
+          </div>
+        </motion.div>
+
+        {/* 3. Стеклянная панель (Glassmorphism) */}
+        <motion.div
+          initial={{ y: 50, opacity: 0, rotateX: -20 }}
+          animate={{ y: 0, opacity: 1, rotateX: 0 }}
+          transition={{ delay: 0.8, duration: 1, ease: "backOut" }}
+          className="relative group"
+        >
+          {/* Размытый фон за стеклом */}
+          <div className="absolute inset-0 bg-white/5 rounded-[2.5rem] blur-2xl" />
           
-          {/* Truck Container (#1E7D7D) */}
-          <div className="w-48 h-24 bg-[#1E7D7D] rounded-l-sm relative">
-            <div className="absolute top-2 bottom-2 left-2 right-2 border-2 border-[#053838]/30 rounded-sm" />
-            <div className="absolute -bottom-2 left-4 w-6 h-6 bg-[#0F0F12] rounded-full border-2 border-[#5C5E74]" /> {/* Back Wheel 1 */}
-            <div className="absolute -bottom-2 left-12 w-6 h-6 bg-[#0F0F12] rounded-full border-2 border-[#5C5E74]" /> {/* Back Wheel 2 */}
+          <div className="relative px-16 py-10 bg-white/[0.03] backdrop-blur-2xl rounded-[2.5rem] border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col items-center">
             
-            {/* Logo appearing from the container */}
-            <div 
-              className={`absolute inset-0 flex items-center justify-center transition-all duration-1000 ease-in-out ${
-                stage >= 2 ? 'opacity-100 scale-100 translate-y-[-60px]' : 'opacity-0 scale-50 translate-y-0'
-              }`}
-            >
-              <div className="text-white font-black text-4xl tracking-tighter drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">
+            {/* Логотип AGR */}
+            <motion.div className="relative">
+              <h1 className="text-7xl font-black text-white tracking-[0.25em] drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">
                 AGR
-              </div>
+              </h1>
+              {/* Анимированное подчеркивание */}
+              <motion.div 
+                initial={{ width: 0 }}
+                animate={{ width: '100%' }}
+                transition={{ delay: 1.5, duration: 1 }}
+                className="h-[2px] bg-gradient-to-r from-transparent via-[#E89F64] to-transparent mt-2"
+              />
+            </motion.div>
+
+            <p className="mt-6 text-[#BDBFD1] text-[11px] font-bold uppercase tracking-[0.5em] opacity-70">
+              Warehouse Monitoring System
+            </p>
+
+            {/* Индикатор загрузки (3 точки) */}
+            <div className="mt-10 flex gap-3">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  animate={{ 
+                    scale: [1, 1.4, 1],
+                    opacity: [0.3, 1, 0.3],
+                    backgroundColor: i === 1 ? '#E89F64' : '#1E7D7D'
+                  }}
+                  transition={{ repeat: Infinity, duration: 1.2, delay: i * 0.2 }}
+                  className="w-2.5 h-2.5 rounded-full shadow-[0_0_12px_currentColor]"
+                />
+              ))}
             </div>
           </div>
-        </div>
+        </motion.div>
+      </div>
 
-        {/* Text Fade In */}
-        <div 
-          className={`absolute top-1/2 translate-y-[60px] flex flex-col items-center transition-all duration-1000 ease-in-out delay-300 ${
-            stage >= 2 ? 'opacity-100 translate-y-[60px]' : 'opacity-0 translate-y-[80px]'
-          }`}
-        >
-          <div className="text-[#BDBFD1] text-lg font-bold tracking-[0.2em] uppercase text-center">
-            Warehouse Monitoring System
-          </div>
-          {/* Subtle loading indicator */}
-          <div className="mt-8 flex gap-1.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#E89F64] animate-bounce" style={{ animationDelay: '0ms' }} />
-            <div className="w-1.5 h-1.5 rounded-full bg-[#E89F64] animate-bounce" style={{ animationDelay: '150ms' }} />
-            <div className="w-1.5 h-1.5 rounded-full bg-[#E89F64] animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
-        </div>
-
+      {/* 4. Фоновые частицы (пылинки) */}
+      <div className="absolute inset-0 pointer-events-none">
+        {[...Array(15)].map((_, i) => (
+          <motion.div
+            key={i}
+            initial={{ 
+              x: Math.random() * 100 + "%", 
+              y: Math.random() * 100 + "%",
+              opacity: 0 
+            }}
+            animate={{ 
+              y: [null, "-20%"],
+              opacity: [0, 0.4, 0] 
+            }}
+            transition={{ 
+              duration: 3 + Math.random() * 4, 
+              repeat: Infinity, 
+              ease: "linear",
+              delay: Math.random() * 5 
+            }}
+            className="absolute w-1 h-1 bg-white rounded-full blur-[1px]"
+          />
+        ))}
       </div>
     </div>
   );
