@@ -290,5 +290,20 @@ export const api = {
     const p3 = photos[2] ? encodeURIComponent(photos[2]) : "";
     const url = `${SCRIPT_URL}?mode=report_issue&id=${encodeURIComponent(id)}&desc=${encodeURIComponent(desc)}&p1=${p1}&p2=${p2}&p3=${p3}&author=${encodeURIComponent(author)}`;
     await fetch(url);
+  },
+
+  getProxyImage: async (url: string): Promise<string> => {
+    try {
+      if (!url) return '';
+      let proxiedUrl = url.replace('view?usp=drivesdk', 'view');
+      const driveMatch = proxiedUrl.match(/https:\/\/drive\.google\.com\/file\/d\/([^/]+)\/.*/);
+      if (driveMatch && driveMatch[1]) {
+        return `https://wsrv.nl/?url=${encodeURIComponent(`https://drive.google.com/uc?export=download&id=${driveMatch[1]}`)}&w=800`;
+      }
+      return proxiedUrl;
+    } catch (e) {
+      console.error(e);
+      return '';
+    }
   }
 };
