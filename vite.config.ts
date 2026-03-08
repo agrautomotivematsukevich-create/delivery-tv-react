@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
       // Раскомментировано для корректной работы на GitHub Pages
-      base: '/delivery-tv/', 
+      base: '/',
       server: {
         port: 3000,
         host: '0.0.0.0',
