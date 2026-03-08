@@ -10,7 +10,6 @@ export interface Task {
   pallets?: string;
   phone?: string;
   eta?: string;
-  arrival_time?: string;
   status: 'WAIT' | 'ACTIVE' | 'DONE';
   time: string;
   start_time?: string;
@@ -21,6 +20,7 @@ export interface Task {
   photo_gen?: string;
   photo_seal?: string;
   photo_empty?: string;
+  arrival_time?: string; // Col P: Время прибытия на территорию
 }
 
 export interface Issue {
@@ -29,6 +29,12 @@ export interface Issue {
   desc: string;
   photos: string[];
   author: string;
+}
+
+export interface ShiftCounts {
+  morning: number;  // 07:50 – 16:50
+  evening: number;  // 16:50 – 01:50
+  night:   number;  // 01:50 – 07:50
 }
 
 export interface DashboardData {
@@ -42,6 +48,10 @@ export interface DashboardData {
     start: string;
     zone: string;
   }>;
+  /** Контейнеры прибывшие на территорию, ещё не начатые */
+  onTerritory: number;
+  /** Выгружено по каждой смене */
+  shiftCounts: ShiftCounts;
 }
 
 export interface TaskInput {
@@ -116,7 +126,7 @@ export interface TranslationSet {
   nav_dashboard: string;
   nav_history: string;
   nav_plan: string;
-  nav_downtime: string; // НОВОЕ ПОЛЕ
+  nav_downtime: string;
   
   log_title: string;
   log_date: string;
@@ -145,19 +155,13 @@ export interface TranslationSet {
   dtl_operator: string;
   dtl_zone: string;
   dtl_photos: string;
-
   // Arrival Analytics
+  nav_arrival: string;
   arr_title: string;
-  arr_vehicles_total: string;
-  arr_vehicles_with_data: string;
   arr_avg_wait: string;
   arr_max_wait: string;
-  arr_over_hour: string;
+  arr_vehicles_total: string;
   arr_no_data: string;
-  arr_no_arrival: string;
-  arr_status_ok: string;
-  arr_status_warn: string;
-  arr_status_crit: string;
   arr_col_container: string;
   arr_col_ws: string;
   arr_col_eta: string;
@@ -166,23 +170,40 @@ export interface TranslationSet {
   arr_col_wait: string;
   arr_col_zone: string;
   arr_col_operator: string;
+  arr_status_ok: string;
+  arr_status_warn: string;
+  arr_status_crit: string;
+  arr_no_arrival: string;
+  arr_vehicles_with_data: string;
+  arr_over_hour: string;
+  shift_morning: string;
+  shift_evening: string;
+  shift_norm: string;
+  shift_ahead: string;
+  shift_behind: string;
+  shift_on_track: string;
 }
 
 export interface TaskAction {
   id: string;
   type: 'start' | 'finish';
   zone?: string | null;
+  sealPhotoUrl?: string; // Передаётся при финише для превью
 }
 
 export interface LotContainer {
-  id: string;
-  date: string;
+  date: string;       // DD.MM — sheet date
   index: string;
-  status: 'DONE' | 'ACTIVE' | 'WAIT';
-  eta?: string;
-  start_time?: string;
-  end_time?: string;
-  ws?: string;
-  pallets?: string;
-  zone?: string;
+  lot: string;
+  ws: string;
+  pallets: string;
+  id: string;
+  phone: string;
+  eta: string;
+  status: 'WAIT' | 'ACTIVE' | 'DONE';
+  start_time: string;
+  end_time: string;
+  zone: string;
+  operator: string;
+  arrival_time: string;
 }

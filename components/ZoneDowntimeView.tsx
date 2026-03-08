@@ -55,12 +55,15 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
   }, [date]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (isToday(date)) {
-        loadDowntimeData();
-      }
-    }, 60000);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (!interval) interval = setInterval(() => { if (isToday(date)) loadDowntimeData(); }, 60000);
+    };
+    const stop = () => { if (interval) { clearInterval(interval); interval = null; } };
+    const onVis = () => { if (document.hidden) stop(); else { if (isToday(date)) loadDowntimeData(); start(); } };
+    start();
+    document.addEventListener('visibilitychange', onVis);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
   }, [date]);
 
   const isToday = (dateStr: string): boolean => {
@@ -259,7 +262,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-agr-dark to-accent-blue flex items-center justify-center">
               <TrendingDown className="text-white w-8 h-8" />
             </div>
             <div>
@@ -294,7 +297,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
 
       {/* ✅ ИСПРАВЛЕНО: Показываем время последнего контейнера */}
       {!loading && isToday(date) && isPlanCompleted && (
-        <div className="bg-gradient-to-r from-green-500/20 to-blue-500/20 backdrop-blur-xl border-2 border-green-500/30 rounded-3xl p-6 shadow-2xl animate-in slide-in-from-top duration-500">
+        <div className="bg-gradient-to-r from-green-500/20 to-accent-blue/20 backdrop-blur-xl border-2 border-green-500/30 rounded-3xl p-6 shadow-2xl animate-in slide-in-from-top duration-500">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center border-2 border-green-500/50">
               <CheckCircle className="text-green-400 w-10 h-10" />
@@ -304,7 +307,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
               <p className="text-white/70 text-sm">Все контейнеры выгружены. Зоны свободны и ожидают следующего плана.</p>
             </div>
             <div className="text-right hidden md:block">
-              <div className="text-xs text-white/40 uppercase tracking-wider mb-1">Завершено</div>
+              <div className="text-xs text-white/60 uppercase tracking-wider mb-1">Завершено</div>
               {/* ✅ ИСПРАВЛЕНИЕ: Показываем lastCompletionTime вместо currentTime */}
               <div className="text-3xl font-black text-green-400 font-mono">
                 {lastCompletionTime || '--:--'}
@@ -320,7 +323,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
           <div className="flex items-center gap-3 mb-4">
             <Activity className="text-red-400 w-6 h-6 animate-pulse" />
             <h3 className="text-xl font-black text-white uppercase tracking-wider">Активные простои зон</h3>
-            <span className="text-xs text-white/40 font-mono">(обновление каждую минуту)</span>
+            <span className="text-xs text-white/60 font-mono">(обновление каждую минуту)</span>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -337,7 +340,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
               >
                 <div className={`absolute top-3 right-3 w-3 h-3 rounded-full animate-pulse ${
                   idle.status === 'critical' ? 'bg-red-500' : 
-                  idle.status === 'warning' ? 'bg-yellow-500' : 'bg-blue-500'
+                  idle.status === 'warning' ? 'bg-yellow-500' : 'bg-accent-blue'
                 }`}></div>
                 
                 <div className="flex items-center justify-between mb-3">
@@ -346,16 +349,16 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
                       ? 'bg-red-500/20 text-red-400 border-2 border-red-500/50' 
                       : idle.status === 'warning'
                       ? 'bg-yellow-500/20 text-yellow-400 border-2 border-yellow-500/50'
-                      : 'bg-blue-500/20 text-blue-400 border-2 border-blue-500/50'
+                      : 'bg-accent-blue/20 text-accent-blue border-2 border-accent-blue/50'
                   }`}>
                     {idle.zone}
                   </div>
                   
                   <div className="text-right">
-                    <div className="text-xs text-white/40 font-bold uppercase mb-1">Простаивает</div>
+                    <div className="text-xs text-white/60 font-bold uppercase mb-1">Простаивает</div>
                     <div className={`text-3xl font-black font-mono tabular-nums ${
                       idle.status === 'critical' ? 'text-red-400' : 
-                      idle.status === 'warning' ? 'text-yellow-400' : 'text-blue-400'
+                      idle.status === 'warning' ? 'text-yellow-400' : 'text-accent-blue'
                     }`}>
                       {formatLiveIdleTime(idle.idleStartTime)}
                     </div>
@@ -403,7 +406,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
           <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-2">
               <Clock className="text-red-400 w-5 h-5" />
-              <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Общий простой</span>
+              <span className="text-xs font-bold text-white/60 uppercase tracking-wider">Общий простой</span>
             </div>
             <div className="text-4xl font-black text-white tabular-nums">{formatMinutes(getTotalDowntime())}</div>
           </div>
@@ -411,15 +414,15 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
           <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-2">
               <BarChart3 className="text-yellow-400 w-5 h-5" />
-              <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Средний простой</span>
+              <span className="text-xs font-bold text-white/60 uppercase tracking-wider">Средний простой</span>
             </div>
             <div className="text-4xl font-black text-white tabular-nums">{formatMinutes(getAverageDowntime())}</div>
           </div>
 
           <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-2">
-              <TrendingDown className="text-blue-400 w-5 h-5" />
-              <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Всего зон</span>
+              <TrendingDown className="text-accent-blue w-5 h-5" />
+              <span className="text-xs font-bold text-white/60 uppercase tracking-wider">Всего зон</span>
             </div>
             <div className="text-4xl font-black text-white tabular-nums">{zoneStats.length}</div>
           </div>
@@ -429,14 +432,14 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
       {/* Main Content - История простоев */}
       <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl flex-1 min-h-0 flex flex-col shadow-2xl overflow-hidden">
         {loading ? (
-          <div className="flex-1 flex items-center justify-center text-white/30 animate-pulse">
+          <div className="flex-1 flex items-center justify-center text-white/50 animate-pulse">
             Загрузка данных...
           </div>
         ) : zoneStats.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-white/30 gap-4">
+          <div className="flex-1 flex flex-col items-center justify-center text-white/50 gap-4">
             <Clock size={64} strokeWidth={1} />
             <div className="text-xl font-bold">Нет исторических данных за эту дату</div>
-            <p className="text-sm text-white/20">Выберите другую дату или дождитесь завершения работ</p>
+            <p className="text-sm text-white/50">Выберите другую дату или дождитесь завершения работ</p>
           </div>
         ) : (
           <div className="flex-1 overflow-auto custom-scrollbar">
@@ -462,13 +465,13 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
                       <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-xl ${
                         idx === 0 ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
                         idx === 1 ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' :
-                        'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                        'bg-accent-blue/20 text-accent-blue border border-accent-blue/30'
                       }`}>
                         {stat.zone}
                       </div>
                       
                       <div>
-                        <div className="text-sm text-white/40 font-bold uppercase tracking-wider">Зона выгрузки</div>
+                        <div className="text-sm text-white/60 font-bold uppercase tracking-wider">Зона выгрузки</div>
                         <div className="flex items-center gap-4 mt-1">
                           <span className="text-white/60 text-sm">
                             <span className="font-bold text-white">{stat.downtimeCount}</span> простоев
@@ -482,7 +485,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
                     </div>
 
                     <div className="text-right">
-                      <div className="text-xs text-white/40 font-bold uppercase tracking-wider mb-1">Общий простой</div>
+                      <div className="text-xs text-white/60 font-bold uppercase tracking-wider mb-1">Общий простой</div>
                       <div className="text-3xl font-black text-white tabular-nums">
                         {formatMinutes(stat.totalDowntimeMinutes)}
                       </div>
@@ -499,7 +502,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
                           >
                             <div className="flex items-center gap-6">
                               <div>
-                                <div className="text-xs text-white/40 mb-1">Завершил</div>
+                                <div className="text-xs text-white/60 mb-1">Завершил</div>
                                 <div className="font-mono text-white font-bold">{record.containerId}</div>
                                 <div className="text-xs text-green-400 font-mono mt-0.5">{record.endTime}</div>
                               </div>
@@ -507,14 +510,14 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
                               <div className="text-white/20">→</div>
                               
                               <div>
-                                <div className="text-xs text-white/40 mb-1">Начал</div>
+                                <div className="text-xs text-white/60 mb-1">Начал</div>
                                 <div className="font-mono text-white font-bold">{record.nextContainerId}</div>
-                                <div className="text-xs text-blue-400 font-mono mt-0.5">{record.nextStartTime}</div>
+                                <div className="text-xs text-accent-blue font-mono mt-0.5">{record.nextStartTime}</div>
                               </div>
                             </div>
 
                             <div className="text-right">
-                              <div className="text-xs text-white/40 mb-1">Простой</div>
+                              <div className="text-xs text-white/60 mb-1">Простой</div>
                               <div className={`text-2xl font-black tabular-nums ${
                                 record.downtimeMinutes > 30 ? 'text-red-400' :
                                 record.downtimeMinutes > 15 ? 'text-yellow-400' :

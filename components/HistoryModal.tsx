@@ -58,7 +58,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-xl p-0 md:p-8 animate-in fade-in duration-200">
-      <div className="bg-[#0A0A0C] w-full md:w-[95%] max-w-[800px] h-full md:h-[90vh] rounded-none md:rounded-[2.5rem] border-0 md:border border-white/10 flex flex-col shadow-2xl overflow-hidden relative">
+      <div className="bg-[#191B25] w-full md:w-[95%] max-w-[800px] h-full md:h-[90vh] rounded-none md:rounded-[2.5rem] border-0 md:border border-white/10 flex flex-col shadow-2xl overflow-hidden relative">
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-6 border-b border-white/10 bg-white/5 shrink-0">
@@ -93,7 +93,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
             // LIST VIEW
             <div className="p-4 md:p-6 space-y-3">
               {issues.length === 0 ? (
-                <div className="text-center text-white/30 text-xl font-bold mt-20">{t.history_empty}</div>
+                <div className="text-center text-white/50 text-xl font-bold mt-20">{t.history_empty}</div>
               ) : (
                 issues.map((issue, idx) => (
                   <div 
@@ -115,7 +115,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
                           </div>
                         </div>
                       </div>
-                      <span className="text-xs font-mono text-white/30 bg-white/5 px-2 py-1 rounded-lg border border-white/5">
+                      <span className="text-xs font-mono text-white/50 bg-white/5 px-2 py-1 rounded-lg border border-white/5">
                         {issue.timestamp.split(',')[0]}
                       </span>
                     </div>

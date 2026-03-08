@@ -32,7 +32,7 @@ const StatsModal: React.FC<StatsModalProps> = ({ onClose, t }) => {
   return (
     <div className="stats-root fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/95 backdrop-blur-xl p-0 md:p-6 animate-in fade-in duration-200">
       {/* Добавлен max-h-screen и flex-col для предотвращения вылета за экран */}
-      <div className="bg-[#0A0A0C] w-full md:w-[98%] max-w-[1400px] h-[100dvh] md:h-[90vh] md:rounded-[2rem] border-t md:border border-white/10 flex flex-col shadow-2xl overflow-hidden relative">
+      <div className="bg-[#191B25] w-full md:w-[98%] max-w-[1400px] h-[100dvh] md:h-[90vh] md:rounded-[2rem] border-t md:border border-white/10 flex flex-col shadow-2xl overflow-hidden relative">
         
         {/* Header - теперь фиксированный и с правильными отступами */}
         <div className="flex items-center justify-between px-6 py-4 md:px-8 md:py-6 border-b border-white/10 bg-white/5 sticky top-0 z-20">

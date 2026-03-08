@@ -1,29 +1,37 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Analytics } from '@vercel/analytics/react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import AuthModal from './components/AuthModal';
+import IssueModal from './components/IssueModal';
+import IssueHistoryModal from './components/IssueHistoryModal';
 import OperatorTerminal from './components/OperatorTerminal';
 import StatsModal from './components/StatsModal';
 import ActionModal from './components/ActionModal';
-import IssueModal from './components/IssueModal';
 import HistoryModal from './components/HistoryModal';
 import HistoryView from './components/HistoryView';
 import LogisticsView from './components/LogisticsView';
 import ZoneDowntimeView from './components/ZoneDowntimeView'; // НОВЫЙ ИМПОРТ
+import ArrivalAnalyticsView from './components/ArrivalAnalyticsView'; // АНАЛИТИКА ПРОСТОЯ
+import LotTrackerTV from './components/LotTrackerTV';
+import LotTrackerView from './components/LotTrackerView';
 import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
 import { DashboardData, Lang, User, Task, TaskAction } from './types';
 
 function App() {
-  const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('warehouse_lang') as Lang) || 'RU');
+  const [lang, setLang] = useState<Lang>('RU');
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('warehouse_user');
     return saved ? JSON.parse(saved) : null;
   });
-  
-  // ОБНОВЛЕНО: добавлен 'downtime' view
-  const [view, setView] = useState<'dashboard' | 'history' | 'logistics' | 'downtime'>('dashboard');
+  // TV mode: add ?tv=1 to URL to enable TV layout (fullscreen, no header/footer)
+  const urlParams = new URLSearchParams(window.location.search);
+  const isTV = urlParams.get('tv') === '1';
+  const isTV2 = urlParams.get('tv') === '2';
+  const tv2Lot = urlParams.get('lot') || '';
+
+  // ОБНОВЛЕНО: добавлен 'arrival' view
+  const [view, setView] = useState<'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival' | 'lotTracker'>('dashboard');
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isAppReady, setIsAppReady] = useState(false);
 
@@ -31,7 +39,7 @@ function App() {
   const [showTerminal, setShowTerminal] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showIssue, setShowIssue] = useState(false);
-  const [showIssueHistory, setShowIssueHistory] = useState(false); 
+  const [showIssueHistory, setShowIssueHistory] = useState(false);
   const [currentAction, setCurrentAction] = useState<TaskAction | null>(null);
 
   const t = TRANSLATIONS[lang];
@@ -42,168 +50,182 @@ function App() {
     return data;
   }, []);
 
+  // Initial load
   useEffect(() => {
+    if (isTV2) {
+      // TV2 doesn't need dashboard data
+      setTimeout(() => setIsAppReady(true), 800);
+      return;
+    }
     refreshDashboard().then(() => {
       setTimeout(() => setIsAppReady(true), 1200);
     });
+  }, [refreshDashboard, isTV2]);
 
-    const interval = setInterval(() => {
-      if (view === 'dashboard') refreshDashboard();
-    }, 5000);
+  // Polling only when on dashboard AND tab is visible (skip for TV2)
+  useEffect(() => {
+    if (view !== 'dashboard' || isTV2) return;
 
-    return () => clearInterval(interval);
-  }, [refreshDashboard, view]);
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      if (!intervalId) {
+        intervalId = setInterval(refreshDashboard, 15000);
+      }
+    };
+    const stopPolling = () => {
+      if (intervalId) { clearInterval(intervalId); intervalId = null; }
+    };
+
+    const onVisibility = () => {
+      if (document.hidden) { stopPolling(); }
+      else { refreshDashboard(); startPolling(); }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [refreshDashboard, view, isTV2]);
 
   const handleLangToggle = () => {
     const newLang = lang === 'RU' ? 'EN_CN' : 'RU';
     setLang(newLang);
-    localStorage.setItem('warehouse_lang', newLang);
   };
 
-  const handleLogin = (u: User) => {
-    setUser(u);
-    localStorage.setItem('warehouse_user', JSON.stringify(u));
+  const handleLogin = (loggedInUser: User) => {
+    setUser(loggedInUser);
+    localStorage.setItem('warehouse_user', JSON.stringify(loggedInUser));
     setShowAuth(false);
   };
 
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('warehouse_user');
-    setView('dashboard'); 
     setShowTerminal(false);
   };
 
-  const actionPromiseRef = useRef<{resolve: () => void, reject: (e: Error) => void} | null>(null);
-
   const handleTaskActionRequest = (task: Task, actionType: 'start' | 'finish') => {
-    return new Promise<void>((resolve, reject) => {
-      actionPromiseRef.current = { resolve, reject };
-      setCurrentAction({ id: task.id, type: actionType });
+    setCurrentAction({
+      id: task.id,
+      type: actionType,
+      sealPhotoUrl: actionType === 'finish' ? task.photo_seal : undefined,
     });
   };
 
   const handleActionSuccess = () => {
     setCurrentAction(null);
-    if (actionPromiseRef.current) {
-      actionPromiseRef.current.resolve();
-      actionPromiseRef.current = null;
-    }
     refreshDashboard();
   };
 
-  const handleActionClose = () => {
-    setCurrentAction(null);
-    if (actionPromiseRef.current) {
-      actionPromiseRef.current.resolve();
-      actionPromiseRef.current = null;
-    }
-  };
-
-  // ОБНОВЛЕНО: добавлен case для 'downtime'
   const renderContent = () => {
     if (view === 'history') return <HistoryView t={t} />;
     if (view === 'logistics') return <LogisticsView t={t} />;
-    if (view === 'downtime') return <ZoneDowntimeView t={t} />; // НОВОЕ
-    return <Dashboard data={dashboardData} t={t} />;
+    if (view === 'downtime') return <ZoneDowntimeView t={t} />;
+    if (view === 'arrival') return <ArrivalAnalyticsView t={t} />;
+    if (view === 'lotTracker') return <LotTrackerView user={user} t={t} />;
+    return <Dashboard data={dashboardData} t={t} tvMode={isTV} />;
   };
 
   return (
     <>
       {/* ПРИВЕТСТВЕННЫЙ ЭКРАН ЗАГРУЗКИ */}
       {!isAppReady && (
-        <div className="fixed inset-0 z-[100] bg-[#0A0A0C] flex flex-col items-center justify-center overflow-hidden">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-600/10 blur-[120px] rounded-full"></div>
-          
+        <div className="fixed inset-0 z-[100] bg-[#191B25] flex flex-col items-center justify-center overflow-hidden">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#1E7D7D]/10 blur-[120px] rounded-full"></div>
+
           <div className="relative flex flex-col items-center z-10 text-center">
-            <div className="relative w-24 h-24 mb-10 mx-auto">
-              <div className="absolute inset-0 border-[3px] border-white/5 rounded-2xl rotate-45"></div>
-              <div className="absolute inset-0 border-[3px] border-blue-500 rounded-2xl rotate-45 animate-spin shadow-[0_0_20px_rgba(59,130,246,0.5)]"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-              </div>
+            {/* AGR Logo */}
+            <div className="mb-8">
+              <img src="/agr-logo-white.svg" alt="AGR" className="h-16 md:h-20 opacity-90" />
             </div>
 
-            <h1 className="text-4xl md:text-5xl font-black tracking-[0.2em] mb-4 bg-gradient-to-b from-white via-white to-white/20 bg-clip-text text-transparent">
-              WAREHOUSE
-              <span className="block text-center text-lg tracking-[0.6em] text-blue-500 mt-2 font-light">DASHBOARD</span>
+            <h1 className="text-2xl md:text-3xl font-black tracking-[0.15em] mb-2 text-white/90 uppercase">
+              Warehouse
+              <span className="block text-center text-sm tracking-[0.5em] text-[#1E7D7D] mt-1.5 font-medium">Monitoring System</span>
             </h1>
 
             <div className="w-48 h-[2px] bg-white/5 rounded-full mt-6 overflow-hidden mx-auto">
-              <div className="h-full bg-blue-500 animate-[loading-bar_1.5s_ease-in-out_forwards]"></div>
+              <div className="h-full bg-[#1E7D7D] animate-[loading-bar_1.5s_ease-in-out_forwards]"></div>
             </div>
 
-            <div className="mt-12 flex flex-col items-center gap-2 transition-opacity duration-1000 opacity-60">
+            <div className="mt-10 flex flex-col items-center gap-2 transition-opacity duration-1000 opacity-60">
               <span className="text-[8px] font-bold uppercase tracking-[0.4em] text-white/50">System Initializing</span>
               <p className="text-[10px] font-medium tracking-[0.2em] text-white">
-                Developed by <span className="font-black text-blue-400">Vladislav_Matsukevich</span>
+                Developed by <span className="font-black text-[#1E7D7D]">Vladislav_Matsukevich</span>
               </p>
             </div>
           </div>
-
-          <style>{`
-            @keyframes loading-bar {
-              0% { width: 0%; transform: translateX(-100%); }
-              100% { width: 100%; transform: translateX(0%); }
-            }
-          `}</style>
         </div>
       )}
 
-      <div className={`relative min-h-screen w-full flex flex-col p-4 md:p-8 bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="relative z-20 flex-1 flex flex-col max-w-[1920px] mx-auto w-full">
-          <div className="relative z-50"> 
-            <Header 
-              user={user} 
-              lang={lang} 
-              t={t}
-              view={view}
-              setView={setView}
-              title={t.title}
-              onToggleLang={handleLangToggle}
-              onLoginClick={() => setShowAuth(true)}
-              onLogoutClick={handleLogout}
-              onTerminalClick={() => setShowTerminal(true)}
-              onStatsClick={() => setShowStats(true)}
-              onIssueClick={() => setShowIssue(true)}
-              onHistoryClick={() => setShowIssueHistory(true)}
-            />
-          </div>
-
-          <main className="relative z-10 flex-1 mt-4 flex flex-col min-h-0">
-            {renderContent()}
-          </main>
+      {/* ── TV MODE: полный экран без header/footer ── */}
+      {isTV2 ? (
+        <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+          <LotTrackerTV lot={tv2Lot} />
         </div>
+      ) : isTV ? (
+        <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+          {renderContent()}
+        </div>
+      ) : (
+        <div className={`relative min-h-screen w-full flex flex-col p-4 md:p-8 bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+          <div className="relative z-20 flex-1 flex flex-col max-w-[1920px] mx-auto w-full">
+            <div className="relative z-50"> 
+              <Header 
+                user={user} 
+                lang={lang} 
+                t={t}
+                view={view}
+                setView={setView}
+                title={t.title}
+                onToggleLang={handleLangToggle}
+                onLoginClick={() => setShowAuth(true)}
+                onLogoutClick={handleLogout}
+                onTerminalClick={() => setShowTerminal(true)}
+                onStatsClick={() => setShowStats(true)}
+                onIssueClick={() => setShowIssue(true)}
+                onHistoryClick={() => setShowIssueHistory(true)}
+              />
+            </div>
 
-        {showAuth && (
-          <AuthModal t={t} onClose={() => setShowAuth(false)} onLoginSuccess={handleLogin} />
-        )}
-        {showTerminal && (
-          <OperatorTerminal t={t} onClose={() => setShowTerminal(false)} onTaskAction={handleTaskActionRequest} />
-        )}
-        {showStats && (
-          <StatsModal t={t} onClose={() => setShowStats(false)} />
-        )}
-        {showIssue && (
-          <IssueModal t={t} user={user} onClose={() => setShowIssue(false)} />
-        )}
-        {showIssueHistory && (
-          <HistoryModal t={t} onClose={() => setShowIssueHistory(false)} />
-        )}
-        {currentAction && user && (
-          <ActionModal action={currentAction} user={user} t={t} onClose={handleActionClose} onSuccess={handleActionSuccess} />
-        )}
-
-        <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
-          <div className="flex flex-col items-center gap-1">
-            <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
-            <p className="text-[8px] font-medium tracking-[0.5em] text-white/30 uppercase text-center">
-              Developed by <span className="ml-2 text-white/50 font-black tracking-[0.2em]">Vladislav_Matsukevich</span>
-            </p>
+            <main className="relative z-10 flex-1 mt-4 flex flex-col min-h-0">
+              {renderContent()}
+            </main>
           </div>
-        </footer>
-      </div>
 
-      <Analytics />
+          {showAuth && (
+            <AuthModal t={t} onClose={() => setShowAuth(false)} onLoginSuccess={handleLogin} />
+          )}
+          {showTerminal && (
+            <OperatorTerminal t={t} onClose={() => setShowTerminal(false)} onTaskAction={handleTaskActionRequest} />
+          )}
+          {showStats && (
+            <StatsModal t={t} onClose={() => setShowStats(false)} />
+          )}
+          {showIssue && (
+            <IssueModal t={t} user={user} onClose={() => setShowIssue(false)} />
+          )}
+          {showIssueHistory && (
+            <HistoryModal t={t} onClose={() => setShowIssueHistory(false)} />
+          )}
+          {currentAction && user && (
+            <ActionModal action={currentAction} user={user} t={t} onClose={() => setCurrentAction(null)} onSuccess={handleActionSuccess} />
+          )}
+
+          <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
+            <div className="flex flex-col items-center gap-1">
+              <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+              <p className="text-[8px] font-medium tracking-[0.5em] text-white/50 uppercase text-center">
+                Developed by <span className="ml-2 text-white/50 font-black tracking-[0.2em]">Vladislav_Matsukevich</span>
+              </p>
+            </div>
+          </footer>
+        </div>
+      )}
     </>
   );
 }
