@@ -120,54 +120,81 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       let urlGen = '', urlSeal = '', urlEmpty = '';
 
       if (!isLocalManual) {
-        if (isStart) {
-          // ── Параллельная загрузка обоих фото ──
-          setUploadStatus({ state: 'uploading', step: 'Загрузка фото...', progress: 15 });
-          const [r1, r2] = await Promise.all([
-            photo1 ? api.uploadPhoto(photo1.data, photo1.mime, photo1.name) : Promise.resolve(''),
-            photo2 ? api.uploadPhoto(photo2.data, photo2.mime, photo2.name) : Promise.resolve(''),
-          ]);
-          // If upload failed but we're offline, queue photos for later
-          if (photo1 && !r1) {
-            if (!navigator.onLine) {
-              await offlineQueue.enqueue('photo_upload', {
-                image: photo1.data, mimeType: photo1.mime, filename: photo1.name,
-                taskId: action.id, photoField: 'pGen',
-              });
-            } else {
-              throw new Error('Не удалось загрузить фото 1. Проверьте интернет.');
+        setUploadStatus({ state: 'uploading', step: 'Загрузка фото...', progress: 15 });
+        
+        try {
+          if (isStart) {
+            // Теперь загружаем по очереди или через Promise.all, 
+            // но помним, что при ошибке мы упадем в ближайший catch
+            const [r1, r2] = await Promise.all([
+              photo1 ? api.uploadPhoto(photo1.data, photo1.mime, photo1.name) : Promise.resolve(''),
+              photo2 ? api.uploadPhoto(photo2.data, photo2.mime, photo2.name) : Promise.resolve(''),
+            ]);
+            urlGen = r1;
+            urlSeal = r2;
+          } else {
+            if (photo1) {
+              urlEmpty = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name);
             }
           }
-          if (photo2 && !r2) {
-            if (!navigator.onLine) {
-              await offlineQueue.enqueue('photo_upload', {
-                image: photo2.data, mimeType: photo2.mime, filename: photo2.name,
-                taskId: action.id, photoField: 'pSeal',
-              });
+        } catch (photoError) {
+          // Если фото не ушли (ошибка сети после всех ретраев)
+          if (!navigator.onLine) {
+            console.log("Offline detected during photo upload, queueing...");
+            // Логика постановки фото в очередь остается здесь
+            if (isStart) {
+              if (photo1) await offlineQueue.enqueue('photo_upload', { image: photo1.data, mimeType: photo1.mime, filename: photo1.name, taskId: action.id, photoField: 'pGen' });
+              if (photo2) await offlineQueue.enqueue('photo_upload', { image: photo2.data, mimeType: photo2.mime, filename: photo2.name, taskId: action.id, photoField: 'pSeal' });
             } else {
-              throw new Error('Не удалось загрузить фото 2. Проверьте интернет.');
+              if (photo1) await offlineQueue.enqueue('photo_upload', { image: photo1.data, mimeType: photo1.mime, filename: photo1.name, taskId: action.id, photoField: 'pEmpty' });
             }
-          }
-          urlGen  = r1;
-          urlSeal = r2;
-        } else {
-          // Финиш — одно фото
-          setUploadStatus({ state: 'uploading', step: 'Загрузка фото...', progress: 20 });
-          if (photo1) {
-            urlEmpty = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name);
-            if (!urlEmpty) {
-              if (!navigator.onLine) {
-                await offlineQueue.enqueue('photo_upload', {
-                  image: photo1.data, mimeType: photo1.mime, filename: photo1.name,
-                  taskId: action.id, photoField: 'pEmpty',
-                });
-              } else {
-                throw new Error('Не удалось загрузить фото. Проверьте интернет.');
-              }
-            }
+          } else {
+            // Если интернет есть, но сервер упорно не берет фото
+            throw photoError; 
           }
         }
       }
+
+      setUploadStatus({ state: 'uploading', step: 'Сохранение данных...', progress: 85 });
+
+      const actionType = isLocalManual
+        ? `${action.type}_manual_${manualTime}`
+        : action.type;
+
+      // taskAction теперь тоже может выбросить NETWORK_ERROR
+      await api.taskAction(action.id, actionType, user.name, zone || '', urlGen, urlSeal, urlEmpty);
+
+      setUploadStatus({ state: 'uploading', step: 'Готово!', progress: 100 });
+      setTimeout(() => {
+        setUploadStatus({ state: 'success' });
+        vibrate([100, 50, 100]);
+        setTimeout(onSuccess, 700);
+      }, 400);
+
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      
+      // Если это ошибка сети (включая проброшенный NETWORK_ERROR из api.ts)
+      if (!navigator.onLine || errMsg === 'NETWORK_ERROR' || errMsg === 'TIMEOUT') {
+        vibrate([50, 30, 50, 30, 50]);
+        
+        // Кладём само действие в очередь
+        await offlineQueue.enqueue('task_action', {
+          id: action.id,
+          act: isLocalManual ? `${action.type}_manual_${manualTime}` : action.type,
+          op: user.name,
+          zone: zone || '',
+        });
+        
+        setUploadStatus({ state: 'success' }); // Показываем успех, так как задача в очереди
+        setTimeout(onSuccess, 700);
+      } else {
+        // Реальная ошибка сервера или валидации
+        vibrate([200, 100, 200]);
+        setUploadStatus({ state: 'error', message: errMsg });
+      }
+    }
+  };
 
       setUploadStatus({ state: 'uploading', step: 'Сохранение...', progress: 85 });
 
