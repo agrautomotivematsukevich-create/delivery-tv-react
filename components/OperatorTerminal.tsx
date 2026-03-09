@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { Task, TranslationSet } from '../types';
-import { Phone, Check, Play, Layers, Search, X, ChevronUp, Undo2, Timer, WifiOff, Wifi } from 'lucide-react';
+import { Phone, Check, Play, Layers, Search, X, ChevronUp, Undo2, Timer, WifiOff, Wifi, Eye } from 'lucide-react';
 import { offlineQueue } from '../services/offlineQueue';
+import SecureImage from './SecureImage'; // Импортируем для просмотра фото
 
 interface OperatorTerminalProps {
   onClose: () => void;
@@ -10,6 +11,7 @@ interface OperatorTerminalProps {
   t: TranslationSet;
 }
 
+// Вспомогательные функции (оставляем без изменений)
 function parseHHMM(s: string): number | null {
   const m = (s || '').trim().match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return null;
@@ -39,6 +41,9 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingCount, setPendingCount] = useState(0);
   const [processingIds, setProcessingIds] = useState<string[]>([]);
+  
+  // Состояние для модалки просмотра фото
+  const [previewTask, setPreviewTask] = useState<Task | null>(null);
   
   const activeRef = useRef<HTMLDivElement | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -105,28 +110,37 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   const handleTaskActionLocal = async (task: Task, action: 'start' | 'finish') => {
     if (processingIds.includes(task.id)) return;
     
-    // Блокируем действие, если браузер явно сообщает, что интернета нет
     if (!isOnline) {
       alert('Нет подключения к интернету! Дождитесь появления сети для передачи фотографий.');
       return;
     }
+
+    // --- ЛОГИКА БЛОКИРОВКИ ПОВТОРНОГО СТАРТА ---
+    if (action === 'start') {
+      // Ищем активную сессию на тех же воротах (task.zone)
+      // Внимание: task.zone должен быть заполнен в объекте таска из очереди
+      const activeOnSameGate = tasks.find(t => t.status === 'ACTIVE' && t.zone === task.zone && t.id !== task.id);
+      
+      if (activeOnSameGate) {
+        vibrate([100, 50, 100]);
+        alert(`На этих воротах (${task.zone}) выгружается ${activeOnSameGate.id}. Завершите, чтобы начать следующий.`);
+        return;
+      }
+    }
+    // ------------------------------------------
 
     vibrate(30);
     stopPolling();
     setProcessingIds(prev => [...prev, task.id]);
     
     try {
-      // Пытаемся выполнить задачу (включая загрузку фото)
       await onTaskAction(task, action);
-      // Если прошло успешно, обновляем очередь
       await fetchQueue();
     } catch (e: any) {
       console.error('Task action error:', e);
-      // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Выводим пользователю предупреждение
-      vibrate([50, 100, 50, 100, 50]); // Длинная вибрация ошибки
-      alert('⚠️ Ошибка сети!\n\nПроцесс был прерван из-за потери связи. Фотографии не отправлены.\n\nПожалуйста, проверьте интернет (например, переключитесь на мобильные данные) и нажмите кнопку еще раз.');
+      vibrate([50, 100, 50, 100, 50]);
+      alert('⚠️ Ошибка сети!\n\nПроцесс был прерван из-за потери связи. Фотографии не отправлены.\n\nПожалуйста, проверьте интернет и нажмите кнопку еще раз.');
     } finally {
-      // Снимаем блокировку кнопки независимо от результата
       setProcessingIds(prev => prev.filter(id => id !== task.id));
       startPolling();
     }
@@ -256,12 +270,12 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
               const cardClasses = `rounded-2xl p-4 flex flex-col gap-2 transition-all border ${
                 isPalletOver
-                  ? 'bg-red-500/10 border-red-500/30 shadow-[0_0_20px_rgba(239,68,68,0.1)] active:bg-red-500/20 md:hover:bg-red-500/20'
+                  ? 'bg-red-500/10 border-red-500/30 shadow-[0_0_20px_rgba(239,68,68,0.1)]'
                   : isActive
                     ? isOvertime
-                      ? 'bg-red-500/5 border-red-500/20 shadow-[0_0_20px_rgba(239,68,68,0.05)]'
+                      ? 'bg-red-500/5 border-red-500/20'
                       : 'bg-accent-green/5 border-accent-green/20 shadow-[0_0_20px_rgba(0,230,118,0.05)]'
-                    : 'bg-white/5 border-white/5 active:bg-white/10 md:hover:bg-white/8'
+                    : 'bg-white/5 border-white/5'
               }`;
 
               return (
@@ -275,7 +289,15 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                       }`} />
                       <div className="min-w-0">
                         <div className="flex items-center flex-wrap gap-1">
-                          <span className="font-mono text-lg font-bold text-white truncate">{task.id}</span>
+                          <span className="font-mono text-lg font-bold text-white truncate">
+                            {task.id} 
+                            {/* --- ОТОБРАЖЕНИЕ ВОРОТ (DOCK) --- */}
+                            {isActive && task.zone && (
+                              <span className="ml-2 text-accent-blue font-black bg-accent-blue/10 px-2 py-0.5 rounded-md border border-accent-blue/20 tracking-tighter">
+                                ({task.zone})
+                              </span>
+                            )}
+                          </span>
                           {getTypeBadge(task.type)}
                         </div>
                         <div className="flex items-center gap-3 mt-0.5 text-white/60 text-xs">
@@ -295,13 +317,22 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
                     <div className="flex items-center gap-2 ml-auto shrink-0">
                       {isActive && task.start_time && (
-                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-mono text-sm font-black tabular-nums ${
-                          isOvertime ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                            : elapsed > 20 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                            : 'bg-accent-green/10 border-accent-green/30 text-accent-green'
-                        }`}>
-                          <Timer size={13} />{elapsed} мин
-                        </div>
+                        <>
+                          {/* Кнопка быстрого просмотра фото */}
+                          {(task.photo_gen || task.photo_seal) && (
+                            <button onClick={() => setPreviewTask(task)}
+                              className="w-10 h-10 flex items-center justify-center rounded-xl bg-accent-blue/10 border border-accent-blue/20 hover:bg-accent-blue/20 transition-colors">
+                              <Eye size={18} className="text-accent-blue" />
+                            </button>
+                          )}
+                          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-mono text-sm font-black tabular-nums ${
+                            isOvertime ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                              : elapsed > 20 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                              : 'bg-accent-green/10 border-accent-green/30 text-accent-green'
+                          }`}>
+                            <Timer size={13} />{elapsed} мин
+                          </div>
+                        </>
                       )}
 
                       {task.phone && (
@@ -315,8 +346,8 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                         disabled={isProcessing}
                         onClick={() => handleTaskActionLocal(task, isWait ? 'start' : 'finish')}
                         className={`h-10 px-5 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 min-w-[120px] ${
-                          isWait ? 'bg-accent-blue text-white active:bg-accent-blue/80 md:hover:bg-accent-blue/80' 
-                                 : 'bg-accent-green text-black active:bg-accent-green/80 md:hover:bg-accent-green/80'
+                          isWait ? 'bg-accent-blue text-white active:bg-accent-blue/80' 
+                                 : 'bg-accent-green text-black active:bg-accent-green/80'
                         }`}>
                         {isProcessing ? (
                           <span className="animate-pulse">Загрузка...</span>
@@ -340,11 +371,11 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] text-red-400 font-bold">Отменить?</span>
                           <button onClick={() => handleUndo(task.id)} disabled={isUndoing}
-                            className="px-3 py-1.5 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 text-[10px] font-bold hover:bg-red-500/25 transition-all disabled:opacity-50">
+                            className="px-3 py-1.5 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 text-[10px] font-bold">
                             {isUndoing ? '...' : 'Да'}
                           </button>
                           <button onClick={() => setUndoConfirm(null)}
-                            className="px-3 py-1.5 rounded-lg bg-white/5 text-white/50 text-[10px] font-bold hover:bg-white/10 transition-all">
+                            className="px-3 py-1.5 rounded-lg bg-white/5 text-white/50 text-[10px] font-bold">
                             Нет
                           </button>
                         </div>
@@ -373,6 +404,38 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                 ↑ Активный
               </button>
             )}
+          </div>
+        )}
+
+        {/* --- МОДАЛЬНОЕ ОКНО ПРОСМОТРА ФОТО --- */}
+        {previewTask && (
+          <div className="absolute inset-0 z-[70] bg-black/95 flex flex-col animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <span className="text-white font-bold">{previewTask.id}</span>
+              <button onClick={() => setPreviewTask(null)} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                <X size={20} className="text-white" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {previewTask.photo_gen && (
+                <div className="space-y-1">
+                  <span className="text-[10px] text-white/40 uppercase font-bold ml-1">Контейнер</span>
+                  <SecureImage src={previewTask.photo_gen} alt="Container" className="w-full rounded-2xl border border-white/10 object-cover aspect-video" />
+                </div>
+              )}
+              {previewTask.photo_seal && (
+                <div className="space-y-1">
+                  <span className="text-[10px] text-white/40 uppercase font-bold ml-1">Пломба</span>
+                  <SecureImage src={previewTask.photo_seal} alt="Seal" className="w-full rounded-2xl border border-white/10 object-cover aspect-video" />
+                </div>
+              )}
+              {!previewTask.photo_gen && !previewTask.photo_seal && (
+                <div className="flex flex-col items-center justify-center h-full text-white/30">
+                  <WifiOff size={48} className="mb-2" />
+                  <span>Фото еще не загружены</span>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
