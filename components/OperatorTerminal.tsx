@@ -72,13 +72,11 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     return () => stopPolling();
   }, [fetchQueue, startPolling, stopPolling]);
 
-  // Timer tick every 30s
   useEffect(() => {
     const id = setInterval(() => setTick(n => n + 1), 30000);
     return () => clearInterval(id);
   }, []);
 
-  // Online/offline
   useEffect(() => {
     const on = () => { setIsOnline(true); offlineQueue.flush(); };
     const off = () => setIsOnline(false);
@@ -87,7 +85,6 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
 
-  // Pending queue count
   useEffect(() => {
     const check = () => setPendingCount(offlineQueue.count());
     check();
@@ -95,7 +92,6 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     return () => clearInterval(id);
   }, []);
 
-  // Auto-scroll to first active
   useEffect(() => {
     if (!loading && activeRef.current) {
       setTimeout(() => activeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
@@ -108,15 +104,29 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
   const handleTaskActionLocal = async (task: Task, action: 'start' | 'finish') => {
     if (processingIds.includes(task.id)) return;
+    
+    // Блокируем действие, если браузер явно сообщает, что интернета нет
+    if (!isOnline) {
+      alert('Нет подключения к интернету! Дождитесь появления сети для передачи фотографий.');
+      return;
+    }
+
     vibrate(30);
     stopPolling();
     setProcessingIds(prev => [...prev, task.id]);
+    
     try {
+      // Пытаемся выполнить задачу (включая загрузку фото)
       await onTaskAction(task, action);
+      // Если прошло успешно, обновляем очередь
       await fetchQueue();
-    } catch (e) {
+    } catch (e: any) {
       console.error('Task action error:', e);
+      // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Выводим пользователю предупреждение
+      vibrate([50, 100, 50, 100, 50]); // Длинная вибрация ошибки
+      alert('⚠️ Ошибка сети!\n\nПроцесс был прерван из-за потери связи. Фотографии не отправлены.\n\nПожалуйста, проверьте интернет (например, переключитесь на мобильные данные) и нажмите кнопку еще раз.');
     } finally {
+      // Снимаем блокировку кнопки независимо от результата
       setProcessingIds(prev => prev.filter(id => id !== task.id));
       startPolling();
     }
@@ -132,6 +142,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
       setUndoConfirm(null);
     } catch (e) {
       console.error('Undo failed:', e);
+      alert('Не удалось отменить задачу из-за проблем с сетью. Попробуйте снова.');
     } finally {
       setUndoingId(null);
       startPolling();
@@ -238,13 +249,11 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
               const showUndoConfirm = undoConfirm === task.id;
               const isProcessing = processingIds.includes(task.id);
 
-              // Определяем, является ли паллет-показатель критическим (>0.55)
               const palletMatch = task.pallets?.match(/^(\d+)\s*\/\s*(\d+)$/);
               const isPalletOver = palletMatch
                 ? parseInt(palletMatch[1], 10) / parseInt(palletMatch[2], 10) > 0.55
                 : false;
 
-              // Формируем классы для карточки
               const cardClasses = `rounded-2xl p-4 flex flex-col gap-2 transition-all border ${
                 isPalletOver
                   ? 'bg-red-500/10 border-red-500/30 shadow-[0_0_20px_rgba(239,68,68,0.1)] active:bg-red-500/20 md:hover:bg-red-500/20'
@@ -285,7 +294,6 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                     </div>
 
                     <div className="flex items-center gap-2 ml-auto shrink-0">
-                      {/* Live timer */}
                       {isActive && task.start_time && (
                         <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-mono text-sm font-black tabular-nums ${
                           isOvertime ? 'bg-red-500/10 border-red-500/30 text-red-400'
