@@ -7,14 +7,31 @@ export const hashPassword = async (p: string): Promise<string> => {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
+// ── Умный Timeout для нестабильной сети ──
+const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: number } = {}) => {
+  const { timeout = 25000, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, { ...fetchOptions, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (error: any) {
+    clearTimeout(id);
+    if (error.name === 'AbortError') {
+      throw new Error('TIMEOUT');
+    }
+    throw error;
+  }
+};
+
 // ── Simple request cache + in-flight dedup ──
 const _cache: Record<string, { data: unknown; ts: number }> = {};
 const _inflight: Record<string, Promise<unknown>> = {};
 async function cachedFetch<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
-  // Return cached if fresh
   const cached = _cache[key];
   if (cached && Date.now() - cached.ts < ttlMs) return cached.data as T;
-  // Dedup in-flight requests
   if (_inflight[key]) return _inflight[key] as Promise<T>;
   const promise = fn().then(data => {
     _cache[key] = { data, ts: Date.now() };
@@ -50,7 +67,6 @@ export const parseDashboardData = (text: string): DashboardData | null => {
       }
     }
 
-    // Parse shift counts (r1[4] = "morning|evening|night")
     let shiftCounts = { morning: 0, evening: 0, night: 0 };
     if (r1[4]) {
       const sc = r1[4].split('|');
@@ -60,7 +76,6 @@ export const parseDashboardData = (text: string): DashboardData | null => {
         night:   parseInt(sc[2]) || 0,
       };
     }
-    // Parse on-territory count (r1[5])
     const onTerritory = r1[5] ? (parseInt(r1[5]) || 0) : 0;
 
     return {
@@ -83,7 +98,7 @@ export const api = {
   fetchDashboard: async (): Promise<DashboardData | null> => {
     return cachedFetch('dashboard', 10000, async () => {
       try {
-        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}`);
+        const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}`);
         const text = await res.text();
         return parseDashboardData(text);
       } catch (e) {
@@ -96,7 +111,7 @@ export const api = {
   fetchTasks: async (mode: 'get_operator_tasks' | 'get_stats'): Promise<Task[]> => {
     return cachedFetch(`tasks_${mode}`, 10000, async () => {
       try {
-        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=${mode}`);
+        const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=${mode}`);
         const data = await res.json();
         return Array.isArray(data) ? data : [];
       } catch (e) {
@@ -109,7 +124,7 @@ export const api = {
   fetchHistory: async (dateStr: string): Promise<Task[]> => {
     return cachedFetch(`history_${dateStr}`, 20000, async () => {
       try {
-        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
+        const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
         const data = await res.json();
         return Array.isArray(data) ? data : [];
       } catch (e) {
@@ -119,10 +134,9 @@ export const api = {
     });
   },
 
-  // Logistics: Get full plan for editing
   fetchFullPlan: async (dateStr: string): Promise<PlanRow[]> => {
     try {
-       const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_full_plan&date=${encodeURIComponent(dateStr)}`);
+       const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_full_plan&date=${encodeURIComponent(dateStr)}`);
        const data = await res.json();
        return Array.isArray(data) ? data : [];
     } catch (e) {
@@ -131,11 +145,10 @@ export const api = {
     }
   },
 
-  // Lot Tracker: fetch all containers for a specific lot across all dates
   fetchLotTracker: async (lot: string): Promise<LotContainer[]> => {
     return cachedFetch(`lot_${lot}`, 15000, async () => {
       try {
-        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_lot_tracker&lot=${encodeURIComponent(lot)}`);
+        const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_lot_tracker&lot=${encodeURIComponent(lot)}`);
         const txt = await res.text();
         try {
           const data = JSON.parse(txt);
@@ -151,11 +164,10 @@ export const api = {
     });
   },
 
-  // Logistics: Create new plan
   createPlan: async (dateStr: string, tasks: TaskInput[]): Promise<boolean> => {
     try {
        const payload = JSON.stringify(tasks);
-       await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=create_plan&date=${encodeURIComponent(dateStr)}&tasks=${encodeURIComponent(payload)}`);
+       await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=create_plan&date=${encodeURIComponent(dateStr)}&tasks=${encodeURIComponent(payload)}`);
        return true;
     } catch(e) {
       console.error(e);
@@ -163,7 +175,6 @@ export const api = {
     }
   },
   
-  // Logistics: Update specific row
   updatePlanRow: async (dateStr: string, row: PlanRow): Promise<boolean> => {
     try {
        const params = new URLSearchParams({
@@ -177,7 +188,7 @@ export const api = {
          phone: row.phone,
          eta: row.eta
        });
-       const res = await fetch(`${SCRIPT_URL}?${params.toString()}`);
+       const res = await fetchWithTimeout(`${SCRIPT_URL}?${params.toString()}`);
        const txt = await res.text();
        return txt.includes("UPDATED");
     } catch(e) {
@@ -186,11 +197,10 @@ export const api = {
     }
   },
 
-  // Priority Lot: read from DASHBOARD sheet
   getPriorityLot: async (): Promise<string> => {
     return cachedFetch('priority_lot', 10000, async () => {
       try {
-        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_priority_lot`);
+        const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_priority_lot`);
         const txt = await res.text();
         try {
           const data = JSON.parse(txt);
@@ -206,12 +216,10 @@ export const api = {
     });
   },
 
-  // Priority Lot: write to DASHBOARD sheet
   setPriorityLot: async (lot: string): Promise<boolean> => {
     try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=set_priority_lot&lot=${encodeURIComponent(lot)}`);
+      const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=set_priority_lot&lot=${encodeURIComponent(lot)}`);
       const txt = await res.text();
-      // Invalidate cache
       delete _cache['priority_lot'];
       return txt.includes("OK");
     } catch (e) {
@@ -222,7 +230,7 @@ export const api = {
 
   fetchAllContainers: async (): Promise<string[]> => {
     try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_all_containers`);
+      const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_all_containers`);
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     } catch (e) {
@@ -233,7 +241,7 @@ export const api = {
 
   fetchIssues: async (): Promise<Issue[]> => {
     try {
-      const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_issues`);
+      const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_issues`);
       const data = await res.json();
       return Array.isArray(data) ? data : [];
     } catch (e) {
@@ -244,11 +252,10 @@ export const api = {
 
   login: async (user: string, pass: string): Promise<{ success: boolean; name?: string; role?: string }> => {
     const hash = await hashPassword(pass);
-    const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=login&user=${encodeURIComponent(user)}&hash=${hash}`);
+    const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=login&user=${encodeURIComponent(user)}&hash=${hash}`);
     const txt = await res.text();
     if (txt.includes("CORRECT")) {
       const parts = txt.split('|');
-      // Format: CORRECT|NAME|ROLE
       return { 
         success: true, 
         name: parts.length > 1 ? parts[1] : user,
@@ -260,28 +267,49 @@ export const api = {
 
   register: async (user: string, pass: string, name: string): Promise<boolean> => {
     const hash = await hashPassword(pass);
-    await fetch(`${SCRIPT_URL}?nocache=${Date.now()}&mode=register&user=${encodeURIComponent(user)}&hash=${hash}&name=${encodeURIComponent(name)}`);
+    await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=register&user=${encodeURIComponent(user)}&hash=${hash}&name=${encodeURIComponent(name)}`);
     return true;
   },
 
+  // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Загрузка фото с ретраями
   uploadPhoto: async (image: string, mimeType: string, filename: string): Promise<string> => {
-    try {
-      const res = await fetch(SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename })
-      });
-      const data = await res.json();
-      return data.status === "SUCCESS" ? data.url : "";
-    } catch (e) {
-      console.error(e);
-      return "";
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        const res = await fetchWithTimeout(SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename }),
+          timeout: 45000 // 45 секунд для тяжелых фотографий на медленном интернете
+        });
+        const data = await res.json();
+        
+        if (data.status === "SUCCESS") {
+          return data.url;
+        } else {
+          throw new Error("Server returned non-success status");
+        }
+      } catch (e: any) {
+        retries--;
+        console.warn(`Фото не загрузилось. Осталось попыток: ${retries}`, e);
+        if (retries === 0) {
+          throw new Error('NETWORK_ERROR'); // Выбрасываем ошибку, чтобы остановить процесс
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Пауза 2 сек перед повтором
+      }
     }
+    return "";
   },
 
+  // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Бросаем ошибку при неудаче
   taskAction: async (id: string, act: string, user: string, zone: string = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
     const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${zone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
-    await fetch(url);
+    try {
+      await fetchWithTimeout(url, { timeout: 20000 });
+    } catch (e) {
+      console.error("Task action failed to send:", e);
+      throw new Error('NETWORK_ERROR');
+    }
   },
 
   reportIssue: async (id: string, desc: string, photos: string[], author: string): Promise<void> => {
@@ -289,7 +317,7 @@ export const api = {
     const p2 = photos[1] ? encodeURIComponent(photos[1]) : "";
     const p3 = photos[2] ? encodeURIComponent(photos[2]) : "";
     const url = `${SCRIPT_URL}?mode=report_issue&id=${encodeURIComponent(id)}&desc=${encodeURIComponent(desc)}&p1=${p1}&p2=${p2}&p3=${p3}&author=${encodeURIComponent(author)}`;
-    await fetch(url);
+    await fetchWithTimeout(url);
   },
 
   getProxyImage: async (url: string): Promise<string> => {
