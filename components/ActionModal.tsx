@@ -3,7 +3,6 @@ import { api } from '../services/api';
 import { TranslationSet, TaskAction, User } from '../types';
 import { Camera, Lock, CheckCircle, Clock, Truck, Upload, AlertCircle, Loader2, Image as ImageIcon } from 'lucide-react';
 import { vibrate } from './OperatorTerminal';
-import { offlineQueue } from '../services/offlineQueue';
 
 interface ActionModalProps {
   action: TaskAction;
@@ -109,67 +108,58 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   const handleSubmit = async () => {
     if (!isFormValid()) return;
+    
     try {
-      setUploadStatus({ state: 'uploading', step: 'Подготовка...', progress: 5 });
+      // Жесткая проверка сети перед стартом
+      if (!navigator.onLine) {
+        throw new Error('NETWORK_OFFLINE');
+      }
+
+      setUploadStatus({ state: 'uploading', step: 'Отправка фото...', progress: 10 });
       let urlGen = '', urlSeal = '', urlEmpty = '';
 
+      const actionType = isLocalManual ? `${action.type}_manual_${manualTime}` : action.type;
+      const selectedZone = zone || '';
+
       if (!isLocalManual) {
-        setUploadStatus({ state: 'uploading', step: 'Загрузка фото...', progress: 15 });
-        try {
-          if (isStart) {
-            const [r1, r2] = await Promise.all([
-              photo1 ? api.uploadPhoto(photo1.data, photo1.mime, photo1.name) : Promise.resolve(''),
-              photo2 ? api.uploadPhoto(photo2.data, photo2.mime, photo2.name) : Promise.resolve(''),
-            ]);
-            urlGen = r1;
-            urlSeal = r2;
-          } else {
-            if (photo1) {
-              urlEmpty = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name);
-            }
-          }
-        } catch (photoError) {
-          if (!navigator.onLine) {
-            if (isStart) {
-              if (photo1) await offlineQueue.enqueue('photo_upload', { image: photo1.data, mimeType: photo1.mime, filename: photo1.name, taskId: action.id, photoField: 'pGen' });
-              if (photo2) await offlineQueue.enqueue('photo_upload', { image: photo2.data, mimeType: photo2.mime, filename: photo2.name, taskId: action.id, photoField: 'pSeal' });
-            } else {
-              if (photo1) await offlineQueue.enqueue('photo_upload', { image: photo1.data, mimeType: photo1.mime, filename: photo1.name, taskId: action.id, photoField: 'pEmpty' });
-            }
-          } else {
-            throw photoError;
-          }
+        if (isStart) {
+          setUploadStatus({ state: 'uploading', step: 'Загрузка фото 1 из 2...', progress: 30 });
+          urlGen = photo1 ? await api.uploadPhoto(photo1.data, photo1.mime, photo1.name) : '';
+          
+          setUploadStatus({ state: 'uploading', step: 'Загрузка фото 2 из 2...', progress: 60 });
+          urlSeal = photo2 ? await api.uploadPhoto(photo2.data, photo2.mime, photo2.name) : '';
+        } else {
+          setUploadStatus({ state: 'uploading', step: 'Загрузка фото...', progress: 40 });
+          if (photo1) urlEmpty = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name);
         }
       }
 
-      setUploadStatus({ state: 'uploading', step: 'Сохранение...', progress: 85 });
-      const actionType = isLocalManual ? `${action.type}_manual_${manualTime}` : action.type;
+      setUploadStatus({ state: 'uploading', step: 'Сохранение в базу...', progress: 85 });
+      
+      // ЖДЕМ ОТВЕТА ОТ GOOGLE SHEETS
+      await api.taskAction(action.id, actionType, user.name, selectedZone, urlGen, urlSeal, urlEmpty);
 
-      await api.taskAction(action.id, actionType, user.name, zone || '', urlGen, urlSeal, urlEmpty);
-
-      setUploadStatus({ state: 'uploading', step: 'Готово!', progress: 100 });
+      // ТОЛЬКО ПРИ 100% УСПЕХЕ ПОКАЗЫВАЕМ ГАЛОЧКУ И ЗАКРЫВАЕМ
+      setUploadStatus({ state: 'uploading', step: 'Успешно сохранено!', progress: 100 });
       setTimeout(() => {
         setUploadStatus({ state: 'success' });
         vibrate([100, 50, 100]);
-        setTimeout(onSuccess, 700);
+        setTimeout(() => onSuccess(), 700);
       }, 400);
 
     } catch (error: any) {
-      const errMsg = error instanceof Error ? error.message : 'Неизвестная ошибка';
-      if (!navigator.onLine || errMsg === 'NETWORK_ERROR' || errMsg === 'TIMEOUT') {
-        vibrate([50, 30, 50, 30, 50]);
-        await offlineQueue.enqueue('task_action', {
-          id: action.id,
-          act: isLocalManual ? `${action.type}_manual_${manualTime}` : action.type,
-          op: user.name,
-          zone: zone || '',
-        });
-        setUploadStatus({ state: 'success' });
-        setTimeout(onSuccess, 700);
-      } else {
-        vibrate([200, 100, 200]);
-        setUploadStatus({ state: 'error', message: errMsg });
-      }
+      // НИКАКИХ ОФФЛАЙН ОЧЕРЕДЕЙ! ОСТАВЛЯЕМ ОПЕРАТОРА НА ЭТОМ ЭКРАНЕ!
+      vibrate([200, 100, 200]);
+      
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const isNetworkError = !navigator.onLine || errMsg.includes('NETWORK') || errMsg.includes('Failed to fetch') || errMsg.includes('timeout');
+
+      setUploadStatus({ 
+        state: 'error', 
+        message: isNetworkError 
+          ? 'Пропал интернет! Не закрывайте окно. Найдите сеть и нажмите "Попробовать снова" (фотографии сохранены в памяти телефона).'
+          : 'Ошибка сервера. Попробуйте снова или обратитесь к логисту.'
+      });
     }
   };
 
@@ -229,7 +219,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
                   </div>
                 </div>
                 <div className="text-4xl font-black text-white tabular-nums">{Math.round(uploadStatus.progress)}%</div>
-                <div className="text-sm font-bold text-white/80">{uploadStatus.step}</div>
+                <div className="text-sm font-bold text-white/80 text-center">{uploadStatus.step}<br/><span className="text-[10px] text-white/40 uppercase">Не блокируйте экран телефона</span></div>
               </>
             )}
             {isSuccess && (
@@ -237,22 +227,26 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
                 <div className="w-24 h-24 rounded-full bg-emerald-500/20 flex items-center justify-center">
                   <CheckCircle className="w-16 h-16 text-emerald-500" strokeWidth={2.5} />
                 </div>
-                <div className="text-3xl font-black text-white">Успешно!</div>
+                <div className="text-3xl font-black text-white text-center">Успешно!</div>
               </div>
             )}
           </div>
         )}
 
         {isError && (
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-sm rounded-3xl z-10 flex flex-col items-center justify-center gap-4 p-8">
-            <AlertCircle className="w-14 h-14 text-red-500" />
-            <div className="text-xl font-black text-white">Ошибка!</div>
-            <div className="text-sm text-white/70 text-center">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-md rounded-3xl z-10 flex flex-col items-center justify-center gap-5 p-8 border-2 border-red-500/30">
+            <AlertCircle className="w-16 h-16 text-red-500 animate-pulse" />
+            <div className="text-2xl font-black text-white uppercase text-center">Ошибка Сети</div>
+            <div className="text-sm font-medium text-red-100 text-center leading-relaxed bg-red-500/10 p-4 rounded-xl">
               {uploadStatus.state === 'error' && uploadStatus.message}
             </div>
             <button onClick={() => setUploadStatus({ state: 'idle' })}
-              className="mt-2 px-6 py-3 bg-red-500 text-white font-bold rounded-xl">
+              className="mt-4 px-8 py-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-wide rounded-2xl w-full shadow-lg shadow-red-500/20 transition-all active:scale-95">
               Попробовать снова
+            </button>
+            <button onClick={onClose}
+              className="mt-2 text-white/40 text-xs uppercase font-bold hover:text-white transition-colors">
+              Отменить задачу (фото удалятся)
             </button>
           </div>
         )}
@@ -333,7 +327,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
             {isSubmitting ? 'Загрузка...' : processingPhoto ? 'Обработка...' : 'Подтвердить'}
           </button>
           <button onClick={onClose} disabled={isSubmitting}
-            className="text-white/50 py-2 text-[10px] font-bold uppercase">
+            className="text-white/50 py-2 text-[10px] font-bold uppercase hover:text-white transition-colors">
             Отмена
           </button>
         </div>
@@ -345,13 +339,13 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       {showPhotoMenu && (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 p-4" onClick={() => setShowPhotoMenu(null)}>
           <div className="w-full max-w-sm bg-[#252736] rounded-3xl overflow-hidden" onClick={e => e.stopPropagation()}>
-             <button onClick={triggerCamera} className="w-full flex items-center gap-4 px-6 py-4 text-white hover:bg-white/5">
+             <button onClick={triggerCamera} className="w-full flex items-center gap-4 px-6 py-4 text-white hover:bg-white/5 transition-colors">
                 <Camera className="w-5 h-5 text-[#1E7D7D]" /> <span className="font-semibold">Камера</span>
              </button>
-             <button onClick={triggerGallery} className="w-full flex items-center gap-4 px-6 py-4 text-white hover:bg-white/5">
+             <button onClick={triggerGallery} className="w-full flex items-center gap-4 px-6 py-4 text-white hover:bg-white/5 transition-colors">
                 <Upload className="w-5 h-5 text-[#1E7D7D]" /> <span className="font-semibold">Галерея</span>
              </button>
-             <div className="p-3"><button onClick={() => setShowPhotoMenu(null)} className="w-full py-3 rounded-2xl bg-white/5 text-white/50">Отмена</button></div>
+             <div className="p-3"><button onClick={() => setShowPhotoMenu(null)} className="w-full py-3 rounded-2xl bg-white/5 text-white/50 hover:bg-white/10 transition-colors">Отмена</button></div>
           </div>
         </div>
       )}
