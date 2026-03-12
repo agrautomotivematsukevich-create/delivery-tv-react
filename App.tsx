@@ -18,6 +18,7 @@ import SplashScreen from './components/SplashScreen';
 import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
 import { DashboardData, Lang, User, Task, TaskAction } from './types';
+import { SpeedInsights } from "@vercel/speed-insights/react"; // <-- ИМПОРТ VERCEL SPEED INSIGHTS
 
 function App() {
   const [lang, setLang] = useState<Lang>('RU');
@@ -212,6 +213,9 @@ function App() {
           </footer>
         </div>
       )}
+
+      {/* <-- ДОБАВЛЕНО: Компонент Vercel Speed Insights --> */}
+      <SpeedInsights />
     </>
   );
 }
