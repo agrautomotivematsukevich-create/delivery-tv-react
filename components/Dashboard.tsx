@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { DashboardData, TranslationSet, Task } from '../types';
 import { Clock, Truck } from 'lucide-react';
 import { api } from '../services/api';
@@ -9,8 +9,6 @@ interface DashboardProps {
   tvMode?: boolean;
 }
 
-const SHIFT_NORM    = 55;
-const SHIFT_LEN_MIN = 540;
 const UNLOAD_TARGET = 30;
 
 // Зоны выгрузки — из ActionModal
@@ -44,39 +42,51 @@ function currentShift(): ShiftName {
   return 'none';
 }
 
-function getBaseline(key: string, currentDone: number): number {
-  const stored = localStorage.getItem(key);
-  if (stored !== null) {
-    const v = parseInt(stored);
-    if (!isNaN(v) && v <= currentDone) return v;
+// Вычисляет динамические цели по сменам. Контейнеры без ETA делятся поровну между утром и вечером
+function calculateShiftTargets(tasks: Task[]) {
+  let m = 0, e = 0, n = 0;
+  let noEtaCount = 0;
+
+  tasks.forEach(t => {
+    const min = hhmm(t.eta || '');
+    if (min === null) {
+      noEtaCount++;
+      return;
+    }
+    // Утро: 07:50 - 16:50
+    if (min >= 470 && min < 1010) m++;
+    // Вечер: 16:50 - 01:50
+    else if (min >= 1010 || min < 110) e++;
+    // Ночь: 01:50 - 07:50
+    else if (min >= 110 && min < 470) n++;
+  });
+
+  // Раскидываем задачи без ETA между утренней и вечерней сменами
+  if (noEtaCount > 0) {
+    const half = Math.ceil(noEtaCount / 2);
+    m += half;
+    e += (noEtaCount - half);
   }
-  localStorage.setItem(key, String(currentDone));
-  return currentDone;
+
+  return { morning: m, evening: e, night: n, none: 0 };
 }
 
-interface ShiftProgress { shiftDone: number; expected: number; barFraction: number; }
-
-function getShiftProgress(done: number): ShiftProgress {
-  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-  if (nowMin >= 470 && nowMin < 1010) {
-    const elapsed = nowMin - 470;
-    const fraction = Math.min(1, elapsed / SHIFT_LEN_MIN);
-    return { shiftDone: done, expected: Math.round(fraction * SHIFT_NORM), barFraction: fraction };
-  }
-  if (nowMin >= 1010 || nowMin < 110) {
-    const today = new Date(); if (nowMin < 110) today.setDate(today.getDate() - 1);
-    const baseline = getBaseline(`wh_eve_${today.toISOString().split('T')[0]}`, done);
-    const adjNow = nowMin >= 1010 ? nowMin : nowMin + 1440;
-    const fraction = Math.min(1, (adjNow - 1010) / SHIFT_LEN_MIN);
-    return { shiftDone: Math.max(0, done - baseline), expected: Math.round(fraction * SHIFT_NORM), barFraction: fraction };
-  }
-  if (nowMin >= 110 && nowMin < 470) {
-    const today = new Date(); today.setDate(today.getDate() - 1);
-    const baseline = getBaseline(`wh_ngt_${today.toISOString().split('T')[0]}`, done);
-    const fraction = Math.min(1, (nowMin - 110) / SHIFT_LEN_MIN);
-    return { shiftDone: Math.max(0, done - baseline), expected: Math.round(fraction * SHIFT_NORM), barFraction: fraction };
-  }
-  return { shiftDone: 0, expected: 0, barFraction: 0 };
+// Вычисляет реальный факт по сменам на основе времени завершения (end_time)
+function calculateShiftFact(tasks: Task[]) {
+  let m = 0, e = 0, n = 0;
+  tasks.forEach(t => {
+    if (t.status === 'DONE' && t.end_time) {
+      const min = hhmm(t.end_time);
+      if (min === null) return;
+      // Утро: 07:50 - 16:50
+      if (min >= 470 && min < 1010) m++;
+      // Вечер: 16:50 - 01:50
+      else if (min >= 1010 || min < 110) e++;
+      // Ночь: 01:50 - 07:50
+      else if (min >= 110 && min < 470) n++;
+    }
+  });
+  return { morning: m, evening: e, night: n, none: 0 };
 }
 
 const formatMinutes = (totalMinutes: number, t: TranslationSet): string => {
@@ -131,72 +141,136 @@ const UnloadTimer: React.FC<{ startTime: string; sz?: number }> = ({ startTime, 
 
 // ── ShiftNormWidget ─────────────────────────────────────────────────────────────
 
-const ShiftNormWidget: React.FC<{ done: number; t: TranslationSet; compact?: boolean }> = ({ done, t, compact }) => {
+const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: TranslationSet; compact?: boolean }> = ({ data, allTasks, t, compact }) => {
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
-  const { shiftDone, expected, barFraction } = getShiftProgress(done);
-  const delta = shiftDone - expected;
-  const isAhead = delta >= 2, isBehind = delta <= -3, normReached = shiftDone >= SHIFT_NORM;
-  const status = normReached
-    ? { label: '✓ НОРМА',       cls: 'text-emerald-400', bar: 'bg-emerald-400' }
-    : isAhead  ? { label: t.shift_ahead,  cls: 'text-emerald-400', bar: 'bg-emerald-400' }
-    : isBehind ? { label: t.shift_behind, cls: 'text-red-400',     bar: 'bg-red-400'     }
-    :            { label: t.shift_on_track, cls: 'text-white/50',   bar: 'bg-white/30'    };
-  const barPct  = Math.min(100, (shiftDone / SHIFT_NORM) * 100);
-  const markPct = Math.min(100, barFraction * 100);
+  
+  const active = currentShift();
+  const targets = useMemo(() => calculateShiftTargets(allTasks), [allTasks]);
+  const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
+  
+  const target = targets[active];
+  const done = active !== 'none' ? facts[active] : 0;
+  
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  let fraction = 0;
+  if (active === 'morning') {
+    fraction = (nowMin - 470) / 540;
+  } else if (active === 'evening') {
+    const adjNow = nowMin < 110 ? nowMin + 1440 : nowMin;
+    fraction = (adjNow - 1010) / 540;
+  } else if (active === 'night') {
+    fraction = (nowMin - 110) / 360;
+  }
+  
+  fraction = Math.max(0, Math.min(1, fraction));
+  const expected = Math.round(target * fraction);
+  const delta = done - expected;
+  
+  const isAhead = delta >= 1; 
+  const isBehind = delta <= -2;
+  const isVictory = target > 0 && done >= target;
+
+  let statusCls = 'text-white/50';
+  let barCls = 'bg-white/30';
+  let bgCls = 'border-white/8 bg-white/4';
+  
+  let labelTop = 'В ГРАФИКЕ';
+  let labelBottom = '';
+  
+  if (isVictory) {
+    statusCls = 'text-emerald-400'; barCls = 'bg-emerald-400'; bgCls = 'border-emerald-500/20 bg-emerald-500/5';
+    labelTop = 'НОРМА';
+    labelBottom = 'ВЫПОЛНЕНА';
+  } else if (isAhead) {
+    statusCls = 'text-emerald-400'; barCls = 'bg-emerald-400'; bgCls = 'border-emerald-500/20 bg-emerald-500/5';
+    labelTop = 'ОПЕРЕЖАЕМ';
+    labelBottom = `+${delta} АВТО`;
+  } else if (isBehind) {
+    statusCls = 'text-red-400'; barCls = 'bg-red-400'; bgCls = 'border-red-500/20 bg-red-500/5';
+    labelTop = 'ОТСТАЕМ';
+    labelBottom = `${delta} АВТО`;
+  }
+
+  const barPct = target > 0 ? Math.min(100, (done / target) * 100) : (done > 0 ? 100 : 0);
+  const markPct = target > 0 ? fraction * 100 : 0;
+
   return (
-    <div className={`w-full mt-3 rounded-2xl px-5 py-4 space-y-2.5 border transition-colors duration-500 ${
-      isBehind ? 'border-red-500/20 bg-red-500/5'
-      : (isAhead || normReached) ? 'border-emerald-500/20 bg-emerald-500/5'
-      : 'border-white/8 bg-white/4'
-    }`}>
-      <div className="flex items-baseline justify-between">
-        <span className={`font-black tabular-nums leading-none ${status.cls} ${compact ? 'text-5xl' : 'text-5xl'}`}>{shiftDone}</span>
-        <span className={`font-bold uppercase tracking-widest ${status.cls} opacity-80 text-sm`}>{status.label}</span>
+    <div className={`w-full mt-3 rounded-2xl px-5 py-4 flex flex-col justify-center gap-3 border transition-colors duration-500 ${bgCls}`}>
+      
+      {/* Верхний блок: Цифры + Статус */}
+      <div className="flex items-center justify-between w-full">
+        {/* Левая часть: цифры */}
+        <div className="flex items-baseline gap-2 shrink-0">
+          <span className={`font-black tabular-nums leading-none ${statusCls} ${compact ? 'text-4xl' : 'text-5xl'}`}>{done}</span>
+          <span className="text-xl font-bold text-white/30 tabular-nums">/ {target}</span>
+        </div>
+        
+        {/* Правая часть: статус (разбит на 2 строки для предотвращения бага верстки) */}
+        <div className="flex flex-col items-end justify-center text-right shrink-0">
+          <span className={`font-bold uppercase tracking-widest ${statusCls} opacity-80 text-[10px] leading-tight`}>{labelTop}</span>
+          {labelBottom && (
+            <span className={`font-black uppercase tracking-widest ${statusCls} text-xs mt-0.5 leading-tight`}>{labelBottom}</span>
+          )}
+        </div>
       </div>
-      <div className="relative h-2 w-full rounded-full bg-white/8 overflow-visible">
-        <div className="absolute top-1/2 -translate-y-1/2 w-0.5 h-4 bg-white/25 rounded-full z-10" style={{ left: `${markPct}%` }} />
-        <div className={`h-full rounded-full transition-all duration-700 ${status.bar}`} style={{ width: `${barPct}%` }} />
-      </div>
+      
+      {/* Нижний блок: Шкала */}
+      {target > 0 ? (
+        <div className="relative h-2 w-full rounded-full bg-white/8 overflow-visible mt-1">
+          <div className="absolute top-1/2 -translate-y-1/2 w-[3px] h-5 bg-white/50 rounded-full z-10 shadow-[0_0_8px_rgba(255,255,255,0.8)]" 
+               style={{ left: `${markPct}%`, transition: 'left 1s linear' }} 
+               title="Цель на текущую минуту" />
+          <div className={`h-full rounded-full transition-all duration-700 shadow-[0_0_10px_currentColor] ${barCls}`} 
+               style={{ width: `${barPct}%`, color: barCls.replace('bg-', '') }} />
+        </div>
+      ) : (
+        <div className="text-[10px] text-white/40 uppercase tracking-widest mt-1">Резервное время (вне плана)</div>
+      )}
     </div>
   );
 };
 
 // ── ShiftStatsBlock ─────────────────────────────────────────────────────────────
 
-const ShiftStatsBlock: React.FC<{ data: DashboardData; tvMode?: boolean }> = ({ data, tvMode }) => {
+const ShiftStatsBlock: React.FC<{ data: DashboardData; allTasks: Task[]; tvMode?: boolean }> = ({ data, allTasks, tvMode }) => {
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
+  
   const active = currentShift();
-  const { shiftDone } = getShiftProgress(data.done);
-  const backendHasData = data.shiftCounts && (
-    data.shiftCounts.morning > 0 || data.shiftCounts.evening > 0 || data.shiftCounts.night > 0
-  );
-  const getCount = (key: 'morning' | 'evening' | 'night') => {
-    if (backendHasData) return data.shiftCounts[key] ?? 0;
-    return key === active ? shiftDone : 0;
-  };
+  const targets = useMemo(() => calculateShiftTargets(allTasks), [allTasks]);
+  const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
+
+  const getCount = (key: 'morning' | 'evening' | 'night') => facts[key];
+
   const shifts = [
     { key: 'morning' as const, label: 'УТРО',  emoji: '☀️', color: 'text-amber-400',  border: 'border-amber-400/35',  bg: 'bg-amber-400/8' },
     { key: 'evening' as const, label: 'ВЕЧЕР', emoji: '🌆', color: 'text-orange-400', border: 'border-orange-400/35', bg: 'bg-orange-400/8' },
     { key: 'night'   as const, label: 'НОЧЬ',  emoji: '🌙', color: 'text-indigo-400', border: 'border-indigo-400/35', bg: 'bg-indigo-400/8' },
   ];
+
   return (
     <div className="grid grid-cols-3 gap-2">
       {shifts.map(sh => {
         const count = getCount(sh.key);
+        const target = targets[sh.key];
         const isActive = sh.key === active;
         return (
-          <div key={sh.key} className={`rounded-2xl px-3 py-3 border transition-all duration-300 flex flex-col items-center gap-1 ${
+          <div key={sh.key} className={`rounded-2xl px-2 py-3 border transition-all duration-300 flex flex-col items-center gap-1 ${
             isActive ? `${sh.border} ${sh.bg}` : 'border-white/5 bg-white/2'
           }`}>
-            <div className={`flex items-center gap-1.5 ${isActive ? sh.color : 'text-white/50'}`}>
+            <div className={`flex items-center gap-1 ${isActive ? sh.color : 'text-white/50'}`}>
               <span className="text-sm">{sh.emoji}</span>
               <span className="font-black uppercase tracking-wider text-[9px]">{sh.label}</span>
-              {isActive && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />}
+              {isActive && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse shrink-0" />}
             </div>
-            <div className={`font-black tabular-nums leading-none ${tvMode ? 'text-4xl' : 'text-3xl'} ${isActive ? sh.color : 'text-white/60'}`}>
-              {count}
+            <div className="flex items-baseline gap-1 mt-1">
+              <span className={`font-black tabular-nums leading-none ${tvMode ? 'text-4xl' : 'text-3xl'} ${isActive ? sh.color : 'text-white/60'}`}>
+                {count}
+              </span>
+              <span className={`font-bold text-sm ${isActive ? 'text-current opacity-50' : 'text-white/30'}`}>
+                / {target}
+              </span>
             </div>
           </div>
         );
@@ -213,7 +287,7 @@ interface ZoneInfo {
   containerId?: string;
   elapsed?: number;
   isOver?: boolean;
-  idleMinutes?: number; // сколько минут зона свободна
+  idleMinutes?: number; 
 }
 
 const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTasks?: Task[]; tvMode?: boolean }> = ({ activeList, allTasks = [], tvMode }) => {
@@ -224,7 +298,6 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
     return () => clearInterval(id);
   }, [tvMode]);
 
-  // Строим map зона → активная задача
   const zoneMap = new Map<string, { id: string; start: string; elapsed: number }>();
   for (const item of activeList) {
     if (item.zone) {
@@ -233,8 +306,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
     }
   }
 
-  // Строим map зона → время последнего завершения (для расчёта простоя)
-  const lastDoneMap = new Map<string, number>(); // zone → end_time in minutes
+  const lastDoneMap = new Map<string, number>(); 
   for (const task of allTasks) {
     if (task.status === 'DONE' && task.zone && task.end_time) {
       const endMin = hhmm(task.end_time);
@@ -251,7 +323,6 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
     if (task) {
       return { name, active: true, containerId: task.id, elapsed: task.elapsed, isOver: task.elapsed > UNLOAD_TARGET };
     }
-    // idle — рассчитываем время простоя
     const lastEnd = lastDoneMap.get(name);
     let idleMinutes: number | undefined;
     if (lastEnd !== undefined) {
@@ -301,7 +372,6 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
 
             return (
               <div key={z.name} className={`rounded-2xl border transition-all duration-500 flex flex-col justify-between p-4 ${borderCls}`}>
-                {/* Заголовок */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} />
@@ -348,7 +418,6 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
     );
   }
 
-  // ── Non-TV (original compact) ──
   return (
     <div>
       <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-2">Зоны выгрузки</div>
@@ -416,7 +485,6 @@ const OnTerritoryBlock: React.FC<{ arrivedTasks: Task[]; tvMode?: boolean }> = (
     <div className={`mt-3 rounded-xl border px-4 py-3 transition-all duration-500 ${
       hasAuto ? 'border-accent-blue/30 bg-accent-blue/8' : 'border-white/6 bg-white/2'
     }`}>
-      {/* Заголовок */}
       <div className="flex items-center gap-2.5 mb-1">
         <div className="relative shrink-0">
           <Truck className={`${tvMode ? 'w-5 h-5' : 'w-4 h-4'} ${hasAuto ? 'text-accent-blue' : 'text-white/50'}`} />
@@ -442,7 +510,6 @@ const OnTerritoryBlock: React.FC<{ arrivedTasks: Task[]; tvMode?: boolean }> = (
         )}
       </div>
 
-      {/* Список прибывших */}
       {hasAuto && (
         <div className="flex flex-col gap-1 mt-2">
           {arrivedTasks.map(task => (
@@ -452,7 +519,6 @@ const OnTerritoryBlock: React.FC<{ arrivedTasks: Task[]; tvMode?: boolean }> = (
                 <div className="flex items-center gap-1 shrink-0">
                   <Clock className="w-3 h-3 text-accent-blue" />
                   <span className="font-mono text-[10px] font-bold text-accent-blue/80">{task.arrival_time}</span>
-                  {/* Считаем сколько ждёт */}
                   <span className="text-[9px] text-white/50 ml-1">
                     ({Math.max(0, elapsedSince(task.arrival_time))} мин)
                   </span>
@@ -494,14 +560,12 @@ const TVClock: React.FC = () => {
 const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
 
-  // Загружаем данные через fetchHistory — тот же источник что и "Время простоя"
-  // fetchHistory читает get_history, который гарантированно отдаёт arrival_time (col P)
   useEffect(() => {
     const load = async () => {
       const now = new Date();
       const dd = String(now.getDate()).padStart(2, '0');
       const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const todayStr = `${dd}.${mm}`; // формат DD.MM как в get_history
+      const todayStr = `${dd}.${mm}`; 
       const tasks = await api.fetchHistory(todayStr);
       setAllTasks(tasks);
     };
@@ -525,8 +589,6 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
   const isVictory     = data.total > 0 && data.done === data.total;
   const isEmpty       = data.total === 0;
 
-  // Авто на территории: arrival_time заполнен, выгрузка ещё не начата (нет start_time)
-  // fetchHistory возвращает status='WAIT' когда start_time пустой — используем оба условия
   const arrivedTasks = allTasks.filter(
     tk =>
       tk.arrival_time && tk.arrival_time.trim() !== '' &&
@@ -542,17 +604,13 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
 
   const glass = "bg-card-bg backdrop-blur-xl border border-white/10 border-t-white/15 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.4)]";
 
-  // ── TV MODE ──────────────────────────────────────────────────────────────────
   if (tvMode) {
     return (
       <div className="tv-root grid h-full min-h-0" style={{ gridTemplateColumns: '360px 1fr 320px', gap: '14px' }}>
-
-        {/* Колонка 1: Прогресс + Норма + Смены */}
         <div className={`${glass} relative flex flex-col items-center p-6 overflow-hidden`}>
           <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[160px] h-[160px] bg-accent-green blur-[100px] opacity-5 pointer-events-none" />
           <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] w-full mb-1">{t.progress}</div>
 
-          {/* Круг прогресса */}
           <div className="flex-1 flex items-center justify-center w-full">
             <div className="relative w-[88%] pb-[88%] h-0">
               <svg className="absolute top-0 left-0 w-full h-full -rotate-90" viewBox="0 0 350 350">
@@ -567,24 +625,19 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
             </div>
           </div>
 
-          {/* Статус */}
           <div className={`w-full py-3 rounded-2xl text-sm font-extrabold uppercase tracking-widest border text-center ${getStatusClass(data.status)}`}>
             {data.status === 'ACTIVE' ? t.status_active : data.status === 'PAUSE' ? t.status_pause : t.status_wait}
           </div>
 
-          {/* Норма смены */}
-          <ShiftNormWidget done={data.done} t={t} />
+          <ShiftNormWidget data={data} allTasks={allTasks} t={t} />
 
-          {/* Смены */}
           <div className="w-full mt-3">
             <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-2">По сменам</div>
-            <ShiftStatsBlock data={data} tvMode />
+            <ShiftStatsBlock data={data} allTasks={allTasks} tvMode />
           </div>
         </div>
 
-        {/* Колонка 2: Следующий + Территория + Активные */}
         <div className="flex flex-col gap-3 h-full min-h-0">
-
           {!isVictory && !isEmpty && (
             <div className={`${glass} p-5`}>
               <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-1">{t.next}</div>
@@ -596,7 +649,6 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
                 <Clock className="w-4 h-4 shrink-0" />
                 {calculateTimeDiff(data.nextTime, t)}
               </div>
-              {/* Блок авто на территории */}
               <OnTerritoryBlock arrivedTasks={arrivedTasks} tvMode />
             </div>
           )}
@@ -644,7 +696,6 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
           )}
         </div>
 
-        {/* Колонка 3: Зоны выгрузки + Часы */}
         <div className={`${glass} flex flex-col p-5 overflow-hidden`}>
           <div className="flex-1 min-h-0">
             <DockZonesGrid activeList={data.activeList} allTasks={allTasks} tvMode />
@@ -660,10 +711,8 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
     );
   }
 
-  // ── ОБЫЧНЫЙ MODE ────────────────────────────────────────────────────────────────
   return (
     <div className="dashboard-root grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8 flex-1 min-h-0">
-
       <div className={`${glass} relative flex flex-col items-center justify-between p-10 overflow-hidden text-center`}>
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[200px] bg-accent-green blur-[120px] opacity-5 pointer-events-none" />
         <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] w-full text-left mb-2">{t.progress}</div>
@@ -682,10 +731,10 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
         <div className={`w-full py-5 rounded-2xl text-lg font-extrabold uppercase tracking-widest border ${getStatusClass(data.status)}`}>
           {data.status === 'ACTIVE' ? t.status_active : data.status === 'PAUSE' ? t.status_pause : t.status_wait}
         </div>
-        <ShiftNormWidget done={data.done} t={t} />
+        <ShiftNormWidget data={data} allTasks={allTasks} t={t} />
         <div className="w-full mt-3">
           <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-2">По сменам</div>
-          <ShiftStatsBlock data={data} />
+          <ShiftStatsBlock data={data} allTasks={allTasks} />
         </div>
       </div>
 
