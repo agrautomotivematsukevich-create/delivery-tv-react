@@ -115,12 +115,13 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     setProcessingIds(prev => [...prev, task.id]);
     
     try {
+      // Честно ждем закрытия модалки и ответа от Google
       await onTaskAction(task, action);
+      // После успеха скачиваем свежий список, чтобы карточка стала зеленой
       await fetchQueue();
     } catch (e: any) {
       console.error('Task action error:', e);
       vibrate([50, 100, 50, 100, 50]);
-      alert('⚠️ Ошибка сети!\n\nПроцесс был прерван из-за потери связи. Фотографии не отправлены.\n\nПожалуйста, проверьте интернет (например, переключитесь на мобильные данные) и нажмите кнопку еще раз.');
     } finally {
       setProcessingIds(prev => prev.filter(id => id !== task.id));
       startPolling();
@@ -178,10 +179,8 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   };
 
   return (
-    // ИСПОЛЬЗУЕМ 100dvh ДЛЯ ВНЕШНЕГО КОНТЕЙНЕРА И ЖЕСТКОЕ ПОЗИЦИОНИРОВАНИЕ
     <div className="terminal-root fixed top-0 left-0 w-full h-[100dvh] z-[60] flex flex-col justify-end md:justify-center items-center bg-black/80 backdrop-blur-xl md:p-8 animate-in fade-in duration-200">
       
-      {/* ИСПОЛЬЗУЕМ 92dvh ДЛЯ МОДАЛКИ (оставляем 8% зазор сверху от "чёлки") И ДОБАВЛЯЕМ safe-area ДЛЯ НИЗА */}
       <div 
         className="bg-[#191B25] w-full md:w-[95%] max-w-[800px] h-[92dvh] md:h-[90dvh] rounded-t-3xl md:rounded-[2.5rem] border border-white/10 flex flex-col shadow-2xl overflow-hidden relative"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
