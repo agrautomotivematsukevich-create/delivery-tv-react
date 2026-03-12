@@ -19,6 +19,7 @@ import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
 import { DashboardData, Lang, User, Task, TaskAction } from './types';
 import { SpeedInsights } from "@vercel/speed-insights/react"; // <-- ИМПОРТ VERCEL SPEED INSIGHTS
+import { Analytics } from "@vercel/analytics/react"; //<-- Добавил Аналитику
 
 function App() {
   const [lang, setLang] = useState<Lang>('RU');
@@ -216,6 +217,7 @@ function App() {
 
       {/* <-- ДОБАВЛЕНО: Компонент Vercel Speed Insights --> */}
       <SpeedInsights />
+      <Analytics /> {/* <---Возвращена Аналитика
     </>
   );
 }
