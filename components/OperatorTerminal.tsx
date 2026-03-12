@@ -105,7 +105,6 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   const handleTaskActionLocal = async (task: Task, action: 'start' | 'finish') => {
     if (processingIds.includes(task.id)) return;
     
-    // Блокируем действие, если браузер явно сообщает, что интернета нет
     if (!isOnline) {
       alert('Нет подключения к интернету! Дождитесь появления сети для передачи фотографий.');
       return;
@@ -116,17 +115,13 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     setProcessingIds(prev => [...prev, task.id]);
     
     try {
-      // Пытаемся выполнить задачу (включая загрузку фото)
       await onTaskAction(task, action);
-      // Если прошло успешно, обновляем очередь
       await fetchQueue();
     } catch (e: any) {
       console.error('Task action error:', e);
-      // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Выводим пользователю предупреждение
-      vibrate([50, 100, 50, 100, 50]); // Длинная вибрация ошибки
+      vibrate([50, 100, 50, 100, 50]);
       alert('⚠️ Ошибка сети!\n\nПроцесс был прерван из-за потери связи. Фотографии не отправлены.\n\nПожалуйста, проверьте интернет (например, переключитесь на мобильные данные) и нажмите кнопку еще раз.');
     } finally {
-      // Снимаем блокировку кнопки независимо от результата
       setProcessingIds(prev => prev.filter(id => id !== task.id));
       startPolling();
     }
@@ -183,8 +178,14 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   };
 
   return (
-    <div className="terminal-root fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-xl p-0 md:p-8 animate-in fade-in duration-200">
-      <div className="bg-[#191B25] w-full md:w-[95%] max-w-[800px] h-[95vh] md:h-[90vh] rounded-t-3xl md:rounded-[2.5rem] border border-white/10 flex flex-col shadow-2xl overflow-hidden relative">
+    // ИСПОЛЬЗУЕМ 100dvh ДЛЯ ВНЕШНЕГО КОНТЕЙНЕРА И ЖЕСТКОЕ ПОЗИЦИОНИРОВАНИЕ
+    <div className="terminal-root fixed top-0 left-0 w-full h-[100dvh] z-[60] flex flex-col justify-end md:justify-center items-center bg-black/80 backdrop-blur-xl md:p-8 animate-in fade-in duration-200">
+      
+      {/* ИСПОЛЬЗУЕМ 92dvh ДЛЯ МОДАЛКИ (оставляем 8% зазор сверху от "чёлки") И ДОБАВЛЯЕМ safe-area ДЛЯ НИЗА */}
+      <div 
+        className="bg-[#191B25] w-full md:w-[95%] max-w-[800px] h-[92dvh] md:h-[90dvh] rounded-t-3xl md:rounded-[2.5rem] border border-white/10 flex flex-col shadow-2xl overflow-hidden relative"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-white/5 shrink-0">
@@ -229,7 +230,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto px-4 py-3 pb-6 space-y-2 custom-scrollbar">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-white/60 animate-pulse text-sm">Загрузка...</div>
