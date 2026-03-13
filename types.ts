@@ -209,3 +209,9 @@ export interface LotContainer {
   operator: string;
   arrival_time: string;
 }
+
+export interface PendingUser {
+  login: string;
+  name: string;
+  role: string;
+}

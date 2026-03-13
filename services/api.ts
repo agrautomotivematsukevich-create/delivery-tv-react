@@ -1,5 +1,5 @@
 import { SCRIPT_URL } from "../constants";
-import { DashboardData, Task, Issue, TaskInput, PlanRow, LotContainer } from "../types";
+import { DashboardData, Task, Issue, TaskInput, PlanRow, LotContainer, PendingUser } from "../types";
 
 export const hashPassword = async (p: string): Promise<string> => {
   const msgBuffer = new TextEncoder().encode(p);
@@ -269,6 +269,27 @@ export const api = {
     const hash = await hashPassword(pass);
     await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=register&user=${encodeURIComponent(user)}&hash=${hash}&name=${encodeURIComponent(name)}`);
     return true;
+  },
+
+  getPendingUsers: async (): Promise<PendingUser[]> => {
+    try {
+      const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_pending`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      console.error("Failed to fetch pending users:", e);
+      return [];
+    }
+  },
+
+  approveUser: async (login: string): Promise<void> => {
+    try {
+      const url = `${SCRIPT_URL}?mode=approve_user&login=${encodeURIComponent(login)}`;
+      await fetchWithTimeout(url);
+    } catch (e) {
+      console.error("Failed to approve user:", e);
+      throw new Error('NETWORK_ERROR');
+    }
   },
 
   // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Загрузка фото с ретраями

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../services/api';
 import { TranslationSet, User } from '../types';
+import AdminPanel from './AdminPanel';
 
 interface AuthModalProps {
   onClose: () => void;
@@ -15,9 +16,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showAdmin, setShowAdmin] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (password === '7777') {
+      setShowAdmin(true);
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -46,6 +52,9 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
   };
 
   return (
+    <>
+      {showAdmin && <AdminPanel onClose={() => { setShowAdmin(false); setPassword(''); }} />}
+      {!showAdmin && (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
       <div className="bg-[#0F0F12] border border-white/10 p-10 rounded-[2rem] w-full max-w-md shadow-2xl relative">
         <h2 className="text-3xl font-extrabold text-center mb-8 text-white">
@@ -100,6 +109,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
         </div>
       </div>
     </div>
+      )}
+    </>
   );
 };
 
