@@ -36,7 +36,7 @@ function App() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isAppReady, setIsAppReady] = useState(false);
-  const [showSplash, setShowSplash] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [showAuth, setShowAuth] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
@@ -60,6 +60,8 @@ function App() {
     } catch (e) {
       setIsOffline(true);
       return null;
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
@@ -161,7 +163,7 @@ function App() {
         </div>
       )}
       {/* ПРИВЕТСТВЕННЫЙ ЭКРАН ЗАГРУЗКИ */}
-      {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
+      <SplashScreen isLoaded={!isLoading} />
 
 
       {/* ── TV MODE: полный экран без header/footer ── */}

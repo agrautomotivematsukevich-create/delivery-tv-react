@@ -147,6 +147,64 @@ function doGet(e) {
        }
     }
 
+    // === ПАНЕЛЬ АДМИНА: ПОЛУЧИТЬ ОЖИДАЮЩИХ ===
+    if (e.parameter.mode === 'get_pending') {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("DASHBOARD");
+      var lastRow = sheet.getLastRow();
+      if (lastRow < 2) return ContentService.createTextOutput(JSON.stringify([])).setMimeType(ContentService.MimeType.JSON);
+      
+      // Читаем со 2-й строки, колонка 16 (P), по ширине 5 колонок до T
+      var data = sheet.getRange(2, 16, lastRow - 1, 5).getValues(); 
+      var pending = [];
+      
+      for (var i = 0; i < data.length; i++) {
+        var login = data[i][0];
+        var status = data[i][4];
+        if (login && status === 'PENDING') { 
+          pending.push({
+            login: login,
+            name: data[i][2] || 'Без имени',
+            role: data[i][3] || 'OPERATOR'
+          });
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify(pending)).setMimeType(ContentService.MimeType.JSON);
+    }
+  
+    // === ПАНЕЛЬ АДМИНА: ОДОБРИТЬ ПОЛЬЗОВАТЕЛЯ ===
+    if (e.parameter.mode === 'approve_user') {
+      var login = e.parameter.login;
+      var role = e.parameter.role || 'OPERATOR';
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("DASHBOARD");
+      var lastRow = sheet.getLastRow();
+      var data = sheet.getRange(2, 16, lastRow - 1, 5).getValues();
+      
+      for (var i = 0; i < data.length; i++) {
+        if (data[i][0] == login && data[i][4] === 'PENDING') {
+          sheet.getRange(i + 2, 19).setValue(role);
+          sheet.getRange(i + 2, 20).setValue('APPROVED'); 
+          return ContentService.createTextOutput(JSON.stringify({success: true})).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({success: false, error: 'User not found'})).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // === ПАНЕЛЬ АДМИНА: ОТКЛОНИТЬ ПОЛЬЗОВАТЕЛЯ ===
+    if (e.parameter.mode === 'reject_user') {
+      var login = e.parameter.login;
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("DASHBOARD");
+      var lastRow = sheet.getLastRow();
+      var data = sheet.getRange(2, 16, lastRow - 1, 5).getValues();
+      
+      for (var i = 0; i < data.length; i++) {
+        if (data[i][0] == login && data[i][4] === 'PENDING') {
+          sheet.deleteRow(i + 2);
+          return ContentService.createTextOutput(JSON.stringify({success: true})).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({success: false, error: 'User not found'})).setMimeType(ContentService.MimeType.JSON);
+    }
+
     return ContentService.createTextOutput(JSON.stringify({error: "UNKNOWN_MODE: " + (e.parameter.mode || "none")})).setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) { 
@@ -350,22 +408,54 @@ function handleReportIssue(e, ss) {
   var s = ss.getSheetByName('PROBLEMS');
   if (!s) {
     s = ss.insertSheet('PROBLEMS');
-    s.getRange("A1:G1").setValues([["Container ID", "Timestamp", "Description", "Photo 1", "Photo 2", "Photo 3", "Author"]]);
-    s.getRange("A1:G1").setFontWeight("bold");
+    s.getRange("A1:H1").setValues([["Container ID", "Timestamp", "Description", "Photo 1", "Photo 2", "Photo 3", "Author", "Email Status"]]);
+    s.getRange("A1:H1").setFontWeight("bold");
   }
   var time = Utilities.formatDate(new Date(), "Europe/Moscow", "dd.MM.yyyy HH:mm:ss");
-  s.appendRow([e.parameter.id, time, e.parameter.desc, e.parameter.p1||"", e.parameter.p2||"", e.parameter.p3||"", e.parameter.author||"Anonymous"]);
   
-  // === ОТПРАВКА ПИСЬМА С ФОТОГРАФИЯМИ ===
+  var emailStatus = "Успешно отправлено"; // Статус по умолчанию
+  
+  // === ОТПРАВКА ПИСЬМА ===
   try {
-    // ВАЖНО: ЗАМЕНИ ЭТОТ EMAIL НА СВОЙ! МОЖНО УКАЗАТЬ НЕСКОЛЬКО ЧЕРЕЗ ЗАПЯТУЮ
-    var emails = "YOUR_EMAIL@gmail.com"; 
-    var subject = "🚨 Проблема на складе: " + e.parameter.id;
-    var body = "Зафиксирована новая проблема!\n\n" +
-               "Контейнер: " + e.parameter.id + "\n" +
-               "Время: " + time + "\n" +
-               "Оператор: " + (e.parameter.author || "Неизвестно") + "\n\n" +
-               "Описание проблемы:\n" + e.parameter.desc;
+    // === ОТПРАВКА КОРПОРАТИВНОГО ПИСЬМА С ФОТОГРАФИЯМИ ===
+    var emails = "MHReceiving@agr.auto"; // Не забудь добавить нужные адреса
+    
+    // Строгая тема письма
+    var subject = "Уведомление об инциденте: Контейнер " + e.parameter.id + " (Склад АГМ)";
+    
+    // Красивое тело письма в формате HTML
+    var htmlBody = `
+    <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.5; max-width: 600px;">
+      <h2 style="color: #B22222; font-size: 18px; border-bottom: 1px solid #ccc; padding-bottom: 10px;">
+        Внимание: Зафиксирован инцидент при обработке груза
+      </h2>
+      <p>Уважаемые коллеги,</p>
+      <p>Настоящим письмом информируем вас о выявленных несоответствиях при выгрузке контейнера.</p>
+      
+      <table style="border-collapse: collapse; width: 100%; margin-top: 15px; font-size: 14px;">
+        <tr>
+          <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 40%; background-color: #f9f9f9;">Номер контейнера:</td>
+          <td style="padding: 10px; border: 1px solid #ddd;">${e.parameter.id}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; background-color: #f9f9f9;">Время фиксации:</td>
+          <td style="padding: 10px; border: 1px solid #ddd;">${time}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; background-color: #f9f9f9;">Ответственный сотрудник:</td>
+          <td style="padding: 10px; border: 1px solid #ddd;">${e.parameter.author || "Не указан"}</td>
+        </tr>
+      </table>
+
+      <h3 style="margin-top: 20px; font-size: 16px; color: #333;">Описание проблемы:</h3>
+      <p style="background-color: #f4f4f4; padding: 15px; border-left: 4px solid #B22222; margin-top: 5px; font-size: 14px; white-space: pre-wrap;">${e.parameter.desc}</p>
+
+      <p style="margin-top: 30px; font-size: 12px; color: #777; border-top: 1px solid #eee; padding-top: 10px;">
+        <em>* Фотоматериалы, подтверждающие инцидент, прикреплены к данному письму во вложениях.<br>
+        Данное уведомление сформировано автоматически системой управления складом AGR Warehouse. Пожалуйста, не отвечайте на этот адрес.</em>
+      </p>
+    </div>
+    `;
     
     var attachments = [];
     var photoUrls = [e.parameter.p1, e.parameter.p2, e.parameter.p3];
@@ -373,7 +463,6 @@ function handleReportIssue(e, ss) {
     for (var i = 0; i < photoUrls.length; i++) {
       var url = photoUrls[i];
       if (url && url.indexOf("drive.google.com") !== -1) {
-        // Достаем ID картинки из Гугл Диска
         var fileIdMatch = url.match(/[-\w]{25,}/);
         if (fileIdMatch) {
            var file = DriveApp.getFileById(fileIdMatch[0]);
@@ -382,15 +471,26 @@ function handleReportIssue(e, ss) {
       }
     }
     
-    MailApp.sendEmail({
+    var mailOptions = {
       to: emails,
       subject: subject,
-      body: body,
-      attachments: attachments
-    });
+      htmlBody: htmlBody // Используем htmlBody вместо обычного body
+    };
+    
+    if (attachments.length > 0) {
+      mailOptions.attachments = attachments;
+    }
+    
+    // Пытаемся отправить
+    MailApp.sendEmail(mailOptions);
+    
   } catch(err) {
-     Logger.log("Email error: " + err.toString());
+    // Если Гугл ругается, мы запишем ошибку в таблицу!
+    emailStatus = "Ошибка: " + err.toString();
   }
+
+  // Записываем все данные в таблицу, включая статус письма (Колонка H)
+  s.appendRow([e.parameter.id, time, e.parameter.desc, e.parameter.p1||"", e.parameter.p2||"", e.parameter.p3||"", e.parameter.author||"Anonymous", emailStatus]);
 
   return ContentService.createTextOutput("REPORTED");
 }
@@ -619,7 +719,7 @@ function isNightCarryover() {
   var timeString = Utilities.formatDate(new Date(), "Europe/Moscow", "HH:mm");
   var parts = timeString.split(":");
   var mins = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-  return mins < 450; // До 07:30 утра по Москве
+  return mins < 390; // До 06:30 утра по Москве
 }
 
 // === НОВЫЙ БЛОК: ФОНОВАЯ ПРОВЕРКА ЗАВИСШИХ КОНТЕЙНЕРОВ (CRON) ===
@@ -765,4 +865,10 @@ function syncTasks(dateStr, ss) {
 
 function syncPriorityLot(lot) {
   firestoreWrite("config/priority_lot", { lot: lot, updatedAt: Date.now() });
+}
+
+function testEmailSending() {
+  Logger.log("Отправляем чистый тест...");
+  MailApp.sendEmail("matsukevich12312@gmail.com", "Чистый тест системы AGR", "Если ты это читаешь, баг побежден!");
+  Logger.log("Чистый тест завершен.");
 }

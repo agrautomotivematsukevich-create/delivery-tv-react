@@ -282,12 +282,22 @@ export const api = {
     }
   },
 
-  approveUser: async (login: string): Promise<void> => {
+  approveUser: async (login: string, role: string): Promise<void> => {
     try {
-      const url = `${SCRIPT_URL}?mode=approve_user&login=${encodeURIComponent(login)}`;
+      const url = `${SCRIPT_URL}?mode=approve_user&login=${encodeURIComponent(login)}&role=${encodeURIComponent(role)}`;
       await fetchWithTimeout(url);
     } catch (e) {
       console.error("Failed to approve user:", e);
+      throw new Error('NETWORK_ERROR');
+    }
+  },
+
+  rejectUser: async (login: string): Promise<void> => {
+    try {
+      const url = `${SCRIPT_URL}?mode=reject_user&login=${encodeURIComponent(login)}`;
+      await fetchWithTimeout(url);
+    } catch (e) {
+      console.error("Failed to reject user:", e);
       throw new Error('NETWORK_ERROR');
     }
   },
