@@ -42,35 +42,6 @@ function currentShift(): ShiftName {
   return 'none';
 }
 
-// Вычисляет динамические цели по сменам. Контейнеры без ETA делятся поровну между утром и вечером
-function calculateShiftTargets(tasks: Task[]) {
-  let m = 0, e = 0, n = 0;
-  let noEtaCount = 0;
-
-  tasks.forEach(t => {
-    const min = hhmm(t.eta || '');
-    if (min === null) {
-      noEtaCount++;
-      return;
-    }
-    // Утро: 07:50 - 16:50
-    if (min >= 470 && min < 1010) m++;
-    // Вечер: 16:50 - 01:50
-    else if (min >= 1010 || min < 110) e++;
-    // Ночь: 01:50 - 07:50
-    else if (min >= 110 && min < 470) n++;
-  });
-
-  // Раскидываем задачи без ETA между утренней и вечерней сменами
-  if (noEtaCount > 0) {
-    const half = Math.ceil(noEtaCount / 2);
-    m += half;
-    e += (noEtaCount - half);
-  }
-
-  return { morning: m, evening: e, night: n, none: 0 };
-}
-
 // Вычисляет реальный факт по сменам на основе времени завершения (end_time)
 function calculateShiftFact(tasks: Task[]) {
   let m = 0, e = 0, n = 0;
@@ -87,6 +58,48 @@ function calculateShiftFact(tasks: Task[]) {
     }
   });
   return { morning: m, evening: e, night: n, none: 0 };
+}
+
+// Вычисляет динамические цели по сменам С УЧЕТОМ ПЕРЕНОСА ДОЛГОВ
+function calculateShiftTargets(tasks: Task[], facts: Record<ShiftName, number>) {
+  let m_base = 0, e_base = 0, n_base = 0;
+  let noEtaCount = 0;
+
+  tasks.forEach(t => {
+    const min = hhmm(t.eta || '');
+    if (min === null) {
+      noEtaCount++;
+      return;
+    }
+    // Утро: 07:50 - 16:50
+    if (min >= 470 && min < 1010) m_base++;
+    // Вечер: 16:50 - 01:50
+    else if (min >= 1010 || min < 110) e_base++;
+    // Ночь: 01:50 - 07:50
+    else if (min >= 110 && min < 470) n_base++;
+  });
+
+  // Раскидываем задачи без ETA между утренней и вечерней сменами
+  if (noEtaCount > 0) {
+    const half = Math.ceil(noEtaCount / 2);
+    m_base += half;
+    e_base += (noEtaCount - half);
+  }
+
+  // --- ДИНАМИЧЕСКИЙ ПЕРЕНОС ДОЛГОВ (ROLLOVER) ---
+  
+  // 1. Утро всегда начинает со своей базы
+  const m_target = m_base;
+
+  // 2. Вечер забирает свою базу + то, что не успело (или перевыполнило) утро
+  const m_diff = m_base - facts.morning;
+  const e_target = Math.max(0, e_base + m_diff);
+
+  // 3. Ночь забирает свою базу + то, что не успел вечер
+  const e_diff = e_target - facts.evening;
+  const n_target = Math.max(0, n_base + e_diff);
+
+  return { morning: m_target, evening: e_target, night: n_target, none: 0 };
 }
 
 const formatMinutes = (totalMinutes: number, t: TranslationSet): string => {
@@ -146,8 +159,8 @@ const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: Tran
   useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
   
   const active = currentShift();
-  const targets = useMemo(() => calculateShiftTargets(allTasks), [allTasks]);
   const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
+  const targets = useMemo(() => calculateShiftTargets(allTasks, facts), [allTasks, facts]);
   
   const target = targets[active];
   const done = active !== 'none' ? facts[active] : 0;
@@ -238,8 +251,8 @@ const ShiftStatsBlock: React.FC<{ data: DashboardData; allTasks: Task[]; tvMode?
   useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
   
   const active = currentShift();
-  const targets = useMemo(() => calculateShiftTargets(allTasks), [allTasks]);
   const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
+  const targets = useMemo(() => calculateShiftTargets(allTasks, facts), [allTasks, facts]);
 
   const getCount = (key: 'morning' | 'evening' | 'night') => facts[key];
 
