@@ -61,7 +61,7 @@ function calculateShiftFact(tasks: Task[]) {
 }
 
 // Вычисляет динамические цели по сменам С УЧЕТОМ ПЕРЕНОСА ДОЛГОВ
-function calculateShiftTargets(tasks: Task[], facts: Record<ShiftName, number>) {
+function calculateShiftTargets(tasks: Task[], facts: Record<ShiftName, number>, activeShift: ShiftName) {
   let m_base = 0, e_base = 0, n_base = 0;
   let noEtaCount = 0;
 
@@ -86,18 +86,23 @@ function calculateShiftTargets(tasks: Task[], facts: Record<ShiftName, number>) 
     e_base += (noEtaCount - half);
   }
 
-  // --- ДИНАМИЧЕСКИЙ ПЕРЕНОС ДОЛГОВ (ROLLOVER) ---
+  let m_target = m_base;
+  let e_target = e_base;
+  let n_target = n_base;
+
+  // --- ПЕРЕНОС ДОЛГОВ ТОЛЬКО ПОСЛЕ ЗАВЕРШЕНИЯ СМЕНЫ ---
   
-  // 1. Утро всегда начинает со своей базы
-  const m_target = m_base;
+  // Если сейчас Вечер или Ночь, значит Утро уже прошло — переносим его долг (или бонус) на Вечер
+  if (activeShift === 'evening' || activeShift === 'night') {
+     const m_debt = m_base - facts.morning; 
+     e_target = Math.max(0, e_base + m_debt); // План не может быть меньше нуля
+  }
 
-  // 2. Вечер забирает свою базу + то, что не успело (или перевыполнило) утро
-  const m_diff = m_base - facts.morning;
-  const e_target = Math.max(0, e_base + m_diff);
-
-  // 3. Ночь забирает свою базу + то, что не успел вечер
-  const e_diff = e_target - facts.evening;
-  const n_target = Math.max(0, n_base + e_diff);
+  // Если сейчас Ночь, значит Вечер тоже прошел — переносим всё на Ночь
+  if (activeShift === 'night') {
+     const e_debt = e_target - facts.evening;
+     n_target = Math.max(0, n_base + e_debt);
+  }
 
   return { morning: m_target, evening: e_target, night: n_target, none: 0 };
 }
@@ -160,7 +165,7 @@ const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: Tran
   
   const active = currentShift();
   const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
-  const targets = useMemo(() => calculateShiftTargets(allTasks, facts), [allTasks, facts]);
+  const targets = useMemo(() => calculateShiftTargets(allTasks, facts, active), [allTasks, facts, active]);
   
   const target = targets[active];
   const done = active !== 'none' ? facts[active] : 0;
@@ -252,7 +257,7 @@ const ShiftStatsBlock: React.FC<{ data: DashboardData; allTasks: Task[]; tvMode?
   
   const active = currentShift();
   const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
-  const targets = useMemo(() => calculateShiftTargets(allTasks, facts), [allTasks, facts]);
+  const targets = useMemo(() => calculateShiftTargets(allTasks, facts, active), [allTasks, facts, active]);
 
   const getCount = (key: 'morning' | 'evening' | 'night') => facts[key];
 
