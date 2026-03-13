@@ -10,16 +10,14 @@ import ActionModal from './components/ActionModal';
 import HistoryModal from './components/HistoryModal';
 import HistoryView from './components/HistoryView';
 import LogisticsView from './components/LogisticsView';
-import ZoneDowntimeView from './components/ZoneDowntimeView';
-import ArrivalAnalyticsView from './components/ArrivalAnalyticsView';
+import ZoneDowntimeView from './components/ZoneDowntimeView'; // НОВЫЙ ИМПОРТ
+import ArrivalAnalyticsView from './components/ArrivalAnalyticsView'; // АНАЛИТИКА ПРОСТОЯ
 import LotTrackerTV from './components/LotTrackerTV';
 import LotTrackerView from './components/LotTrackerView';
 import SplashScreen from './components/SplashScreen';
 import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
 import { DashboardData, Lang, User, Task, TaskAction } from './types';
-import { SpeedInsights } from "@vercel/speed-insights/react";
-import { Analytics } from "@vercel/analytics/react";
 
 function App() {
   const [lang, setLang] = useState<Lang>('RU');
@@ -27,12 +25,13 @@ function App() {
     const saved = localStorage.getItem('warehouse_user');
     return saved ? JSON.parse(saved) : null;
   });
-  
+  // TV mode: add ?tv=1 to URL to enable TV layout (fullscreen, no header/footer)
   const urlParams = new URLSearchParams(window.location.search);
   const isTV = urlParams.get('tv') === '1';
   const isTV2 = urlParams.get('tv') === '2';
   const tv2Lot = urlParams.get('lot') || '';
 
+  // ОБНОВЛЕНО: добавлен 'arrival' view
   const [view, setView] = useState<'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival' | 'lotTracker'>('dashboard');
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isAppReady, setIsAppReady] = useState(false);
@@ -53,8 +52,10 @@ function App() {
     return data;
   }, []);
 
+  // Initial load
   useEffect(() => {
     if (isTV2) {
+      // TV2 doesn't need dashboard data
       setTimeout(() => setIsAppReady(true), 800);
       return;
     }
@@ -63,6 +64,7 @@ function App() {
     });
   }, [refreshDashboard, isTV2]);
 
+  // Polling only when on dashboard AND tab is visible (skip for TV2)
   useEffect(() => {
     if (view !== 'dashboard' || isTV2) return;
 
@@ -142,8 +144,11 @@ function App() {
 
   return (
     <>
+      {/* ПРИВЕТСТВЕННЫЙ ЭКРАН ЗАГРУЗКИ */}
       {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
 
+
+      {/* ── TV MODE: полный экран без header/footer ── */}
       {isTV2 ? (
         <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
           <LotTrackerTV lot={tv2Lot} />
@@ -207,10 +212,6 @@ function App() {
           </footer>
         </div>
       )}
-
-      {/* Аналитика и Скорость от Vercel */}
-      <SpeedInsights />
-      <Analytics />
     </>
   );
 }

@@ -126,7 +126,6 @@ function doGet(e) {
            if (!ds) return ContentService.createTextOutput("NO_SHEET");
            var lotVal = (e.parameter.lot || "").trim();
            ds.getRange("A1").setValue(lotVal);
-           // Sync to Firebase
            try { syncPriorityLot(lotVal); } catch(e) {}
            return ContentService.createTextOutput("OK");
          } finally { lock.releaseLock(); }
@@ -148,7 +147,6 @@ function doGet(e) {
        }
     }
 
-    // Unknown mode fallback
     return ContentService.createTextOutput(JSON.stringify({error: "UNKNOWN_MODE: " + (e.parameter.mode || "none")})).setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) { 
@@ -173,14 +171,13 @@ function doPost(e) {
 // === HELPER FUNCTIONS ===
 
 function handleGetHistory(ss, e) {
-  var dateStr = e.parameter.date; // Expecting "DD.MM"
+  var dateStr = e.parameter.date; 
   var sheet = ss.getSheetByName(dateStr);
   if (!sheet) return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
 
   var lr = sheet.getLastRow();
   if (lr < 5) return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
 
-  // Read 16 columns: A-P (includes col P = Arrival time on territory)
   var data = sheet.getRange(5, 1, lr - 4, 16).getDisplayValues();
   var tasks = [];
 
@@ -193,20 +190,10 @@ function handleGetHistory(ss, e) {
       else if (row[7] !== "") status = "ACTIVE";
       
       tasks.push({
-        id: id, 
-        type: row[2],
-        pallets: row[3],
-        phone: row[5],
-        eta: row[6],
-        status: status, 
-        start_time: row[7], 
-        end_time: row[8],
-        zone: row[10],
-        operator: row[11],
-        photo_gen: row[12], 
-        photo_seal: row[13], 
-        photo_empty: row[14],
-        arrival_time: row[15]  // Col P: Время прибытия на территорию АГМ
+        id: id, type: row[2], pallets: row[3], phone: row[5], eta: row[6],
+        status: status, start_time: row[7], end_time: row[8],
+        zone: row[10], operator: row[11], photo_gen: row[12], 
+        photo_seal: row[13], photo_empty: row[14], arrival_time: row[15] 
       });
     }
   }
@@ -221,30 +208,21 @@ function handleGetFullPlan(ss, e) {
   var lr = sheet.getLastRow();
   if (lr < 5) return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
 
-  // Read Cols A-G (Index 1-7)
   var data = sheet.getRange(5, 1, lr - 4, 7).getDisplayValues();
   var rows = [];
 
   for (var i = 0; i < data.length; i++) {
     var r = data[i];
-    // A: Index (0), B: Lot (1), C: WS (2), D: Pallets (3), E: ID (4), F: Phone (5), G: ETA (6)
-    if (r[4]) { // ID exists
+    if (r[4]) { 
       rows.push({
-         index: r[0],
-         lot: r[1],
-         ws: r[2],
-         pallets: r[3],
-         id: r[4],
-         phone: r[5],
-         eta: r[6],
-         rowIndex: i + 5 // Actual Sheet Row
+         index: r[0], lot: r[1], ws: r[2], pallets: r[3],
+         id: r[4], phone: r[5], eta: r[6], rowIndex: i + 5
       });
     }
   }
   return ContentService.createTextOutput(JSON.stringify(rows)).setMimeType(ContentService.MimeType.JSON);
 }
 
-// ── LOT TRACKER: Search a lot across ALL date sheets ──────────────────────────
 function handleGetLotTracker(ss, e) {
   var lotQuery = (e.parameter.lot || "").trim().toUpperCase();
   if (!lotQuery) return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
@@ -261,14 +239,12 @@ function handleGetLotTracker(ss, e) {
     var lr = sheet.getLastRow();
     if (lr < 5) continue;
 
-    // Read Cols A-P (1-16): Index, Lot, WS, Pallets, ID, Phone, ETA, Start, End, ?, Zone, Operator, pGen, pSeal, pEmpty, Arrival
     var data = sheet.getRange(5, 1, lr - 4, 16).getDisplayValues();
 
     for (var i = 0; i < data.length; i++) {
       var row = data[i];
       var lot = (row[1] || "").trim().toUpperCase();
       var id  = row[4];
-      // Поиск по подстроке: ввёл "CT13J20260113" — найдёт "43115-CT13J20260113"
       if (!id || lot.indexOf(lotQuery) === -1) continue;
 
       var status = "WAIT";
@@ -276,20 +252,10 @@ function handleGetLotTracker(ss, e) {
       else if (row[7] !== "") status = "ACTIVE";
 
       results.push({
-        date: sheetName,
-        index: row[0],
-        lot: row[1],
-        ws: row[2],
-        pallets: row[3],
-        id: id,
-        phone: row[5],
-        eta: row[6],
-        status: status,
-        start_time: row[7],
-        end_time: row[8],
-        zone: row[10],
-        operator: row[11],
-        arrival_time: row[15]
+        date: sheetName, index: row[0], lot: row[1], ws: row[2],
+        pallets: row[3], id: id, phone: row[5], eta: row[6],
+        status: status, start_time: row[7], end_time: row[8],
+        zone: row[10], operator: row[11], arrival_time: row[15]
       });
     }
   }
@@ -305,15 +271,9 @@ function handleUpdateContainerRow(e, ss) {
   var rowIndex = parseInt(e.parameter.row);
   if (!rowIndex || rowIndex < 5) return ContentService.createTextOutput("INVALID_ROW");
 
-  // Params: lot, ws, pallets, id, phone, eta
-  // Write to B(2):G(7)
   var vals = [[
-    e.parameter.lot,
-    e.parameter.ws,
-    e.parameter.pallets,
-    e.parameter.id,
-    e.parameter.phone,
-    e.parameter.eta
+    e.parameter.lot, e.parameter.ws, e.parameter.pallets,
+    e.parameter.id, e.parameter.phone, e.parameter.eta
   ]];
   
   sheet.getRange(rowIndex, 2, 1, 6).setValues(vals);
@@ -338,16 +298,8 @@ function handleCreatePlan(e, ss) {
   for (var i = 0; i < tasks.length; i++) {
     var t = tasks[i];
     var idx = lastRow - 3 + i;
-
     rows.push([
-      idx,         
-      t.lot,       
-      t.ws,        
-      t.pallets,   
-      t.id,        
-      t.phone,     
-      t.eta,       
-      "", "", "", "", "", "", "", "" 
+      idx, t.lot, t.ws, t.pallets, t.id, t.phone, t.eta, "", "", "", "", "", "", "", "" 
     ]);
   }
   
@@ -401,8 +353,45 @@ function handleReportIssue(e, ss) {
     s.getRange("A1:G1").setValues([["Container ID", "Timestamp", "Description", "Photo 1", "Photo 2", "Photo 3", "Author"]]);
     s.getRange("A1:G1").setFontWeight("bold");
   }
-  var time = new Date().toLocaleString('ru-RU');
+  var time = Utilities.formatDate(new Date(), "Europe/Moscow", "dd.MM.yyyy HH:mm:ss");
   s.appendRow([e.parameter.id, time, e.parameter.desc, e.parameter.p1||"", e.parameter.p2||"", e.parameter.p3||"", e.parameter.author||"Anonymous"]);
+  
+  // === ОТПРАВКА ПИСЬМА С ФОТОГРАФИЯМИ ===
+  try {
+    // ВАЖНО: ЗАМЕНИ ЭТОТ EMAIL НА СВОЙ! МОЖНО УКАЗАТЬ НЕСКОЛЬКО ЧЕРЕЗ ЗАПЯТУЮ
+    var emails = "YOUR_EMAIL@gmail.com"; 
+    var subject = "🚨 Проблема на складе: " + e.parameter.id;
+    var body = "Зафиксирована новая проблема!\n\n" +
+               "Контейнер: " + e.parameter.id + "\n" +
+               "Время: " + time + "\n" +
+               "Оператор: " + (e.parameter.author || "Неизвестно") + "\n\n" +
+               "Описание проблемы:\n" + e.parameter.desc;
+    
+    var attachments = [];
+    var photoUrls = [e.parameter.p1, e.parameter.p2, e.parameter.p3];
+    
+    for (var i = 0; i < photoUrls.length; i++) {
+      var url = photoUrls[i];
+      if (url && url.indexOf("drive.google.com") !== -1) {
+        // Достаем ID картинки из Гугл Диска
+        var fileIdMatch = url.match(/[-\w]{25,}/);
+        if (fileIdMatch) {
+           var file = DriveApp.getFileById(fileIdMatch[0]);
+           attachments.push(file.getBlob());
+        }
+      }
+    }
+    
+    MailApp.sendEmail({
+      to: emails,
+      subject: subject,
+      body: body,
+      attachments: attachments
+    });
+  } catch(err) {
+     Logger.log("Email error: " + err.toString());
+  }
+
   return ContentService.createTextOutput("REPORTED");
 }
 
@@ -456,7 +445,7 @@ function handleGetStats(ss){
       for (var j = 0; j < yData.length; j++) {
         var yRow = yData[j];
         var yId = yRow[4];
-        if (yId && !seenIds[yId] && !yRow[8]) {  // есть ID, нет в сегодня, НЕ завершён
+        if (yId && !seenIds[yId] && !yRow[8]) { 
           var yStatus = yRow[7] ? "ACTIVE" : "WAIT";
           var yTime = yRow[7] || yRow[6];
           tasks.push({
@@ -482,7 +471,6 @@ function handleReadComplex(ss){
   var onTerritory = 0;
   var seenIds = {};
 
-  // 1. Сегодняшний лист
   if (sheet) {
     var lr = sheet.getLastRow();
     if (lr >= 5) {
@@ -511,7 +499,6 @@ function handleReadComplex(ss){
     }
   }
 
-  // 2. До 7:30 — незавершённые из вчерашнего листа
   if (isNightCarryover()) {
     var ySheet = ss.getSheetByName(getYesterdaySheetName());
     if (ySheet && ySheet.getLastRow() >= 5) {
@@ -549,9 +536,8 @@ function parseTimeToMin(timeStr) {
 function handleTaskAction(ss, e) {
   var id = e.parameter.id;
   var act = e.parameter.act; 
-  var time = new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+  var time = Utilities.formatDate(new Date(), "Europe/Moscow", "HH:mm");
   
-  // Попытка 1: ищем контейнер в сегодняшнем листе
   var todayName = getTodaySheetName();
   var sheet = ss.getSheetByName(todayName);
   if (sheet) {
@@ -559,7 +545,6 @@ function handleTaskAction(ss, e) {
     if (result) return result;
   }
   
-  // Попытка 2: до 7:30 ищем во вчерашнем листе (ночная смена завершает вчерашние задачи)
   if (isNightCarryover()) {
     var yName = getYesterdaySheetName();
     var ySheet = ss.getSheetByName(yName);
@@ -572,7 +557,6 @@ function handleTaskAction(ss, e) {
   return ContentService.createTextOutput("ID_NOT_FOUND");
 }
 
-/** Применить действие к контейнеру на конкретном листе. Возвращает null если ID не найден. */
 function applyTaskAction(sheet, id, act, time, e, sheetName, ss) {
   var lr = sheet.getLastRow();
   if (lr < 5) return null;
@@ -604,7 +588,7 @@ function applyTaskAction(sheet, id, act, time, e, sheetName, ss) {
       return ContentService.createTextOutput("UPDATED");
     }
   }
-  return null; // ID не найден на этом листе
+  return null; 
 }
 
 function handleLogin(e, s) {
@@ -619,23 +603,71 @@ function handleLogin(e, s) {
   return ContentService.createTextOutput("WRONG");
 }
 
-function getTodaySheetName(){
-  var t=new Date();
-  return ("0"+t.getDate()).slice(-2)+"."+("0"+(t.getMonth()+1)).slice(-2);
-}
+// === ИСПРАВЛЕННЫЕ ФУНКЦИИ ВРЕМЕНИ (ЖЕСТКАЯ ПРИВЯЗКА К МОСКВЕ) ===
 
-// ── Ночная смена: до 7:30 подтягиваем незавершённые задачи вчерашнего листа ──
+function getTodaySheetName() {
+  return Utilities.formatDate(new Date(), "Europe/Moscow", "dd.MM");
+}
 
 function getYesterdaySheetName() {
-  var t = new Date();
-  t.setDate(t.getDate() - 1);
-  return ("0" + t.getDate()).slice(-2) + "." + ("0" + (t.getMonth() + 1)).slice(-2);
+  var d = new Date();
+  var yesterday = new Date(d.getTime() - 24 * 60 * 60 * 1000);
+  return Utilities.formatDate(yesterday, "Europe/Moscow", "dd.MM");
 }
 
-/** true если сейчас 00:00 — 07:29 (ночная смена работает с вчерашним планом) */
 function isNightCarryover() {
-  var now = new Date();
-  return (now.getHours() * 60 + now.getMinutes()) < 450; // 7*60+30 = 450
+  var timeString = Utilities.formatDate(new Date(), "Europe/Moscow", "HH:mm");
+  var parts = timeString.split(":");
+  var mins = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+  return mins < 450; // До 07:30 утра по Москве
+}
+
+// === НОВЫЙ БЛОК: ФОНОВАЯ ПРОВЕРКА ЗАВИСШИХ КОНТЕЙНЕРОВ (CRON) ===
+
+function checkTimersAndAlert() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(getTodaySheetName());
+  if (!sheet) return;
+  
+  var lr = sheet.getLastRow();
+  if (lr < 5) return;
+  
+  // Читаем колонки A-Q (Q = 17, здесь мы ставим пометку ALERT_SENT)
+  var data = sheet.getRange(5, 1, lr - 4, 17).getValues(); 
+  
+  // ВАЖНО: ЗАМЕНИ ЭТОТ EMAIL НА СВОЙ!
+  var emails = "YOUR_EMAIL@gmail.com"; 
+  var nowMin = parseTimeToMin(Utilities.formatDate(new Date(), "Europe/Moscow", "HH:mm"));
+  
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var id = row[4];
+    var start = row[7];
+    var end = row[8];
+    var zone = row[10];
+    var alertFlag = row[16]; // Колонка Q
+    
+    // Если разгрузка началась, еще не закончилась и мы еще не слали письмо
+    if (id && start && !end && alertFlag !== "ALERT_SENT") {
+       var startMin = parseTimeToMin(start);
+       if (startMin !== null) {
+          var diff = nowMin - startMin;
+          if (diff < -60) diff += 1440; // Переход через полночь
+          
+          if (diff >= 60) { // Если выгрузка идет 60 минут и дольше
+             var subject = "⚠️ ДОЛГАЯ ВЫГРУЗКА: " + id;
+             var body = "Контейнер " + id + " на зоне " + (zone || "Не указана") + " выгружается уже " + diff + " минут!\n" +
+                        "Оператор: " + (row[11] || "Неизвестен") + "\n" +
+                        "Время начала: " + start;
+             
+             MailApp.sendEmail(emails, subject, body);
+             
+             // Ставим пометку в таблицу (Колонка Q), чтобы не заспамить почту
+             sheet.getRange(i + 5, 17).setValue("ALERT_SENT");
+          }
+       }
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -658,7 +690,6 @@ function firestoreWrite(path, data) {
       muteHttpExceptions: true
     });
   } catch (e) {
-    // Не блокируем основной flow если Firebase недоступен
     Logger.log("Firestore sync error: " + e.toString());
   }
 }
@@ -688,7 +719,6 @@ function toFirestoreValue(val) {
   return { stringValue: String(val) };
 }
 
-// ── Sync dashboard summary to Firestore ──
 function syncDashboard(status, done, total, nextId, nextTime, activeList, shiftM, shiftE, shiftN, onTerr) {
   var active = [];
   for (var i = 0; i < activeList.length; i++) {
@@ -708,7 +738,6 @@ function syncDashboard(status, done, total, nextId, nextTime, activeList, shiftM
   });
 }
 
-// ── Sync tasks for a date to Firestore ──
 function syncTasks(dateStr, ss) {
   var sheet = ss.getSheetByName(dateStr);
   if (!sheet) return;
@@ -734,7 +763,6 @@ function syncTasks(dateStr, ss) {
   firestoreWrite("tasks/" + dateStr, { tasks: tasks, updatedAt: Date.now() });
 }
 
-// ── Sync priority lot to Firestore ──
 function syncPriorityLot(lot) {
   firestoreWrite("config/priority_lot", { lot: lot, updatedAt: Date.now() });
 }

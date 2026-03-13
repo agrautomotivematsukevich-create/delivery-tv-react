@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { Task, TranslationSet } from '../types';
-import { Phone, Check, Play, Layers, Search, X, ChevronUp, Undo2, Timer, WifiOff, Wifi } from 'lucide-react';
+import { Phone, Check, Play, Layers, Search, X, ChevronUp, Undo2, Timer, WifiOff, Wifi, MapPin } from 'lucide-react';
 import { offlineQueue } from '../services/offlineQueue';
 
 interface OperatorTerminalProps {
@@ -117,7 +117,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     try {
       // Честно ждем закрытия модалки и ответа от Google
       await onTaskAction(task, action);
-      // После успеха скачиваем свежий список, чтобы карточка стала зеленой
+      // После успеха скачиваем свежий список
       await fetchQueue();
     } catch (e: any) {
       console.error('Task action error:', e);
@@ -277,6 +277,15 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                         <div className="flex items-center flex-wrap gap-1">
                           <span className="font-mono text-lg font-bold text-white truncate">{task.id}</span>
                           {getTypeBadge(task.type)}
+                          
+                          {/* НОВЫЙ ЯРЛЫК ЗОНЫ */}
+                          {task.zone && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-black tracking-wider uppercase border bg-white/10 border-white/20 text-white ml-2 shrink-0">
+                              <MapPin size={12} className="text-accent-blue" />
+                              {task.zone}
+                            </span>
+                          )}
+                          
                         </div>
                         <div className="flex items-center gap-3 mt-0.5 text-white/60 text-xs">
                           <span className="font-mono">{task.eta || task.time || '—'}</span>
@@ -333,7 +342,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                   {isActive && (
                     <div className="flex items-center justify-between pl-5 pt-1 border-t border-white/5 mt-1">
                       <span className="text-[10px] text-white/50 font-mono">
-                        {task.zone && <span className="mr-2">Зона: {task.zone}</span>}
+                        {/* Зону отсюда мы убрали, так как она теперь крупно сверху */}
                         {task.operator && <span>Оператор: {task.operator}</span>}
                       </span>
                       {showUndoConfirm ? (
