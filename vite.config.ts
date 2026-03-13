@@ -6,10 +6,9 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
-      // Раскомментировано для корректной работы на GitHub Pages
       base: '/',
       server: {
-        port: 5000,        // или 8080, 3001 и т.д.
+        port: 5000,
         host: '0.0.0.0',
         allowedHosts: true,
       },
@@ -17,6 +16,12 @@ export default defineConfig(({ mode }) => {
         react(),
         VitePWA({
           registerType: 'autoUpdate',
+          // === ДОБАВЛЕН БЛОК АГРЕССИВНОГО ОБНОВЛЕНИЯ ===
+          workbox: {
+            cleanupOutdatedCaches: true, // Жестко удаляет старые версии файлов
+            clientsClaim: true,          // Забирает контроль над страницей сразу
+            skipWaiting: true            // Применяет обновление без ожидания закрытия вкладки
+          },
           manifest: {
             name: 'AGR Warehouse',
             short_name: 'AGR',
@@ -25,6 +30,7 @@ export default defineConfig(({ mode }) => {
             background_color: '#0F0F12',
             display: 'standalone',
             orientation: 'portrait'
+            // Позже мы добавим сюда блок icons для иконок на рабочем столе
           }
         })
       ],
