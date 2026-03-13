@@ -34,6 +34,7 @@ function App() {
   // ОБНОВЛЕНО: добавлен 'arrival' view
   const [view, setView] = useState<'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival' | 'lotTracker'>('dashboard');
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isAppReady, setIsAppReady] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
 
@@ -47,9 +48,19 @@ function App() {
   const t = TRANSLATIONS[lang];
 
   const refreshDashboard = useCallback(async () => {
-    const data = await api.fetchDashboard();
-    if (data) setDashboardData(data);
-    return data;
+    try {
+      const data = await api.fetchDashboard();
+      if (data) {
+        setDashboardData(data);
+        setIsOffline(false);
+      } else {
+        setIsOffline(true);
+      }
+      return data;
+    } catch (e) {
+      setIsOffline(true);
+      return null;
+    }
   }, []);
 
   // Initial load
@@ -144,6 +155,11 @@ function App() {
 
   return (
     <>
+      {isOffline && (
+        <div className="fixed top-0 left-0 w-full bg-red-500 text-white text-center py-1 text-xs font-bold z-[100]">
+          ⚠️ ПОТЕРЯНО СОЕДИНЕНИЕ С СЕРВЕРОМ (ОФФЛАЙН РЕЖИМ)
+        </div>
+      )}
       {/* ПРИВЕТСТВЕННЫЙ ЭКРАН ЗАГРУЗКИ */}
       {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
 

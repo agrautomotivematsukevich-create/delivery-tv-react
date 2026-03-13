@@ -17,6 +17,11 @@ export default defineConfig(({ mode }) => {
         react(),
         VitePWA({
           registerType: 'autoUpdate',
+          workbox: {
+            cleanupOutdatedCaches: true,
+            clientsClaim: true,
+            skipWaiting: true,
+          },
           manifest: {
             name: 'AGR Warehouse',
             short_name: 'AGR',
@@ -24,7 +29,11 @@ export default defineConfig(({ mode }) => {
             theme_color: '#191B25',
             background_color: '#0F0F12',
             display: 'standalone',
-            orientation: 'portrait'
+            orientation: 'portrait',
+            icons: [
+              { src: '/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+              { src: '/icon-512x512.png', sizes: '512x512', type: 'image/png' }
+            ]
           }
         })
       ],
@@ -36,6 +45,9 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      esbuild: {
+        drop: mode === 'production' ? ['console', 'debugger'] : []
       }
     };
 });

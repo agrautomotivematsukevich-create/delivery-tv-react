@@ -302,8 +302,9 @@ export const api = {
   },
 
   // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Бросаем ошибку при неудаче
-  taskAction: async (id: string, act: string, user: string, zone: string = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
-    const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${zone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
+  taskAction: async (id: string, act: string, user: string, zone: string | null = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
+    const safeZone = zone || '';
+    const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${safeZone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
     try {
       await fetchWithTimeout(url, { timeout: 20000 });
     } catch (e) {
@@ -313,11 +314,16 @@ export const api = {
   },
 
   reportIssue: async (id: string, desc: string, photos: string[], author: string): Promise<void> => {
-    const p1 = photos[0] ? encodeURIComponent(photos[0]) : "";
-    const p2 = photos[1] ? encodeURIComponent(photos[1]) : "";
-    const p3 = photos[2] ? encodeURIComponent(photos[2]) : "";
-    const url = `${SCRIPT_URL}?mode=report_issue&id=${encodeURIComponent(id)}&desc=${encodeURIComponent(desc)}&p1=${p1}&p2=${p2}&p3=${p3}&author=${encodeURIComponent(author)}`;
-    await fetchWithTimeout(url);
+    try {
+      const p1 = photos[0] ? encodeURIComponent(photos[0]) : "";
+      const p2 = photos[1] ? encodeURIComponent(photos[1]) : "";
+      const p3 = photos[2] ? encodeURIComponent(photos[2]) : "";
+      const url = `${SCRIPT_URL}?mode=report_issue&id=${encodeURIComponent(id)}&desc=${encodeURIComponent(desc)}&p1=${p1}&p2=${p2}&p3=${p3}&author=${encodeURIComponent(author)}`;
+      await fetchWithTimeout(url);
+    } catch (e) {
+      console.error("Issue report failed:", e);
+      throw new Error('NETWORK_ERROR');
+    }
   },
 
   getProxyImage: async (url: string): Promise<string> => {
