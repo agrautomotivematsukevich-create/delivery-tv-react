@@ -132,7 +132,7 @@ function doGet(e) {
        }
     }
 
-    // === 11. ADMIN PANEL ACTIONS ===
+    // === 11. ВОССТАНОВЛЕННАЯ АДМИН-ПАНЕЛЬ ===
     if (e.parameter.mode === "get_pending") {
       return handleGetPending(ss);
     }
@@ -379,11 +379,10 @@ function handleReportIssue(e, ss) {
   }
   var time = Utilities.formatDate(new Date(), "Europe/Moscow", "dd.MM.yyyy HH:mm:ss");
   
-  var emailStatus = "Успешно отправлено"; // Статус по умолчанию
+  var emailStatus = "Успешно отправлено"; 
   
-  // === ОТПРАВКА ПИСЬМА ===
   try {
-    var emails = "MHReceiving@agr.auto"; // Адрес для оповещений
+    var emails = "MHReceiving@agr.auto"; 
     var subject = "Уведомление об инциденте: Контейнер " + e.parameter.id + " (Склад АГМ)";
     
     var htmlBody = `
@@ -660,8 +659,6 @@ function handleLogin(e, s) {
   return ContentService.createTextOutput("WRONG");
 }
 
-// === ИСПРАВЛЕННЫЕ ФУНКЦИИ ВРЕМЕНИ (ЖЕСТКАЯ ПРИВЯЗКА К МОСКВЕ) ===
-
 function getTodaySheetName() {
   return Utilities.formatDate(new Date(), "Europe/Moscow", "dd.MM");
 }
@@ -676,10 +673,8 @@ function isNightCarryover() {
   var timeString = Utilities.formatDate(new Date(), "Europe/Moscow", "HH:mm");
   var parts = timeString.split(":");
   var mins = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-  return mins < 390; // До 06:30 утра по Москве
+  return mins < 390; 
 }
-
-// === НОВЫЙ БЛОК: ФОНОВАЯ ПРОВЕРКА ЗАВИСШИХ КОНТЕЙНЕРОВ (CRON) ===
 
 function checkTimersAndAlert() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -722,30 +717,38 @@ function checkTimersAndAlert() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ADMIN PANEL FUNCTIONS
+// ADMIN PANEL FUNCTIONS (ИСПРАВЛЕННЫЕ)
 // ══════════════════════════════════════════════════════════════════════════════
 
 function handleGetPending(ss) {
-  var sheet = ss.getSheetByName('DASHBOARD');
-  if (!sheet) return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
-  
-  var lr = sheet.getLastRow();
-  if (lr < 2) return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
-  
-  var data = sheet.getRange(2, 16, lr - 1, 5).getDisplayValues();
-  var pending = [];
-  
-  for (var i = 0; i < data.length; i++) {
-    if (data[i][4] === "PENDING") {
-      pending.push({
-        login: data[i][0],
-        name: data[i][2],
-        role: data[i][3],
-        status: data[i][4]
-      });
+  try {
+    var sheet = ss.getSheetByName('DASHBOARD');
+    if (!sheet) return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
+    
+    var lr = sheet.getLastRow();
+    if (lr < 2) return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
+    
+    // Читаем колонки P, Q, R, S, T
+    var data = sheet.getRange(2, 16, lr - 1, 5).getDisplayValues();
+    var pending = [];
+    
+    for (var i = 0; i < data.length; i++) {
+      var status = (data[i][4] || "").toString().trim().toUpperCase();
+      
+      if (status === "PENDING") {
+        pending.push({
+          login:  (data[i][0] || "").toString().trim(),
+          user:   (data[i][0] || "").toString().trim(), // Дублируем ключ, чтобы фронт 100% его съел
+          name:   (data[i][2] || "").toString().trim(),
+          role:   (data[i][3] || "").toString().trim(),
+          status: status
+        });
+      }
     }
+    return ContentService.createTextOutput(JSON.stringify(pending)).setMimeType(ContentService.MimeType.JSON);
+  } catch(e) {
+    return ContentService.createTextOutput(JSON.stringify({error: e.toString()})).setMimeType(ContentService.MimeType.JSON);
   }
-  return ContentService.createTextOutput(JSON.stringify(pending)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function handleApproveUser(e, ss) {
@@ -759,8 +762,8 @@ function handleApproveUser(e, ss) {
   var data = sheet.getRange(2, 16, lr - 1, 1).getDisplayValues();
   for (var i = 0; i < data.length; i++) {
     if (data[i][0].toLowerCase().trim() === login) {
-      sheet.getRange(i + 2, 19).setValue(role); // Колонка S: Обновляем роль
-      sheet.getRange(i + 2, 20).setValue("APPROVED"); // Колонка T: Ставим APPROVED
+      sheet.getRange(i + 2, 19).setValue(role);
+      sheet.getRange(i + 2, 20).setValue("APPROVED");
       return ContentService.createTextOutput("APPROVED");
     }
   }
@@ -777,7 +780,7 @@ function handleRejectUser(e, ss) {
   var data = sheet.getRange(2, 16, lr - 1, 1).getDisplayValues();
   for (var i = 0; i < data.length; i++) {
     if (data[i][0].toLowerCase().trim() === login) {
-      sheet.deleteRow(i + 2); // Удаляем строку из базы, если отклонили
+      sheet.deleteRow(i + 2);
       return ContentService.createTextOutput("REJECTED");
     }
   }
@@ -785,7 +788,7 @@ function handleRejectUser(e, ss) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// FIREBASE FIRESTORE SYNC (кеш для быстрого чтения фронтендом)
+// FIREBASE FIRESTORE SYNC
 // ══════════════════════════════════════════════════════════════════════════════
 
 var FIREBASE_PROJECT = "agm-warehouse";
