@@ -102,14 +102,6 @@ function doGet(e) {
        }
     }
     
-    // 8. CREATE PLAN (Logistics)
-    if (e.parameter.mode === "create_plan") {
-       if (lock.tryLock(10000)) {
-         try { return handleCreatePlan(e, ss); }
-         finally { lock.releaseLock(); }
-       }
-    }
-    
     // 8a. UPDATE CONTAINER ROW (Logistics Editor)
     if (e.parameter.mode === "update_container_row") {
        if (lock.tryLock(10000)) {
@@ -131,13 +123,6 @@ function doGet(e) {
          } finally { lock.releaseLock(); }
        }
     }
-
-    // 9. LOGIN
-    if (e.parameter.mode === "login") {
-       var settingsSheet = ss.getSheetByName('DASHBOARD'); 
-       if(!settingsSheet) return ContentService.createTextOutput("CORRECT"); 
-       return handleLogin(e, settingsSheet);
-    }
     
     // 10. REGISTER
     if (e.parameter.mode === "register") {
@@ -145,64 +130,6 @@ function doGet(e) {
          try { return handleRegister(e, ss); }
          finally { lock.releaseLock(); }
        }
-    }
-
-    // === ПАНЕЛЬ АДМИНА: ПОЛУЧИТЬ ОЖИДАЮЩИХ ===
-    if (e.parameter.mode === 'get_pending') {
-      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("DASHBOARD");
-      var lastRow = sheet.getLastRow();
-      if (lastRow < 2) return ContentService.createTextOutput(JSON.stringify([])).setMimeType(ContentService.MimeType.JSON);
-      
-      // Читаем со 2-й строки, колонка 16 (P), по ширине 5 колонок до T
-      var data = sheet.getRange(2, 16, lastRow - 1, 5).getValues(); 
-      var pending = [];
-      
-      for (var i = 0; i < data.length; i++) {
-        var login = data[i][0];
-        var status = data[i][4];
-        if (login && status === 'PENDING') { 
-          pending.push({
-            login: login,
-            name: data[i][2] || 'Без имени',
-            role: data[i][3] || 'OPERATOR'
-          });
-        }
-      }
-      return ContentService.createTextOutput(JSON.stringify(pending)).setMimeType(ContentService.MimeType.JSON);
-    }
-  
-    // === ПАНЕЛЬ АДМИНА: ОДОБРИТЬ ПОЛЬЗОВАТЕЛЯ ===
-    if (e.parameter.mode === 'approve_user') {
-      var login = e.parameter.login;
-      var role = e.parameter.role || 'OPERATOR';
-      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("DASHBOARD");
-      var lastRow = sheet.getLastRow();
-      var data = sheet.getRange(2, 16, lastRow - 1, 5).getValues();
-      
-      for (var i = 0; i < data.length; i++) {
-        if (data[i][0] == login && data[i][4] === 'PENDING') {
-          sheet.getRange(i + 2, 19).setValue(role);
-          sheet.getRange(i + 2, 20).setValue('APPROVED'); 
-          return ContentService.createTextOutput(JSON.stringify({success: true})).setMimeType(ContentService.MimeType.JSON);
-        }
-      }
-      return ContentService.createTextOutput(JSON.stringify({success: false, error: 'User not found'})).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    // === ПАНЕЛЬ АДМИНА: ОТКЛОНИТЬ ПОЛЬЗОВАТЕЛЯ ===
-    if (e.parameter.mode === 'reject_user') {
-      var login = e.parameter.login;
-      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("DASHBOARD");
-      var lastRow = sheet.getLastRow();
-      var data = sheet.getRange(2, 16, lastRow - 1, 5).getValues();
-      
-      for (var i = 0; i < data.length; i++) {
-        if (data[i][0] == login && data[i][4] === 'PENDING') {
-          sheet.deleteRow(i + 2);
-          return ContentService.createTextOutput(JSON.stringify({success: true})).setMimeType(ContentService.MimeType.JSON);
-        }
-      }
-      return ContentService.createTextOutput(JSON.stringify({success: false, error: 'User not found'})).setMimeType(ContentService.MimeType.JSON);
     }
 
     return ContentService.createTextOutput(JSON.stringify({error: "UNKNOWN_MODE: " + (e.parameter.mode || "none")})).setMimeType(ContentService.MimeType.JSON);
@@ -215,6 +142,26 @@ function doGet(e) {
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
+    var simulatedEvent = { parameter: data };
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // === LOGIN (POST) ===
+    if (data.mode === "login") {
+       var settingsSheet = ss.getSheetByName('DASHBOARD'); 
+       if(!settingsSheet) return ContentService.createTextOutput("CORRECT"); 
+       return handleLogin(simulatedEvent, settingsSheet);
+    }
+
+    // === CREATE PLAN (POST) ===
+    if (data.mode === "create_plan") {
+       var lock = LockService.getScriptLock();
+       if (lock.tryLock(10000)) {
+         try { return handleCreatePlan(simulatedEvent, ss); }
+         finally { lock.releaseLock(); }
+       } else return ContentService.createTextOutput("BUSY");
+    }
+
+    // === UPLOAD PHOTO (POST) ===
     if (data.mode === "upload_photo") {
       var imageStr = data.image.split(",")[1]; 
       var blob = Utilities.newBlob(Utilities.base64Decode(imageStr), data.mimeType, data.filename);
@@ -223,7 +170,7 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({ status: "SUCCESS", url: file.getUrl() })).setMimeType(ContentService.MimeType.JSON);
     }
     return ContentService.createTextOutput("UNKNOWN_MODE");
-  } catch (e) { return ContentService.createTextOutput("POST_ERROR"); }
+  } catch (e) { return ContentService.createTextOutput("POST_ERROR: " + e.toString()); }
 }
 
 // === HELPER FUNCTIONS ===
@@ -418,7 +365,7 @@ function handleReportIssue(e, ss) {
   // === ОТПРАВКА ПИСЬМА ===
   try {
     // === ОТПРАВКА КОРПОРАТИВНОГО ПИСЬМА С ФОТОГРАФИЯМИ ===
-    var emails = "MHReceiving@agr.auto"; // Не забудь добавить нужные адреса
+    var emails = "MHReceiving@agr.auto"; // Адрес для оповещений
     
     // Строгая тема письма
     var subject = "Уведомление об инциденте: Контейнер " + e.parameter.id + " (Склад АГМ)";
@@ -474,7 +421,7 @@ function handleReportIssue(e, ss) {
     var mailOptions = {
       to: emails,
       subject: subject,
-      htmlBody: htmlBody // Используем htmlBody вместо обычного body
+      htmlBody: htmlBody
     };
     
     if (attachments.length > 0) {
@@ -735,8 +682,8 @@ function checkTimersAndAlert() {
   // Читаем колонки A-Q (Q = 17, здесь мы ставим пометку ALERT_SENT)
   var data = sheet.getRange(5, 1, lr - 4, 17).getValues(); 
   
-  // ВАЖНО: ЗАМЕНИ ЭТОТ EMAIL НА СВОЙ!
-  var emails = "YOUR_EMAIL@gmail.com"; 
+  // ИСПРАВЛЕНО: Теперь алерты о простоях тоже уходят на этот ящик
+  var emails = "MHReceiving@agr.auto"; 
   var nowMin = parseTimeToMin(Utilities.formatDate(new Date(), "Europe/Moscow", "HH:mm"));
   
   for (var i = 0; i < data.length; i++) {
