@@ -164,10 +164,19 @@ export const api = {
     });
   },
 
+  // ИСПРАВЛЕНО: Переведено на POST для обхода лимита URL
   createPlan: async (dateStr: string, tasks: TaskInput[]): Promise<boolean> => {
     try {
        const payload = JSON.stringify(tasks);
-       await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=create_plan&date=${encodeURIComponent(dateStr)}&tasks=${encodeURIComponent(payload)}`);
+       await fetchWithTimeout(SCRIPT_URL, {
+         method: 'POST',
+         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+         body: JSON.stringify({
+           mode: 'create_plan',
+           date: dateStr,
+           tasks: payload
+         })
+       });
        return true;
     } catch(e) {
       console.error(e);
@@ -250,19 +259,33 @@ export const api = {
     }
   },
 
+  // ИСПРАВЛЕНО: Переведено на POST для безопасной передачи хэша
   login: async (user: string, pass: string): Promise<{ success: boolean; name?: string; role?: string }> => {
     const hash = await hashPassword(pass);
-    const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=login&user=${encodeURIComponent(user)}&hash=${hash}`);
-    const txt = await res.text();
-    if (txt.includes("CORRECT")) {
-      const parts = txt.split('|');
-      return { 
-        success: true, 
-        name: parts.length > 1 ? parts[1] : user,
-        role: parts.length > 2 ? parts[2] : 'OPERATOR'
-      };
+    try {
+      const res = await fetchWithTimeout(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          mode: 'login',
+          user: user,
+          hash: hash
+        })
+      });
+      const txt = await res.text();
+      if (txt.includes("CORRECT")) {
+        const parts = txt.split('|');
+        return { 
+          success: true, 
+          name: parts.length > 1 ? parts[1] : user,
+          role: parts.length > 2 ? parts[2] : 'OPERATOR'
+        };
+      }
+      return { success: false };
+    } catch (e) {
+      console.error(e);
+      return { success: false };
     }
-    return { success: false };
   },
 
   register: async (user: string, pass: string, name: string): Promise<boolean> => {
@@ -302,7 +325,6 @@ export const api = {
     }
   },
 
-  // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Загрузка фото с ретраями
   uploadPhoto: async (image: string, mimeType: string, filename: string): Promise<string> => {
     let retries = 3;
     while (retries > 0) {
@@ -311,7 +333,7 @@ export const api = {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({ mode: 'upload_photo', image, mimeType, filename }),
-          timeout: 45000 // 45 секунд для тяжелых фотографий на медленном интернете
+          timeout: 45000 
         });
         const data = await res.json();
         
@@ -324,15 +346,14 @@ export const api = {
         retries--;
         console.warn(`Фото не загрузилось. Осталось попыток: ${retries}`, e);
         if (retries === 0) {
-          throw new Error('NETWORK_ERROR'); // Выбрасываем ошибку, чтобы остановить процесс
+          throw new Error('NETWORK_ERROR');
         }
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Пауза 2 сек перед повтором
+        await new Promise(resolve => setTimeout(resolve, 2000)); 
       }
     }
     return "";
   },
 
-  // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Бросаем ошибку при неудаче
   taskAction: async (id: string, act: string, user: string, zone: string | null = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
     const safeZone = zone || '';
     const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${safeZone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
