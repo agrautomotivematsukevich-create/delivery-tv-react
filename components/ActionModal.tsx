@@ -20,30 +20,47 @@ type UploadStatus =
 
 type PhotoData = { data: string; mime: string; name: string };
 
+// ── ОПТИМИЗИРОВАННАЯ ФУНКЦИЯ СЖАТИЯ (БЕЗ УТЕЧЕК ПАМЯТИ) ──
 async function compressImage(file: File, maxW = 1200, quality = 0.72, suffix = ''): Promise<PhotoData> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = evt => {
-      const img = new Image();
-      img.onload = () => {
-        const scale = Math.min(1, maxW / img.width);
-        const canvas = document.createElement('canvas');
-        canvas.width  = Math.round(img.width  * scale);
-        canvas.height = Math.round(img.height * scale);
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return reject(new Error('Canvas error'));
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve({
-          data: canvas.toDataURL('image/jpeg', quality),
-          mime: 'image/jpeg',
-          name: suffix ? `${suffix}.jpg` : file.name,
-        });
-      };
-      img.onerror = () => reject(new Error('Image load error'));
-      if (evt.target?.result) img.src = evt.target.result as string;
+    const img = new Image();
+    
+    // Создаем легкую ссылку на файл вместо загрузки его в память (Base64)
+    const objectUrl = URL.createObjectURL(file);
+
+    img.onload = () => {
+      // СРАЗУ освобождаем оперативную память от тяжелого оригинала
+      URL.revokeObjectURL(objectUrl);
+
+      const scale = Math.min(1, maxW / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject(new Error('Canvas error'));
+      
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      
+      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+      // Явно обнуляем canvas, чтобы подсказать сборщику мусора очистить пиксели
+      canvas.width = 0;
+      canvas.height = 0;
+
+      resolve({
+        data: dataUrl,
+        mime: 'image/jpeg',
+        name: suffix ? `${suffix}.jpg` : file.name,
+      });
     };
-    reader.onerror = () => reject(new Error('File read error'));
-    reader.readAsDataURL(file);
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Image load error'));
+    };
+
+    img.src = objectUrl;
   });
 }
 
@@ -82,19 +99,31 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
     setTimeout(() => cameraInputRef.current?.click(), 50);
   };
 
+  // ── ОБРАБОТЧИК ВЫБОРА ФОТО С ЗАЩИТОЙ ОТ ПАДЕНИЙ ──
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+    
     setProcessingPhoto(true);
+    setUploadStatus({ state: 'idle' }); // Сбрасываем старые ошибки
+
     try {
       const t1 = currentPhotoTarget.current;
       const suffix = isStart
         ? (t1 === 1 ? `${action.id}_General` : `${action.id}_Seal`)
         : `${action.id}_Empty`;
+      
       const compressed = await compressImage(file, 1200, 0.72, suffix);
+      
       if (t1 === 1) setPhoto1(compressed);
       else setPhoto2(compressed);
+    } catch (error) {
+      console.error("Ошибка сжатия фото:", error);
+      setUploadStatus({ 
+        state: 'error', 
+        message: 'Не удалось обработать фотографию (нехватка памяти). Попробуйте сделать снимок еще раз.' 
+      });
     } finally {
       setProcessingPhoto(false);
     }
