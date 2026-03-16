@@ -20,34 +20,23 @@ type UploadStatus =
 
 type PhotoData = { data: string; mime: string; name: string };
 
-// ── ОПТИМИЗИРОВАННАЯ ФУНКЦИЯ СЖАТИЯ (БЕЗ УТЕЧЕК ПАМЯТИ) ──
 async function compressImage(file: File, maxW = 1200, quality = 0.72, suffix = ''): Promise<PhotoData> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    
-    // Создаем легкую ссылку на файл вместо загрузки его в память (Base64)
     const objectUrl = URL.createObjectURL(file);
 
     img.onload = () => {
-      // СРАЗУ освобождаем оперативную память от тяжелого оригинала
       URL.revokeObjectURL(objectUrl);
-
       const scale = Math.min(1, maxW / img.width);
       const canvas = document.createElement('canvas');
       canvas.width  = Math.round(img.width  * scale);
       canvas.height = Math.round(img.height * scale);
-      
       const ctx = canvas.getContext('2d');
       if (!ctx) return reject(new Error('Canvas error'));
-      
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
       const dataUrl = canvas.toDataURL('image/jpeg', quality);
-
-      // Явно обнуляем canvas, чтобы подсказать сборщику мусора очистить пиксели
       canvas.width = 0;
       canvas.height = 0;
-
       resolve({
         data: dataUrl,
         mime: 'image/jpeg',
@@ -82,7 +71,6 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   const isStart = action.type === 'start';
   const AVAILABLE_ZONES = ['G4', 'G5', 'G7', 'G8', 'G9', 'P70'];
-  const sealPhotoUrl: string | undefined = (action as any).sealPhotoUrl;
 
   const triggerFile = (target: 1 | 2) => {
     currentPhotoTarget.current = target;
@@ -99,31 +87,23 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
     setTimeout(() => cameraInputRef.current?.click(), 50);
   };
 
-  // ── ОБРАБОТЧИК ВЫБОРА ФОТО С ЗАЩИТОЙ ОТ ПАДЕНИЙ ──
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
-    
     setProcessingPhoto(true);
-    setUploadStatus({ state: 'idle' }); // Сбрасываем старые ошибки
+    setUploadStatus({ state: 'idle' });
 
     try {
       const t1 = currentPhotoTarget.current;
       const suffix = isStart
         ? (t1 === 1 ? `${action.id}_General` : `${action.id}_Seal`)
         : `${action.id}_Empty`;
-      
       const compressed = await compressImage(file, 1200, 0.72, suffix);
-      
       if (t1 === 1) setPhoto1(compressed);
       else setPhoto2(compressed);
     } catch (error) {
-      console.error("Ошибка сжатия фото:", error);
-      setUploadStatus({ 
-        state: 'error', 
-        message: 'Не удалось обработать фотографию (нехватка памяти). Попробуйте сделать снимок еще раз.' 
-      });
+      setUploadStatus({ state: 'error', message: 'Ошибка обработки фото. Попробуйте еще раз.' });
     } finally {
       setProcessingPhoto(false);
     }
@@ -137,13 +117,8 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   const handleSubmit = async () => {
     if (!isFormValid()) return;
-    
     try {
-      // Жесткая проверка сети перед стартом
-      if (!navigator.onLine) {
-        throw new Error('NETWORK_OFFLINE');
-      }
-
+      if (!navigator.onLine) throw new Error('NETWORK_OFFLINE');
       setUploadStatus({ state: 'uploading', step: 'Отправка фото...', progress: 10 });
       let urlGen = '', urlSeal = '', urlEmpty = '';
 
@@ -154,7 +129,6 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         if (isStart) {
           setUploadStatus({ state: 'uploading', step: 'Загрузка фото 1 из 2...', progress: 30 });
           urlGen = photo1 ? await api.uploadPhoto(photo1.data, photo1.mime, photo1.name) : '';
-          
           setUploadStatus({ state: 'uploading', step: 'Загрузка фото 2 из 2...', progress: 60 });
           urlSeal = photo2 ? await api.uploadPhoto(photo2.data, photo2.mime, photo2.name) : '';
         } else {
@@ -163,32 +137,17 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         }
       }
 
-      setUploadStatus({ state: 'uploading', step: 'Сохранение в базу...', progress: 85 });
-      
-      // ЖДЕМ ОТВЕТА ОТ GOOGLE SHEETS
+      setUploadStatus({ state: 'uploading', step: 'Сохранение...', progress: 85 });
       await api.taskAction(action.id, actionType, user.name, selectedZone, urlGen, urlSeal, urlEmpty);
-
-      // ТОЛЬКО ПРИ 100% УСПЕХЕ ПОКАЗЫВАЕМ ГАЛОЧКУ И ЗАКРЫВАЕМ
-      setUploadStatus({ state: 'uploading', step: 'Успешно сохранено!', progress: 100 });
+      setUploadStatus({ state: 'uploading', step: 'Готово!', progress: 100 });
       setTimeout(() => {
         setUploadStatus({ state: 'success' });
         vibrate([100, 50, 100]);
         setTimeout(() => onSuccess(), 700);
       }, 400);
-
     } catch (error: any) {
-      // НИКАКИХ ОФФЛАЙН ОЧЕРЕДЕЙ! ОСТАВЛЯЕМ ОПЕРАТОРА НА ЭТОМ ЭКРАНЕ!
       vibrate([200, 100, 200]);
-      
-      const errMsg = error instanceof Error ? error.message : String(error);
-      const isNetworkError = !navigator.onLine || errMsg.includes('NETWORK') || errMsg.includes('Failed to fetch') || errMsg.includes('timeout');
-
-      setUploadStatus({ 
-        state: 'error', 
-        message: isNetworkError 
-          ? 'Пропал интернет! Не закрывайте окно. Найдите сеть и нажмите "Попробовать снова" (фотографии сохранены в памяти телефона).'
-          : 'Ошибка сервера. Попробуйте снова или обратитесь к логисту.'
-      });
+      setUploadStatus({ state: 'error', message: 'Ошибка сети. Попробуйте снова через минуту.' });
     }
   };
 
@@ -210,8 +169,8 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
             <CheckCircle className="text-emerald-400 w-8 h-8 opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
           </div>
-          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent py-2 px-3">
-            <span className="text-xs font-bold text-white/80 uppercase tracking-wide">{label}</span>
+          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent py-2 px-3 text-center">
+            <span className="text-[10px] font-black text-white/80 uppercase tracking-widest">{label}</span>
           </div>
         </>
       ) : (
@@ -219,26 +178,25 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           {processingPhoto && currentPhotoTarget.current === (label.includes('пломб') ? 2 : 1)
             ? <Loader2 className="w-7 h-7 text-accent-blue animate-spin" />
             : icon}
-          <span className="font-bold text-white/60 text-xs uppercase text-center leading-tight">{label}</span>
+          <span className="font-black text-white/60 text-[10px] uppercase text-center leading-tight tracking-widest">{label}</span>
         </div>
       )}
     </div>
   );
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-[#0F0F12] border border-white/10 p-6 rounded-3xl w-full max-w-[480px] flex flex-col gap-5 shadow-2xl relative max-h-[95vh] overflow-y-auto">
-
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+      <div className="bg-[#0F0F12] border border-white/10 p-6 rounded-3xl w-full max-w-[480px] flex flex-col gap-5 relative max-h-[95vh] overflow-y-auto shadow-2xl">
+        
         {(isSubmitting || isSuccess) && (
           <div className="absolute inset-0 bg-black/85 backdrop-blur-sm rounded-3xl z-10 flex flex-col items-center justify-center gap-4 p-8">
             {isSubmitting && uploadStatus.state === 'uploading' && (
               <>
                 <div className="relative w-28 h-28">
-                  <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
+                   <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
                     <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="8" />
                     <circle cx="60" cy="60" r="54" fill="none" stroke="#00d4ff" strokeWidth="8"
-                      strokeLinecap="round"
-                      strokeDasharray={`${2 * Math.PI * 54}`}
+                      strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 54}`}
                       strokeDashoffset={`${2 * Math.PI * 54 * (1 - uploadStatus.progress / 100)}`}
                       className="transition-all duration-500"
                     />
@@ -247,16 +205,16 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
                     <Upload className="w-9 h-9 text-[#00d4ff] animate-bounce" />
                   </div>
                 </div>
-                <div className="text-4xl font-black text-white tabular-nums">{Math.round(uploadStatus.progress)}%</div>
-                <div className="text-sm font-bold text-white/80 text-center">{uploadStatus.step}<br/><span className="text-[10px] text-white/40 uppercase">Не блокируйте экран телефона</span></div>
+                <div className="text-4xl font-black text-white">{Math.round(uploadStatus.progress)}%</div>
+                <div className="text-sm font-bold text-white/80 text-center">{uploadStatus.step}</div>
               </>
             )}
             {isSuccess && (
               <div className="flex flex-col items-center gap-4 animate-in zoom-in duration-300">
                 <div className="w-24 h-24 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <CheckCircle className="w-16 h-16 text-emerald-500" strokeWidth={2.5} />
+                  <CheckCircle className="w-16 h-16 text-emerald-500" />
                 </div>
-                <div className="text-3xl font-black text-white text-center">Успешно!</div>
+                <div className="text-3xl font-black text-white uppercase">Успешно!</div>
               </div>
             )}
           </div>
@@ -264,101 +222,46 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
         {isError && (
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md rounded-3xl z-10 flex flex-col items-center justify-center gap-5 p-8 border-2 border-red-500/30">
-            <AlertCircle className="w-16 h-16 text-red-500 animate-pulse" />
-            <div className="text-2xl font-black text-white uppercase text-center">Ошибка Сети</div>
-            <div className="text-sm font-medium text-red-100 text-center leading-relaxed bg-red-500/10 p-4 rounded-xl">
-              {uploadStatus.state === 'error' && uploadStatus.message}
-            </div>
-            <button onClick={() => setUploadStatus({ state: 'idle' })}
-              className="mt-4 px-8 py-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-wide rounded-2xl w-full shadow-lg shadow-red-500/20 transition-all active:scale-95">
-              Попробовать снова
-            </button>
-            <button onClick={onClose}
-              className="mt-2 text-white/40 text-xs uppercase font-bold hover:text-white transition-colors">
-              Отменить задачу (фото удалятся)
-            </button>
+            <AlertCircle className="w-16 h-16 text-red-500" />
+            <div className="text-xl font-black text-white uppercase text-center">{uploadStatus.state === 'error' && uploadStatus.message}</div>
+            <button onClick={() => setUploadStatus({ state: 'idle' })} className="w-full py-4 bg-red-600 text-white font-black uppercase rounded-2xl">Попробовать снова</button>
           </div>
         )}
 
         <div className="text-center">
-          <div className="text-xs text-white/50 uppercase tracking-widest mb-1">
-            {isStart ? 'Начало разгрузки' : 'Завершение разгрузки'}
-          </div>
-          <h2 className="text-2xl font-extrabold text-white font-mono tracking-tight">{action.id}</h2>
-          <button
-            onClick={() => setIsLocalManual(!isLocalManual)}
-            disabled={isSubmitting}
-            className={`mt-3 mx-auto flex items-center gap-2 px-4 py-2 rounded-full border transition-all ${
-              isLocalManual ? 'bg-orange-500 border-orange-400 text-white' : 'bg-white/5 border-white/10 text-white/60'
-            }`}
-          >
-            <Truck size={14} />
-            <span className="text-[10px] font-black uppercase tracking-[0.1em]">
-              {isLocalManual ? 'Локальный режим: ВКЛ' : 'Режим без фото'}
-            </span>
+          <div className="text-[10px] text-white/50 uppercase tracking-[0.2em] mb-1">{isStart ? 'Начало разгрузки' : 'Завершение разгрузки'}</div>
+          <h2 className="text-2xl font-black text-white font-mono">{action.id}</h2>
+          <button onClick={() => setIsLocalManual(!isLocalManual)} className={`mt-3 mx-auto flex items-center gap-2 px-4 py-2 rounded-full border transition-all ${isLocalManual ? 'bg-orange-500 text-white' : 'bg-white/5 text-white/40 border-white/10'}`}>
+            <Truck size={14} /> <span className="text-[9px] font-black uppercase tracking-wider">{isLocalManual ? 'Локальный режим: ВКЛ' : 'Режим без фото'}</span>
           </button>
         </div>
 
         {isStart && (
           <div>
-            <p className="text-[10px] font-black text-white/50 mb-2 uppercase text-center">Зона выгрузки</p>
             <div className="grid grid-cols-3 gap-2">
               {AVAILABLE_ZONES.map(z => (
-                <button key={z} onClick={() => setZone(z)} disabled={isSubmitting}
-                  className={`py-3 rounded-xl font-bold text-sm border transition-all ${
-                    zone === z ? 'bg-[#1E7D7D] text-white' : 'bg-white/5 text-white/60 border-transparent'
-                  }`}>
-                  {z}
-                </button>
+                <button key={z} onClick={() => setZone(z)} className={`py-3 rounded-xl font-black text-xs border transition-all ${zone === z ? 'bg-[#1E7D7D] text-white' : 'bg-white/5 text-white/40 border-transparent'}`}>{z}</button>
               ))}
             </div>
           </div>
         )}
 
-        {!isStart && sealPhotoUrl && (
-          <div className="rounded-2xl overflow-hidden border border-white/10 bg-black">
-            <img src={sealPhotoUrl} alt="Пломба" className="w-full max-h-48 object-cover" />
-          </div>
-        )}
-
         {isLocalManual ? (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col items-center gap-4">
-            <Clock size={16} className="text-orange-400" />
-            <input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)}
-              className="bg-transparent text-white text-5xl font-mono text-center outline-none [color-scheme:dark]" />
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col items-center">
+            <input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)} className="bg-transparent text-white text-5xl font-mono text-center outline-none" />
           </div>
         ) : (
           <div className={`grid gap-3 ${isStart ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            <PhotoPreview
-              src={photo1?.data ?? null}
-              label={isStart ? 'Общее фото' : 'Фото пустого'}
-              onTap={() => triggerFile(1)}
-              icon={<Camera className="text-white/50 w-7 h-7" />}
-            />
-            {isStart && (
-              <PhotoPreview
-                src={photo2?.data ?? null}
-                label="Фото пломбы"
-                onTap={() => triggerFile(2)}
-                icon={<Lock className="text-white/50 w-7 h-7" />}
-              />
-            )}
+            <PhotoPreview src={photo1?.data ?? null} label={isStart ? 'Общее фото' : 'Фото пустого'} onTap={() => triggerFile(1)} icon={<Camera className="text-white/40 w-7 h-7" />} />
+            {isStart && <PhotoPreview src={photo2?.data ?? null} label="Фото пломбы" onTap={() => triggerFile(2)} icon={<Lock className="text-white/40 w-7 h-7" />} />}
           </div>
         )}
 
         <div className="flex flex-col gap-2">
-          <button onClick={handleSubmit}
-            disabled={isSubmitting || processingPhoto || !isFormValid()}
-            className={`w-full py-4 font-black text-sm rounded-2xl transition-all uppercase flex items-center justify-center gap-2 ${
-              isLocalManual ? 'bg-orange-600' : 'bg-[#1E7D7D]'
-            } text-white disabled:opacity-20`}>
-            {(isSubmitting || processingPhoto) && <Loader2 className="w-4 h-4 animate-spin" />}
-            {isSubmitting ? 'Загрузка...' : processingPhoto ? 'Обработка...' : 'Подтвердить'}
+          <button onClick={handleSubmit} disabled={isSubmitting || processingPhoto || !isFormValid()} className={`w-full py-5 font-black text-sm rounded-2xl uppercase ${isLocalManual ? 'bg-orange-600' : 'bg-[#1E7D7D]'} text-white disabled:opacity-20`}>
+            {isSubmitting ? 'Загрузка...' : 'Подтвердить'}
           </button>
-          <button onClick={onClose} disabled={isSubmitting}
-            className="text-white/50 py-2 text-[10px] font-bold uppercase hover:text-white transition-colors">
-            Отмена
-          </button>
+          <button onClick={onClose} className="text-white/30 py-2 text-[9px] font-black uppercase">Отмена</button>
         </div>
 
         <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileChange} />
@@ -367,14 +270,10 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
       {showPhotoMenu && (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 p-4" onClick={() => setShowPhotoMenu(null)}>
-          <div className="w-full max-w-sm bg-[#252736] rounded-3xl overflow-hidden" onClick={e => e.stopPropagation()}>
-             <button onClick={triggerCamera} className="w-full flex items-center gap-4 px-6 py-4 text-white hover:bg-white/5 transition-colors">
-                <Camera className="w-5 h-5 text-[#1E7D7D]" /> <span className="font-semibold">Камера</span>
-             </button>
-             <button onClick={triggerGallery} className="w-full flex items-center gap-4 px-6 py-4 text-white hover:bg-white/5 transition-colors">
-                <Upload className="w-5 h-5 text-[#1E7D7D]" /> <span className="font-semibold">Галерея</span>
-             </button>
-             <div className="p-3"><button onClick={() => setShowPhotoMenu(null)} className="w-full py-3 rounded-2xl bg-white/5 text-white/50 hover:bg-white/10 transition-colors">Отмена</button></div>
+          <div className="w-full max-w-sm bg-[#1A1A1F] rounded-t-3xl overflow-hidden p-4 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+             <button onClick={triggerCamera} className="w-full flex items-center gap-4 p-5 text-white bg-white/5 rounded-2xl"><Camera className="w-5 h-5" /> <span className="font-bold">Камера</span></button>
+             <button onClick={triggerGallery} className="w-full flex items-center gap-4 p-5 text-white bg-white/5 rounded-2xl"><Upload className="w-5 h-5" /> <span className="font-bold">Галерея</span></button>
+             <button onClick={() => setShowPhotoMenu(null)} className="w-full py-4 text-white/40 font-bold uppercase text-xs">Отмена</button>
           </div>
         </div>
       )}
