@@ -2,8 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { PendingUser } from '../types';
 import { ShieldAlert, UserCheck, XCircle, RefreshCcw, CheckCircle, Trash } from 'lucide-react';
+import { useAppContext } from './AppContext';
+import { useEscape } from '../utils/useEscape';
 
 export default function AdminPanel({ onClose }: { onClose: () => void }) {
+  useEscape(onClose);
+  const { confirm, addToast } = useAppContext();
   const [users, setUsers] = useState<PendingUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState<string | null>(null);
@@ -34,22 +38,25 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
       const role = roles[login] || 'OPERATOR';
       await api.approveUser(login, role);
       setUsers(prev => prev.filter(u => u.login !== login));
+      addToast(`Пользователь ${login} одобрен`, 'success');
     } catch (e) {
-      alert('Ошибка при одобрении пользователя');
+      addToast('Ошибка при одобрении пользователя', 'error');
     }
     setApproving(null);
   };
 
   const handleReject = async (login: string) => {
-    if (!window.confirm(`Отклонить заявку пользователя ${login}?`)) return;
-    setRejecting(login);
-    try {
-      await api.rejectUser(login);
-      setUsers(prev => prev.filter(u => u.login !== login));
-    } catch (e) {
-      alert('Ошибка при отклонении пользователя');
-    }
-    setRejecting(null);
+    confirm(`Отклонить заявку пользователя ${login}?`, async () => {
+      setRejecting(login);
+      try {
+        await api.rejectUser(login);
+        setUsers(prev => prev.filter(u => u.login !== login));
+        addToast(`Заявка ${login} отклонена`, 'success');
+      } catch (e) {
+        addToast('Ошибка при отклонении пользователя', 'error');
+      }
+      setRejecting(null);
+    });
   };
 
   return (

@@ -16,13 +16,13 @@ const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: 
   try {
     const response = await fetch(url, { ...fetchOptions, signal: controller.signal });
     clearTimeout(id);
+    if (!response.ok) throw new Error(`HTTP_ERROR: ${response.status}`);
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     clearTimeout(id);
-    if (error.name === 'AbortError') {
-      throw new Error('TIMEOUT');
-    }
-    throw error;
+    if (error instanceof DOMException && error.name === 'AbortError') throw new Error('TIMEOUT');
+    if (error instanceof Error && error.message.startsWith('HTTP_ERROR')) throw error;
+    throw new Error('NETWORK_ERROR');
   }
 };
 
@@ -186,23 +186,26 @@ export const api = {
   
   updatePlanRow: async (dateStr: string, row: PlanRow): Promise<boolean> => {
     try {
-       const params = new URLSearchParams({
-         mode: 'update_container_row',
-         date: dateStr,
-         row: row.rowIndex.toString(),
-         lot: row.lot,
-         ws: row.ws,
-         pallets: row.pallets,
-         id: row.id,
-         phone: row.phone,
-         eta: row.eta
+       const res = await fetchWithTimeout(SCRIPT_URL, {
+         method: 'POST',
+         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+         body: JSON.stringify({
+           mode: 'update_container_row',
+           date: dateStr,
+           row: row.rowIndex.toString(),
+           lot: row.lot,
+           ws: row.ws,
+           pallets: row.pallets,
+           id: row.id,
+           phone: row.phone,
+           eta: row.eta
+         })
        });
-       const res = await fetchWithTimeout(`${SCRIPT_URL}?${params.toString()}`);
        const txt = await res.text();
        return txt.includes("UPDATED");
     } catch(e) {
-      console.error(e);
-      return false;
+      console.error("Failed to update plan row:", e);
+      throw new Error('NETWORK_ERROR');
     }
   },
 
@@ -227,7 +230,11 @@ export const api = {
 
   setPriorityLot: async (lot: string): Promise<boolean> => {
     try {
-      const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=set_priority_lot&lot=${encodeURIComponent(lot)}`);
+      const res = await fetchWithTimeout(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: 'set_priority_lot', lot })
+      });
       const txt = await res.text();
       delete _cache['priority_lot'];
       return txt.includes("OK");
@@ -289,9 +296,18 @@ export const api = {
   },
 
   register: async (user: string, pass: string, name: string): Promise<boolean> => {
-    const hash = await hashPassword(pass);
-    await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}&mode=register&user=${encodeURIComponent(user)}&hash=${hash}&name=${encodeURIComponent(name)}`);
-    return true;
+    try {
+      const hash = await hashPassword(pass);
+      await fetchWithTimeout(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: 'register', user, hash, name })
+      });
+      return true;
+    } catch (e) {
+      console.error("Failed to register:", e);
+      throw new Error('NETWORK_ERROR');
+    }
   },
 
   getPendingUsers: async (): Promise<PendingUser[]> => {
@@ -307,8 +323,11 @@ export const api = {
 
   approveUser: async (login: string, role: string): Promise<void> => {
     try {
-      const url = `${SCRIPT_URL}?mode=approve_user&login=${encodeURIComponent(login)}&role=${encodeURIComponent(role)}`;
-      await fetchWithTimeout(url);
+      await fetchWithTimeout(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: 'approve_user', login, role })
+      });
     } catch (e) {
       console.error("Failed to approve user:", e);
       throw new Error('NETWORK_ERROR');
@@ -317,8 +336,11 @@ export const api = {
 
   rejectUser: async (login: string): Promise<void> => {
     try {
-      const url = `${SCRIPT_URL}?mode=reject_user&login=${encodeURIComponent(login)}`;
-      await fetchWithTimeout(url);
+      await fetchWithTimeout(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: 'reject_user', login })
+      });
     } catch (e) {
       console.error("Failed to reject user:", e);
       throw new Error('NETWORK_ERROR');
@@ -342,7 +364,7 @@ export const api = {
         } else {
           throw new Error("Server returned non-success status");
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         retries--;
         console.warn(`Фото не загрузилось. Осталось попыток: ${retries}`, e);
         if (retries === 0) {
@@ -355,10 +377,14 @@ export const api = {
   },
 
   taskAction: async (id: string, act: string, user: string, zone: string | null = '', pGen: string = '', pSeal: string = '', pEmpty: string = ''): Promise<void> => {
-    const safeZone = zone || '';
-    const url = `${SCRIPT_URL}?mode=task_action&id=${id}&act=${act}&op=${encodeURIComponent(user)}&zone=${safeZone}&pGen=${encodeURIComponent(pGen)}&pSeal=${encodeURIComponent(pSeal)}&pEmpty=${encodeURIComponent(pEmpty)}`;
     try {
-      await fetchWithTimeout(url, { timeout: 20000 });
+      const safeZone = zone || '';
+      await fetchWithTimeout(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: 'task_action', id, act, op: user, zone: safeZone, pGen, pSeal, pEmpty }),
+        timeout: 20000
+      });
     } catch (e) {
       console.error("Task action failed to send:", e);
       throw new Error('NETWORK_ERROR');
@@ -367,11 +393,14 @@ export const api = {
 
   reportIssue: async (id: string, desc: string, photos: string[], author: string): Promise<void> => {
     try {
-      const p1 = photos[0] ? encodeURIComponent(photos[0]) : "";
-      const p2 = photos[1] ? encodeURIComponent(photos[1]) : "";
-      const p3 = photos[2] ? encodeURIComponent(photos[2]) : "";
-      const url = `${SCRIPT_URL}?mode=report_issue&id=${encodeURIComponent(id)}&desc=${encodeURIComponent(desc)}&p1=${p1}&p2=${p2}&p3=${p3}&author=${encodeURIComponent(author)}`;
-      await fetchWithTimeout(url);
+      const p1 = photos[0] || "";
+      const p2 = photos[1] || "";
+      const p3 = photos[2] || "";
+      await fetchWithTimeout(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: 'report_issue', id, desc, p1, p2, p3, author })
+      });
     } catch (e) {
       console.error("Issue report failed:", e);
       throw new Error('NETWORK_ERROR');

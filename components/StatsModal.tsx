@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { Task, TranslationSet } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { X } from 'lucide-react'; // Импортируем иконку для красоты
+import { useEscape } from '../utils/useEscape';
 
 interface StatsModalProps {
   onClose: () => void;
@@ -10,6 +11,7 @@ interface StatsModalProps {
 }
 
 const StatsModal: React.FC<StatsModalProps> = ({ onClose, t }) => {
+  useEscape(onClose);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 

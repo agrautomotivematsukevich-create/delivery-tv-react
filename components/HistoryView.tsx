@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-// Заменил TranslationSet на any, если он не определен в types.ts
-import { Task } from '../types'; 
+import { Task, TranslationSet } from '../types'; 
 import { Calendar, Package, X } from 'lucide-react';
+import { calcDuration } from '../utils/time';
 
 interface HistoryViewProps {
-  t: any; // Временно используем any для успешного билда
+  t: TranslationSet;
 }
 
 const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
@@ -15,7 +15,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
-  // ... остальной код без изменений
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (lightboxImg) setLightboxImg(null);
+        else if (selectedTask) setSelectedTask(null);
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [lightboxImg, selectedTask]);
+
   const fetchData = async (d: string) => {
     setLoading(true);
     const [y, m, day] = d.split('-');
@@ -42,25 +52,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     const originalFileLink = `https://drive.google.com/uc?export=download&id=${id}`;
     const sizeParam = size ? `&${size.startsWith('w') ? 'w' : 'h'}=${size.replace(/\D/g, '')}` : '&n=-1';
     return `https://wsrv.nl/?url=${encodeURIComponent(originalFileLink)}&q=100${sizeParam}`;
-  };
-
-  const calcDuration = (start?: string, end?: string): string => {
-    if (!start || !end) return '-';
-    try {
-      const parseTime = (t: string): number => {
-        const parts = t.split(':');
-        if (parts.length < 2) return NaN;
-        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-      };
-      const s = parseTime(start);
-      const e = parseTime(end);
-      if (isNaN(s) || isNaN(e)) return '-';
-      let diff = e - s;
-      if (diff < 0) diff += 24 * 60;
-      const h = Math.floor(diff / 60);
-      const m = diff % 60;
-      return h > 0 ? `${h}ч ${m.toString().padStart(2, '0')}мин` : `${m}мин`;
-    } catch { return '-'; }
   };
 
   return (
@@ -130,15 +121,15 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
       {/* Модальное окно (Центрированное, классическое) */}
       {selectedTask && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <div className="bg-[#1A1A1E] border border-white/10 rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar relative shadow-2xl">
-               <button 
-                 onClick={() => setSelectedTask(null)}
-                 className="absolute top-6 right-6 p-2 rounded-full bg-white/5 hover:bg-white/10 text-white z-10"
-               >
-                 <X size={24} />
-               </button>
+             <div className="bg-[#1A1A1E] border border-white/10 rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar relative shadow-2xl">
+                <button 
+                  onClick={() => setSelectedTask(null)}
+                  className="absolute top-6 right-6 p-2 rounded-full bg-white/5 hover:bg-white/10 text-white z-10"
+                >
+                  <X size={24} />
+                </button>
 
-               <div className="p-8">
+                <div className="p-8">
                   <h2 className="text-2xl font-bold text-white font-mono mb-6 pr-10">{selectedTask.id}</h2>
                   
                   <div className="grid grid-cols-1 gap-8">

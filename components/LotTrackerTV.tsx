@@ -2,64 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { LotContainer } from '../types';
 import { api } from '../services/api';
 import { Clock, Package, Truck, Timer, CheckCircle2 } from 'lucide-react';
+import { parseHHMM, elapsedMin, nowMinutes, minutesUntil, formatDuration, todayDDMM, dateSortValue } from '../utils/time';
 
 interface Props {
   lot?: string;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function parseHHMM(s: string): number | null {
-  const m = (s || '').trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  return parseInt(m[1]) * 60 + parseInt(m[2]);
-}
-
-function nowMinutes(): number {
-  const n = new Date();
-  return n.getHours() * 60 + n.getMinutes();
-}
-
-/** Minutes elapsed since HH:MM today */
-function elapsedSince(startHHMM: string): number {
-  const s = parseHHMM(startHHMM);
-  if (s === null) return 0;
-  let diff = nowMinutes() - s;
-  if (diff < -60) diff += 1440;
-  return Math.max(0, diff);
-}
-
-/** Minutes until HH:MM today (can be negative if past) */
-function minutesUntil(etaHHMM: string): number {
-  const e = parseHHMM(etaHHMM);
-  if (e === null) return 0;
-  let diff = e - nowMinutes();
-  if (diff < -720) diff += 1440; // wrap around midnight
-  return diff;
-}
-
-function fmtDuration(mins: number): string {
-  const abs = Math.abs(mins);
-  if (abs >= 60) {
-    const h = Math.floor(abs / 60);
-    const m = abs % 60;
-    return `${h}ч ${m.toString().padStart(2, '0')}м`;
-  }
-  return `${abs} мин`;
-}
-
-function todayDDMM(): string {
-  const d = new Date();
-  return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2);
-}
-
-/** Parse DD.MM to sortable number (handles year wrap: assume current year) */
-function dateSort(d: string): number {
-  const parts = d.split('.');
-  if (parts.length !== 2) return 0;
-  const day = parseInt(parts[0]);
-  const month = parseInt(parts[1]);
-  return month * 100 + day;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -126,7 +72,7 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
 
   // Sort: by date, then by index/eta
   const sorted = [...containers].sort((a, b) => {
-    const da = dateSort(a.date), db = dateSort(b.date);
+    const da = dateSortValue(a.date), db = dateSortValue(b.date);
     if (da !== db) return da - db;
     const ia = parseInt(a.index) || 0, ib = parseInt(b.index) || 0;
     return ia - ib;
@@ -145,7 +91,7 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
     if (c.date === today && c.eta) {
       return minutesUntil(c.eta) > -30; // allow 30min past
     }
-    return dateSort(c.date) >= dateSort(today);
+    return dateSortValue(c.date) >= dateSortValue(today);
   }) || waiting[0];
 
   const nextCountdown = nextWait?.date === today && nextWait?.eta ? minutesUntil(nextWait.eta) : null;
@@ -302,7 +248,7 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
                     {isActive && c.start_time && (
                       <div className="text-center">
                         <div className="text-[8px] font-bold text-amber-400/70 uppercase tracking-widest">Идёт</div>
-                        <div className="font-mono text-lg font-black text-amber-400 tabular-nums">{elapsedSince(c.start_time)} м</div>
+                        <div className="font-mono text-lg font-black text-amber-400 tabular-nums">{elapsedMin(c.start_time)} м</div>
                       </div>
                     )}
                   </div>
@@ -328,7 +274,7 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
                 Сейчас на выгрузке
               </div>
               {active.map(c => {
-                const elapsed = elapsedSince(c.start_time);
+                const elapsed = elapsedMin(c.start_time);
                 const isOver = elapsed > 30;
                 return (
                   <div key={c.id} className="mb-3 last:mb-0">
@@ -372,7 +318,7 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
                   </div>
                   <div className={`font-mono text-5xl font-black tabular-nums ${nextCountdown > 0 ? 'text-accent-blue' : 'text-red-400'}`}>
                     {nextCountdown <= 0 && '+'}
-                    {fmtDuration(nextCountdown)}
+                    {formatDuration(nextCountdown)}
                   </div>
                   <div className="text-sm text-white/50 mt-1">ETA: {nextWait.eta}</div>
                 </div>

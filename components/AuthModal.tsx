@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { api } from '../services/api';
 import { TranslationSet, User } from '../types';
 import AdminPanel from './AdminPanel';
+import { useEscape } from '../utils/useEscape';
+import { useAppContext } from './AppContext';
 
 interface AuthModalProps {
   onClose: () => void;
@@ -10,6 +12,8 @@ interface AuthModalProps {
 }
 
 const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => {
+  useEscape(onClose);
+  const { addToast } = useAppContext();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -42,7 +46,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
       if (!name) { setError('Name required'); setLoading(false); return; }
       const success = await api.register(username, password, name);
       if (success) {
-        alert('Registration sent. Please login.');
+        addToast('Registration sent. Please login.', 'success');
         setMode('login');
       } else {
         setError('Registration failed');

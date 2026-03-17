@@ -8,13 +8,27 @@ const DB_NAME = 'wh_offline_queue';
 const STORE_NAME = 'pending_actions';
 const DB_VERSION = 1;
 
-export interface QueuedAction {
-  id: string;         // Уникальный ID записи в очереди
-  timestamp: number;  // Время создания (для сортировки FIFO)
-  type: 'photo_upload' | 'task_action';
-  payload: any;       // Данные (Base64 фото или параметры задачи)
-  retries: number;    // Счетчик попыток
+export interface PhotoUploadPayload {
+  image: string;
+  mimeType: string;
+  filename: string;
+  taskId?: string;
+  photoField?: string;
 }
+
+export interface TaskActionPayload {
+  id: string;
+  act: string;
+  op: string;
+  zone?: string;
+  pGen?: string;
+  pSeal?: string;
+  pEmpty?: string;
+}
+
+export type QueuedAction = 
+  | { type: 'photo_upload'; payload: PhotoUploadPayload; id: string; timestamp: number; retries: number }
+  | { type: 'task_action'; payload: TaskActionPayload; id: string; timestamp: number; retries: number };
 
 let db: IDBDatabase | null = null;
 let flushing = false;
@@ -95,17 +109,30 @@ export const offlineQueue = {
   /**
    * Добавить задачу в очередь
    */
-  async enqueue(type: QueuedAction['type'], payload: any): Promise<void> {
+  async enqueueTaskAction(payload: TaskActionPayload): Promise<void> {
     const action: QueuedAction = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       timestamp: Date.now(),
-      type,
+      type: 'task_action',
       payload,
       retries: 0,
     };
     await add(action);
-    await this.refreshCount(); // Обновляем счетчик для UI
-    console.log(`[OfflineQueue] +1 в очереди (${type}), всего: ${this._cachedCount}`);
+    await this.refreshCount();
+    console.log(`[OfflineQueue] +1 в очереди (task_action), всего: ${this._cachedCount}`);
+  },
+
+  async enqueuePhotoUpload(payload: PhotoUploadPayload): Promise<void> {
+    const action: QueuedAction = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: Date.now(),
+      type: 'photo_upload',
+      payload,
+      retries: 0,
+    };
+    await add(action);
+    await this.refreshCount();
+    console.log(`[OfflineQueue] +1 в очереди (photo_upload), всего: ${this._cachedCount}`);
   },
 
   /**
@@ -128,7 +155,6 @@ export const offlineQueue = {
    * Отправить все накопленные задачи на сервер
    */
   async flush(): Promise<void> {
-    // Если уже идет процесс отправки или нет сети — выходим
     if (flushing || !navigator.onLine) return;
     flushing = true;
 
@@ -142,63 +168,67 @@ export const offlineQueue = {
       for (const item of items) {
         try {
           if (item.type === 'photo_upload') {
-            // 1. Пытаемся загрузить фото
+            const payload = item.payload;
             const res = await fetch(SCRIPT_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
               body: JSON.stringify({
                 mode: 'upload_photo',
-                image: item.payload.image,
-                mimeType: item.payload.mimeType,
-                filename: item.payload.filename,
+                image: payload.image,
+                mimeType: payload.mimeType,
+                filename: payload.filename,
               }),
             });
             const data = await res.json();
             
             if (data.status === 'SUCCESS') {
-              // 2. Если фото загружено, привязываем его URL к задаче
-              if (item.payload.taskId && item.payload.photoField) {
-                const params = new URLSearchParams({
-                  mode: 'task_action',
-                  id: item.payload.taskId,
-                  act: 'update_photo',
-                  [item.payload.photoField]: data.url,
+              if (payload.taskId && payload.photoField) {
+                await fetch(SCRIPT_URL, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                  body: JSON.stringify({
+                    mode: 'task_action',
+                    id: payload.taskId,
+                    act: 'update_photo',
+                    [payload.photoField]: data.url,
+                  }),
                 });
-                await fetch(`${SCRIPT_URL}?${params.toString()}`);
               }
               await remove(item.id);
-              console.log(`[OfflineQueue] Фото загружено: ${item.payload.filename}`);
+              console.log(`[OfflineQueue] Фото загружено: ${payload.filename}`);
             } else {
               throw new Error('Server rejected photo');
             }
           } 
           else if (item.type === 'task_action') {
-            // Отправка действия (старт/финиш/зона)
-            const params = new URLSearchParams(item.payload);
-            params.set('mode', 'task_action');
-            const res = await fetch(`${SCRIPT_URL}?${params.toString()}`);
+            const payload = item.payload;
+            const res = await fetch(SCRIPT_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({
+                mode: 'task_action',
+                ...payload
+              }),
+            });
             const txt = await res.text();
             
-            // Если успех или задача уже не существует на сервере — удаляем из очереди
             if (txt.includes('UPDATED') || txt.includes('OK') || txt.includes('ID_NOT_FOUND')) {
               await remove(item.id);
-              console.log(`[OfflineQueue] Действие синхронизировано: ${item.payload.id}`);
+              console.log(`[OfflineQueue] Действие синхронизировано: ${payload.id}`);
             } else {
               throw new Error('Action sync failed');
             }
           }
         } catch (e) {
-          // Если произошла ошибка запроса (например, опять пропала сеть в процессе)
           item.retries++;
           console.warn(`[OfflineQueue] Ошибка в ${item.id}, попытка ${item.retries}/10`, e);
           
           if (item.retries >= 10) {
-            await remove(item.id); // Удаляем "битые" задачи после 10 попыток
+            await remove(item.id);
           } else {
-            await add(item); // Сохраняем увеличенное число попыток
+            await add(item);
           }
           
-          // Если сети всё ещё нет, прекращаем перебор очереди
           if (!navigator.onLine) break;
         }
       }
@@ -208,9 +238,6 @@ export const offlineQueue = {
     }
   },
 
-  /**
-   * Полная очистка очереди
-   */
   async clear(): Promise<void> {
     const database = await openDB();
     const tx = database.transaction(STORE_NAME, 'readwrite');
@@ -221,19 +248,14 @@ export const offlineQueue = {
   },
 };
 
-// ── Автоматизация ────────────────────────────────────────────────────────────
-
 if (typeof window !== 'undefined') {
-  // Запуск при восстановлении интернета
   window.addEventListener('online', () => {
     console.log('[OfflineQueue] Сеть восстановлена, начинаю отправку...');
     offlineQueue.flush();
   });
 
-  // Первичный подсчет при загрузке страницы
   offlineQueue.refreshCount();
 
-  // Фоновая проверка каждые 60 секунд (если сеть есть)
   setInterval(() => {
     if (navigator.onLine) offlineQueue.flush();
     offlineQueue.refreshCount();

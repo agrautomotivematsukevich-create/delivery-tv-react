@@ -163,6 +163,7 @@ function doPost(e) {
     var data = JSON.parse(e.postData.contents);
     var simulatedEvent = { parameter: data };
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var lock = LockService.getScriptLock();
 
     // === LOGIN (POST) ===
     if (data.mode === "login") {
@@ -173,7 +174,6 @@ function doPost(e) {
 
     // === CREATE PLAN (POST) ===
     if (data.mode === "create_plan") {
-       var lock = LockService.getScriptLock();
        if (lock.tryLock(10000)) {
          try { return handleCreatePlan(simulatedEvent, ss); }
          finally { lock.releaseLock(); }
@@ -188,6 +188,69 @@ function doPost(e) {
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       return ContentService.createTextOutput(JSON.stringify({ status: "SUCCESS", url: file.getUrl() })).setMimeType(ContentService.MimeType.JSON);
     }
+
+    // === TASK ACTION (POST — migrated from GET) ===
+    if (data.mode === "task_action") {
+      if (lock.tryLock(10000)) {
+        try { return handleTaskAction(ss, simulatedEvent); }
+        finally { lock.releaseLock(); }
+      } else return ContentService.createTextOutput("BUSY");
+    }
+
+    // === REPORT ISSUE (POST — migrated from GET) ===
+    if (data.mode === "report_issue") {
+      if (lock.tryLock(10000)) {
+        try { return handleReportIssue(simulatedEvent, ss); }
+        finally { lock.releaseLock(); }
+      } else return ContentService.createTextOutput("BUSY");
+    }
+
+    // === UPDATE CONTAINER ROW (POST — migrated from GET) ===
+    if (data.mode === "update_container_row") {
+      if (lock.tryLock(10000)) {
+        try { return handleUpdateContainerRow(simulatedEvent, ss); }
+        finally { lock.releaseLock(); }
+      } else return ContentService.createTextOutput("BUSY");
+    }
+
+    // === SET PRIORITY LOT (POST — migrated from GET) ===
+    if (data.mode === "set_priority_lot") {
+      if (lock.tryLock(10000)) {
+        try {
+          var ds = ss.getSheetByName('DASHBOARD');
+          if (!ds) return ContentService.createTextOutput("NO_SHEET");
+          var lotVal = (data.lot || "").trim();
+          ds.getRange("A1").setValue(lotVal);
+          try { syncPriorityLot(lotVal); } catch(err) {}
+          return ContentService.createTextOutput("OK");
+        } finally { lock.releaseLock(); }
+      } else return ContentService.createTextOutput("BUSY");
+    }
+
+    // === REGISTER (POST — migrated from GET) ===
+    if (data.mode === "register") {
+      if (lock.tryLock(10000)) {
+        try { return handleRegister(simulatedEvent, ss); }
+        finally { lock.releaseLock(); }
+      } else return ContentService.createTextOutput("BUSY");
+    }
+
+    // === APPROVE USER (POST — migrated from GET) ===
+    if (data.mode === "approve_user") {
+      if (lock.tryLock(10000)) {
+        try { return handleApproveUser(simulatedEvent, ss); }
+        finally { lock.releaseLock(); }
+      } else return ContentService.createTextOutput("BUSY");
+    }
+
+    // === REJECT USER (POST — migrated from GET) ===
+    if (data.mode === "reject_user") {
+      if (lock.tryLock(10000)) {
+        try { return handleRejectUser(simulatedEvent, ss); }
+        finally { lock.releaseLock(); }
+      } else return ContentService.createTextOutput("BUSY");
+    }
+
     return ContentService.createTextOutput("UNKNOWN_MODE");
   } catch (e) { return ContentService.createTextOutput("POST_ERROR: " + e.toString()); }
 }

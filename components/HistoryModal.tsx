@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { Issue, TranslationSet } from '../types';
 import { ArrowLeft, User, Calendar, X, ImageIcon, AlertCircle, ExternalLink, Camera } from 'lucide-react';
+import { useEscape } from '../utils/useEscape';
 
 interface HistoryModalProps {
   onClose: () => void;
@@ -9,6 +10,7 @@ interface HistoryModalProps {
 }
 
 const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
+  useEscape(onClose);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
   const [loading, setLoading] = useState(true);

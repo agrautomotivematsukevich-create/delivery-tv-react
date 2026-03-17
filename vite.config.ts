@@ -21,6 +21,22 @@ export default defineConfig(({ mode }) => {
             cleanupOutdatedCaches: true,
             clientsClaim: true,
             skipWaiting: true,
+            runtimeCaching: [
+              {
+                urlPattern: /^https:\/\/script\.google\.com\/.*/i,
+                handler: 'NetworkFirst',
+                options: {
+                  cacheName: 'api-cache',
+                  expiration: {
+                    maxEntries: 100,
+                    maxAgeSeconds: 60 * 60 * 24 // 24 hours
+                  },
+                  cacheableResponse: {
+                    statuses: [0, 200]
+                  }
+                }
+              }
+            ]
           },
           manifest: {
             name: 'AGR Warehouse',

@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { DashboardData, TranslationSet, Task } from '../types';
 import { Clock, Truck } from 'lucide-react';
 import { api } from '../services/api';
+import { parseHHMM, elapsedMin, formatWait } from '../utils/time';
+import { currentShift, calculateShiftFact, calculateShiftTargets, formatMinutes, calculateTimeDiff } from '../utils/business';
+import { AVAILABLE_ZONES, UNLOAD_TARGET } from '../utils/zones';
 
 interface DashboardProps {
   data: DashboardData | null;
@@ -9,127 +12,10 @@ interface DashboardProps {
   tvMode?: boolean;
 }
 
-const UNLOAD_TARGET = 30;
-
-// Зоны выгрузки — из ActionModal
-const DOCK_ZONES = ['G4', 'G5', 'G7', 'G8', 'G9', 'P70'];
-
-// ── Утилиты ─────────────────────────────────────────────────────────────────────
-
-function hhmm(s: string): number | null {
-  const m = (s || '').trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  return parseInt(m[1]) * 60 + parseInt(m[2]);
-}
-
-function elapsedSince(startHHMM: string): number {
-  const startMin = hhmm(startHHMM);
-  if (startMin === null) return 0;
-  const now = new Date();
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  let diff = nowMin - startMin;
-  if (diff < -60) diff += 1440;
-  return Math.max(0, diff);
-}
-
-type ShiftName = 'morning' | 'evening' | 'night' | 'none';
-
-function currentShift(): ShiftName {
-  const m = new Date().getHours() * 60 + new Date().getMinutes();
-  if (m >= 470 && m < 1010) return 'morning';
-  if (m >= 1010 || m < 110) return 'evening';
-  if (m >= 110  && m < 470) return 'night';
-  return 'none';
-}
-
-// Вычисляет реальный факт по сменам на основе времени завершения (end_time)
-function calculateShiftFact(tasks: Task[]) {
-  let m = 0, e = 0, n = 0;
-  tasks.forEach(t => {
-    if (t.status === 'DONE' && t.end_time) {
-      const min = hhmm(t.end_time);
-      if (min === null) return;
-      // Утро: 07:50 - 16:50
-      if (min >= 470 && min < 1010) m++;
-      // Вечер: 16:50 - 01:50
-      else if (min >= 1010 || min < 110) e++;
-      // Ночь: 01:50 - 07:50
-      else if (min >= 110 && min < 470) n++;
-    }
-  });
-  return { morning: m, evening: e, night: n, none: 0 };
-}
-
-// Вычисляет динамические цели по сменам С УЧЕТОМ ПЕРЕНОСА ДОЛГОВ
-function calculateShiftTargets(tasks: Task[], facts: Record<ShiftName, number>, activeShift: ShiftName) {
-  let m_base = 0, e_base = 0, n_base = 0;
-  let noEtaCount = 0;
-
-  tasks.forEach(t => {
-    const min = hhmm(t.eta || '');
-    if (min === null) {
-      noEtaCount++;
-      return;
-    }
-    // Утро: 07:50 - 16:50
-    if (min >= 470 && min < 1010) m_base++;
-    // Вечер: 16:50 - 01:50
-    else if (min >= 1010 || min < 110) e_base++;
-    // Ночь: 01:50 - 07:50
-    else if (min >= 110 && min < 470) n_base++;
-  });
-
-  // Раскидываем задачи без ETA между утренней и вечерней сменами
-  if (noEtaCount > 0) {
-    const half = Math.ceil(noEtaCount / 2);
-    m_base += half;
-    e_base += (noEtaCount - half);
-  }
-
-  let m_target = m_base;
-  let e_target = e_base;
-  let n_target = n_base;
-
-  // --- ПЕРЕНОС ДОЛГОВ ТОЛЬКО ПОСЛЕ ЗАВЕРШЕНИЯ СМЕНЫ ---
-  
-  // Если сейчас Вечер или Ночь, значит Утро уже прошло — переносим его долг (или бонус) на Вечер
-  if (activeShift === 'evening' || activeShift === 'night') {
-     const m_debt = m_base - facts.morning; 
-     e_target = Math.max(0, e_base + m_debt); // План не может быть меньше нуля
-  }
-
-  // Если сейчас Ночь, значит Вечер тоже прошел — переносим всё на Ночь
-  if (activeShift === 'night') {
-     const e_debt = e_target - facts.evening;
-     n_target = Math.max(0, n_base + e_debt);
-  }
-
-  return { morning: m_target, evening: e_target, night: n_target, none: 0 };
-}
-
-const formatMinutes = (totalMinutes: number, t: TranslationSet): string => {
-  const abs = Math.abs(totalMinutes);
-  const h = Math.floor(abs / 60), m = abs % 60;
-  const ts = h > 0 ? `${h}ч ${m} мин` : `${m} мин`;
-  return `${totalMinutes >= 0 ? t.eta_prefix : t.delay_prefix}${ts}`;
-};
-
-const calculateTimeDiff = (timeStr: string, t: TranslationSet): string => {
-  const min = hhmm(timeStr);
-  if (min === null) return '...';
-  const now = new Date();
-  let diff = min - (now.getHours() * 60 + now.getMinutes());
-  if (diff < -720) diff += 1440;
-  if (diff === 0) return 'NOW';
-  return formatMinutes(diff, t);
-};
-
-// ── UnloadTimer ─────────────────────────────────────────────────────────────────
-
 const UnloadTimer: React.FC<{ startTime: string; sz?: number }> = ({ startTime, sz = 56 }) => {
-  const [elapsed, setElapsed] = useState(() => elapsedSince(startTime));
+  const [elapsed, setElapsed] = useState(() => elapsedMin(startTime));
   useEffect(() => {
-    const id = setInterval(() => setElapsed(elapsedSince(startTime)), 30000);
+    const id = setInterval(() => setElapsed(elapsedMin(startTime)), 30000);
     return () => clearInterval(id);
   }, [startTime]);
   const r     = sz * 0.39;
@@ -319,7 +205,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
   const zoneMap = new Map<string, { id: string; start: string; elapsed: number }>();
   for (const item of activeList) {
     if (item.zone) {
-      const el = elapsedSince(item.start);
+      const el = elapsedMin(item.start);
       zoneMap.set(item.zone, { id: item.id, start: item.start, elapsed: el });
     }
   }
@@ -327,7 +213,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
   const lastDoneMap = new Map<string, number>(); 
   for (const task of allTasks) {
     if (task.status === 'DONE' && task.zone && task.end_time) {
-      const endMin = hhmm(task.end_time);
+      const endMin = parseHHMM(task.end_time);
       if (endMin !== null) {
         const prev = lastDoneMap.get(task.zone);
         if (prev === undefined || endMin > prev) lastDoneMap.set(task.zone, endMin);
@@ -336,7 +222,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
   }
   const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
 
-  const zones: ZoneInfo[] = DOCK_ZONES.map(name => {
+  const zones: ZoneInfo[] = AVAILABLE_ZONES.map(name => {
     const task = zoneMap.get(name);
     if (task) {
       return { name, active: true, containerId: task.id, elapsed: task.elapsed, isOver: task.elapsed > UNLOAD_TARGET };
@@ -360,7 +246,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
           <div className="text-[10px] font-bold text-white/60 tracking-wider">
             <span className="text-emerald-400">{busyCount}</span>
             <span className="text-white/50 mx-1">/</span>
-            <span>{DOCK_ZONES.length}</span>
+            <span>{AVAILABLE_ZONES.length}</span>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2.5 flex-1">
@@ -538,7 +424,7 @@ const OnTerritoryBlock: React.FC<{ arrivedTasks: Task[]; tvMode?: boolean }> = (
                   <Clock className="w-3 h-3 text-accent-blue" />
                   <span className="font-mono text-[10px] font-bold text-accent-blue/80">{task.arrival_time}</span>
                   <span className="text-[9px] text-white/50 ml-1">
-                    ({Math.max(0, elapsedSince(task.arrival_time))} мин)
+                    ({Math.max(0, elapsedMin(task.arrival_time))} мин)
                   </span>
                 </div>
               )}
@@ -678,7 +564,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
                 {data.activeList.length === 0 ? (
                   <div className="flex items-center justify-center h-full text-white/45 text-sm">Нет активных</div>
                 ) : data.activeList.map(item => {
-                  const elapsed = elapsedSince(item.start);
+                  const elapsed = elapsedMin(item.start);
                   const isOver  = elapsed > UNLOAD_TARGET;
                   const isWarn  = !isOver && elapsed >= UNLOAD_TARGET - 5;
                   const glowCls = isOver
@@ -775,7 +661,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
             <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] p-6 pb-0">{t.list}</div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
               {data.activeList.map(item => {
-                const elapsed = elapsedSince(item.start);
+                const elapsed = elapsedMin(item.start);
                 const isOver  = elapsed > UNLOAD_TARGET;
                 const isWarn  = !isOver && elapsed >= UNLOAD_TARGET - 5;
                 const glowCls = isOver

@@ -2,32 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { LotContainer, User, TranslationSet } from '../types';
 import { api } from '../services/api';
 import { Package, Search, Tv, Check, Clock, Timer, CheckCircle2 } from 'lucide-react';
+import { parseHHMM, elapsedMin, todayDDMM, dateSortValue } from '../utils/time';
 
 interface Props {
   user: User | null;
   t: TranslationSet;
-}
-
-function parseHHMM(s: string): number | null {
-  const m = (s || '').trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  return parseInt(m[1]) * 60 + parseInt(m[2]);
-}
-function nowMinutes(): number { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); }
-function elapsedSince(startHHMM: string): number {
-  const s = parseHHMM(startHHMM);
-  if (s === null) return 0;
-  let diff = nowMinutes() - s;
-  if (diff < -60) diff += 1440;
-  return Math.max(0, diff);
-}
-function todayDDMM(): string {
-  const d = new Date();
-  return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2);
-}
-function dateSort(d: string): number {
-  const p = d.split('.');
-  return parseInt(p[1] || '0') * 100 + parseInt(p[0] || '0');
 }
 
 const LotTrackerView: React.FC<Props> = ({ user, t }) => {
@@ -76,7 +55,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
 
   // Sort containers
   const sorted = [...containers].sort((a, b) => {
-    const da = dateSort(a.date), db = dateSort(b.date);
+    const da = dateSortValue(a.date), db = dateSortValue(b.date);
     if (da !== db) return da - db;
     return (parseInt(a.index) || 0) - (parseInt(b.index) || 0);
   });
@@ -259,7 +238,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
                       {c.start_time && <span className="text-emerald-400 font-bold">{c.start_time}</span>}
                       {c.end_time && <span className="text-emerald-400">→ {c.end_time}</span>}
                       {isAct && c.start_time && (
-                        <span className="font-mono font-black text-amber-400 text-sm">{elapsedSince(c.start_time)} мин</span>
+                        <span className="text-[10px] text-white/50 ml-1">({elapsedMin(c.start_time)} мин)</span>
                       )}
                     </div>
 

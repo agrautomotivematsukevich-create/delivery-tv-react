@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { TranslationSet, User } from '../types';
 import { Camera, X, Upload, CheckCircle } from 'lucide-react';
+import { useEscape } from '../utils/useEscape';
+import { useAppContext } from './AppContext';
 
 interface IssueModalProps {
   onClose: () => void;
@@ -17,6 +19,8 @@ interface PhotoData {
 }
 
 const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
+  useEscape(onClose);
+  const { addToast } = useAppContext();
   const [containerIds, setContainerIds] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [description, setDescription] = useState("");
@@ -110,7 +114,7 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
     );
 
     setLoading(false);
-    alert(t.issue_success);
+    addToast(t.issue_success, 'success');
     onClose();
   };
 

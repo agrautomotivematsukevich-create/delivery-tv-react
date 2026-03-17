@@ -1,8 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { AlertCircle, Camera, CheckCircle, Clock, Image as ImageIcon, Loader2, Lock, Truck, Upload } from 'lucide-react';
 import { api } from '../services/api';
-import { TranslationSet, TaskAction, User } from '../types';
-import { Camera, Lock, CheckCircle, Clock, Truck, Upload, AlertCircle, Loader2, Image as ImageIcon } from 'lucide-react';
-import { vibrate } from './OperatorTerminal';
+import { TaskAction, TranslationSet, User } from '../types';
+import { useAppContext } from './AppContext';
+import { vibrate } from '../utils/haptics';
+import { AVAILABLE_ZONES } from '../utils/zones';
+import { useEscape } from '../utils/useEscape';
 
 interface ActionModalProps {
   action: TaskAction;
@@ -20,40 +23,9 @@ type UploadStatus =
 
 type PhotoData = { data: string; mime: string; name: string };
 
-async function compressImage(file: File, maxW = 1200, quality = 0.72, suffix = ''): Promise<PhotoData> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      const scale = Math.min(1, maxW / img.width);
-      const canvas = document.createElement('canvas');
-      canvas.width  = Math.round(img.width  * scale);
-      canvas.height = Math.round(img.height * scale);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return reject(new Error('Canvas error'));
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', quality);
-      canvas.width = 0;
-      canvas.height = 0;
-      resolve({
-        data: dataUrl,
-        mime: 'image/jpeg',
-        name: suffix ? `${suffix}.jpg` : file.name,
-      });
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Image load error'));
-    };
-
-    img.src = objectUrl;
-  });
-}
-
 const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onSuccess }) => {
+  useEscape(onClose);
+  const { addToast } = useAppContext();
   const [zone, setZone]     = useState<string | null>(null);
   const [photo1, setPhoto1] = useState<PhotoData | null>(null);
   const [photo2, setPhoto2] = useState<PhotoData | null>(null);
@@ -68,9 +40,16 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   const fileInputRef   = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const currentPhotoTarget = useRef<1 | 2>(1);
+  const workerRef = useRef<Worker | null>(null);
+
+  useEffect(() => {
+    workerRef.current = new Worker(new URL('../utils/ImageWorker.ts', import.meta.url), { type: 'module' });
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, []);
 
   const isStart = action.type === 'start';
-  const AVAILABLE_ZONES = ['G4', 'G5', 'G7', 'G8', 'G9', 'P70'];
 
   const triggerFile = (target: 1 | 2) => {
     currentPhotoTarget.current = target;
@@ -94,19 +73,31 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
     setProcessingPhoto(true);
     setUploadStatus({ state: 'idle' });
 
-    try {
-      const t1 = currentPhotoTarget.current;
-      const suffix = isStart
-        ? (t1 === 1 ? `${action.id}_General` : `${action.id}_Seal`)
-        : `${action.id}_Empty`;
-      const compressed = await compressImage(file, 1200, 0.72, suffix);
-      if (t1 === 1) setPhoto1(compressed);
-      else setPhoto2(compressed);
-    } catch (error) {
-      setUploadStatus({ state: 'error', message: 'Ошибка обработки фото. Попробуйте еще раз.' });
-    } finally {
+    const t1 = currentPhotoTarget.current;
+    const suffix = isStart
+      ? (t1 === 1 ? `${action.id}_General` : `${action.id}_Seal`)
+      : `${action.id}_Empty`;
+
+    if (!workerRef.current) {
       setProcessingPhoto(false);
+      return;
     }
+
+    const onMessage = (event: MessageEvent) => {
+      workerRef.current?.removeEventListener('message', onMessage);
+      setProcessingPhoto(false);
+      const data = event.data;
+      if (data.success) {
+        const compressed: PhotoData = { data: data.data, mime: data.mime, name: data.name };
+        if (t1 === 1) setPhoto1(compressed);
+        else setPhoto2(compressed);
+      } else {
+        setUploadStatus({ state: 'error', message: 'Ошибка обработки фото. Попробуйте еще раз.' });
+      }
+    };
+
+    workerRef.current.addEventListener('message', onMessage);
+    workerRef.current.postMessage({ file, maxW: 1200, quality: 0.72, suffix });
   };
 
   const isFormValid = () => {
@@ -143,11 +134,14 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       setTimeout(() => {
         setUploadStatus({ state: 'success' });
         vibrate([100, 50, 100]);
+        addToast('Задача успешно выполнена', 'success');
         setTimeout(() => onSuccess(), 700);
       }, 400);
-    } catch (error: any) {
+    } catch (error: unknown) {
       vibrate([200, 100, 200]);
-      setUploadStatus({ state: 'error', message: 'Ошибка сети. Попробуйте снова через минуту.' });
+      const msg = error instanceof Error ? error.message : 'Ошибка. Попробуйте снова или используйте оффлайн режим.';
+      setUploadStatus({ state: 'error', message: msg });
+      addToast('Произошла ошибка при выполнении', 'error');
     }
   };
 

@@ -3,6 +3,10 @@ import { api } from '../services/api';
 import { Task, TranslationSet } from '../types';
 import { Phone, Check, Play, Layers, Search, X, ChevronUp, Undo2, Timer, WifiOff, Wifi, MapPin } from 'lucide-react';
 import { offlineQueue } from '../services/offlineQueue';
+import { parseHHMM, elapsedMin } from '../utils/time';
+import { useAppContext } from './AppContext';
+import { useEscape } from '../utils/useEscape';
+import { vibrate } from '../utils/haptics';
 
 interface OperatorTerminalProps {
   onClose: () => void;
@@ -10,26 +14,9 @@ interface OperatorTerminalProps {
   t: TranslationSet;
 }
 
-function parseHHMM(s: string): number | null {
-  const m = (s || '').trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  return parseInt(m[1]) * 60 + parseInt(m[2]);
-}
-
-function elapsedMin(startHHMM: string): number {
-  const s = parseHHMM(startHHMM);
-  if (s === null) return 0;
-  const now = new Date();
-  let diff = (now.getHours() * 60 + now.getMinutes()) - s;
-  if (diff < -60) diff += 1440;
-  return Math.max(0, diff);
-}
-
-export function vibrate(pattern: number | number[]) {
-  try { navigator?.vibrate?.(pattern); } catch { /* ignore */ }
-}
-
 const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskAction, t }) => {
+  useEscape(onClose);
+  const { addToast } = useAppContext();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -106,7 +93,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     if (processingIds.includes(task.id)) return;
     
     if (!isOnline) {
-      alert('Нет подключения к интернету! Дождитесь появления сети для передачи фотографий.');
+      addToast('Нет подключения к интернету! Дождитесь появления сети для передачи фотографий.', 'error');
       return;
     }
 
@@ -115,12 +102,12 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     setProcessingIds(prev => [...prev, task.id]);
     
     try {
-      // Честно ждем закрытия модалки и ответа от Google
       await onTaskAction(task, action);
-      // После успеха скачиваем свежий список
       await fetchQueue();
-    } catch (e: any) {
+      addToast('Действие успешно выполнено!', 'success');
+    } catch (e: unknown) {
       console.error('Task action error:', e);
+      addToast('Ошибка выполнения действия. Попробуйте снова.', 'error');
       vibrate([50, 100, 50, 100, 50]);
     } finally {
       setProcessingIds(prev => prev.filter(id => id !== task.id));
@@ -136,9 +123,10 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
       vibrate([50, 30, 50]);
       await fetchQueue();
       setUndoConfirm(null);
+      addToast('Начало работы отменено', 'info');
     } catch (e) {
       console.error('Undo failed:', e);
-      alert('Не удалось отменить задачу из-за проблем с сетью. Попробуйте снова.');
+      addToast('Не удалось отменить задачу из-за проблем с сетью. Попробуйте снова.', 'error');
     } finally {
       setUndoingId(null);
       startPolling();

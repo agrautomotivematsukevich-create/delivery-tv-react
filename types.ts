@@ -1,7 +1,17 @@
+export type UserRole = 'OPERATOR' | 'LOGISTIC' | 'ADMIN';
+export type TaskStatus = 'WAIT' | 'ACTIVE' | 'DONE';
+export type Lang = 'RU' | 'EN_CN';
+
 export interface User {
   user: string;
   name: string;
-  role: 'OPERATOR' | 'LOGISTIC' | 'ADMIN';
+  role: UserRole;
+}
+
+export interface PendingUser {
+  login: string;
+  name: string;
+  role: UserRole;
 }
 
 export interface Task {
@@ -10,7 +20,7 @@ export interface Task {
   pallets?: string;
   phone?: string;
   eta?: string;
-  status: 'WAIT' | 'ACTIVE' | 'DONE';
+  status: TaskStatus;
   time: string;
   start_time?: string;
   end_time?: string;
@@ -68,8 +78,6 @@ export interface PlanRow extends TaskInput {
   index: number;    // Visual index (Col A)
 }
 
-export type Lang = 'RU' | 'EN_CN';
-
 export interface TranslationSet {
   title: string;
   progress: string;
@@ -108,6 +116,7 @@ export interface TranslationSet {
   issue_btn: string;
   issue_upload: string;
   issue_success: string;
+  
   // History
   btn_history: string;
   history_title: string;
@@ -155,6 +164,7 @@ export interface TranslationSet {
   dtl_operator: string;
   dtl_zone: string;
   dtl_photos: string;
+  
   // Arrival Analytics
   nav_arrival: string;
   arr_title: string;
@@ -176,6 +186,7 @@ export interface TranslationSet {
   arr_no_arrival: string;
   arr_vehicles_with_data: string;
   arr_over_hour: string;
+  
   shift_morning: string;
   shift_evening: string;
   shift_norm: string;
@@ -202,16 +213,10 @@ export interface LotContainer {
   id: string;
   phone: string;
   eta: string;
-  status: 'WAIT' | 'ACTIVE' | 'DONE';
+  status: TaskStatus;
   start_time: string;
   end_time: string;
   zone: string;
   operator: string;
   arrival_time: string;
-}
-
-export interface PendingUser {
-  login: string;
-  name: string;
-  role: string;
 }

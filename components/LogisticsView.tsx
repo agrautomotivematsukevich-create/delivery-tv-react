@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { TaskInput, PlanRow, TranslationSet } from '../types';
 import { Truck, Plus, Trash2, Save, Calendar, Pencil, X, Check } from 'lucide-react';
+import { useAppContext } from './AppContext';
 
 interface LogisticsViewProps {
   t: TranslationSet;
 }
 
 const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
+  const { addToast } = useAppContext();
   const [mode, setMode] = useState<'create' | 'edit'>('create');
   
   // Shared
@@ -40,7 +42,7 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
 
   const handleSubmitCreate = async () => {
     if (createRows.some(r => !r.id)) {
-      alert("Please fill all Container IDs");
+      addToast("Please fill all Container IDs", 'error');
       return;
     }
     setSubmitting(true);
@@ -49,10 +51,10 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
     const success = await api.createPlan(formattedDate, createRows);
     setSubmitting(false);
     if (success) {
-      alert(t.log_success);
+      addToast(t.log_success, 'success');
       setCreateRows([{ ...emptyRow }]);
     } else {
-      alert("Error creating plan");
+      addToast("Error creating plan", 'error');
     }
   };
 
@@ -86,7 +88,7 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
       setEditingItem(null);
       loadPlan(); // Refresh table
     } else {
-      alert("Error updating row");
+      addToast("Error updating row", 'error');
     }
   };
 

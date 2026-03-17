@@ -6,6 +6,8 @@ import {
   Clock, Package, ChevronDown, ChevronUp, ChevronsUpDown
 } from 'lucide-react';
 
+import { parseHHMM, formatWait } from '../utils/time';
+
 interface ArrivalAnalyticsViewProps {
   t: TranslationSet;
 }
@@ -15,27 +17,6 @@ interface EnrichedTask extends Task {
 }
 
 // --- Вспомогательные функции ---
-
-/** Парсит "HH:MM" → минуты от полуночи. Возвращает null при ошибке. */
-function parseHHMM(s: string | undefined): number | null {
-  if (!s || !s.trim()) return null;
-  const cleaned = s.trim().replace(/[^0-9:]/g, '');
-  const parts = cleaned.split(':');
-  if (parts.length < 2) return null;
-  const h = parseInt(parts[0]);
-  const m = parseInt(parts[1]);
-  if (isNaN(h) || isNaN(m)) return null;
-  return h * 60 + m;
-}
-
-/** Минуты → строка "Xч Yм" или "Yм" */
-function formatWait(minutes: number): string {
-  if (minutes < 0) return '—';
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (h > 0) return `${h}ч ${m}м`;
-  return `${m}м`;
-}
 
 /** Цвет и лейбл ячейки простоя */
 function getWaitStyle(minutes: number | null): {
