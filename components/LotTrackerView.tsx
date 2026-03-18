@@ -25,19 +25,30 @@ const translateWs = (ws: string) => {
 
 type StatusFilter = 'ALL' | 'DONE' | 'PENDING';
 
+// Тексты для анимации загрузки
+const LOADING_STEPS = [
+  "Подключение к базе данных...",
+  "Сканирование плана поставок...",
+  "Поиск в исторических архивах...",
+  "Сбор и анализ контейнеров..."
+];
+
 const LotTrackerView: React.FC<Props> = ({ user, t }) => {
   const [searchLot, setSearchLot] = useState('');
   const [activeLot, setActiveLot] = useState('');
   const [containers, setContainers] = useState<LotContainer[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  // Новые состояния для красивой загрузки
+  const [progress, setProgress] = useState(0);
+  const [loadingTextIdx, setLoadingTextIdx] = useState(0);
+
   const [priorityLot, setPriorityLot] = useState('');
   const [savingPriority, setSavingPriority] = useState(false);
   const [saved, setSaved] = useState(false);
   
-  // Состояния фильтров
   const [filterWs, setFilterWs] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<StatusFilter>('ALL');
-  
   const [subscribedIds, setSubscribedIds] = useState<Set<string>>(new Set());
   const [, setTick] = useState(0);
 
@@ -52,18 +63,51 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
     return () => clearInterval(id);
   }, []);
 
+  // Эффект для анимации прогресс-бара и текста во время поиска
+  useEffect(() => {
+    let progressInterval: NodeJS.Timeout;
+    let textInterval: NodeJS.Timeout;
+    
+    if (loading) {
+      setProgress(0);
+      setLoadingTextIdx(0);
+      
+      // Имитация роста процентов от 0 до 95%
+      progressInterval = setInterval(() => {
+        setProgress(p => {
+          if (p < 60) return p + Math.floor(Math.random() * 15) + 5; // Быстро до 60%
+          if (p < 95) return p + Math.floor(Math.random() * 5) + 1;  // Медленнее до 95%
+          return p; // Ждем ответа сервера на 95%
+        });
+      }, 400);
+
+      // Смена текста каждые 1.5 секунды
+      textInterval = setInterval(() => {
+        setLoadingTextIdx(prev => (prev + 1) % LOADING_STEPS.length);
+      }, 1500);
+    }
+    
+    return () => {
+      clearInterval(progressInterval);
+      clearInterval(textInterval);
+    };
+  }, [loading]);
+
   const doSearch = useCallback(async (lot: string) => {
     if (!lot.trim()) return;
     setLoading(true);
     setActiveLot(lot.trim().toUpperCase());
-    
-    // Сбрасываем все фильтры при новом поиске
     setFilterWs('ALL');
     setFilterStatus('ALL');
     
     const data = await api.fetchLotTracker(lot.trim());
-    setContainers(data);
-    setLoading(false);
+    
+    // Как только данные получены, ставим 100% и через мгновение скрываем загрузку
+    setProgress(100);
+    setTimeout(() => {
+      setContainers(data);
+      setLoading(false);
+    }, 400); 
   }, []);
 
   const handleSetPriority = async () => {
@@ -92,37 +136,29 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
     }
   };
 
-  // 1. Уникальные материалы
   const uniqueWs = Array.from(new Set(containers.map(c => c.ws).filter(Boolean))).sort();
 
-  // 2. Двойная фильтрация (Материал + Статус)
   const filteredContainers = containers.filter(c => {
     const passWs = filterWs === 'ALL' || c.ws === filterWs;
     const passStatus = 
       filterStatus === 'ALL' ? true :
       filterStatus === 'DONE' ? c.status === 'DONE' :
-      c.status !== 'DONE'; // PENDING (Ожидание или Выгрузка)
-    
+      c.status !== 'DONE';
     return passWs && passStatus;
   });
 
-  // 3. Сортировка результата
   const sorted = [...filteredContainers].sort((a, b) => {
     const da = dateSortValue(a.date), db = dateSortValue(b.date);
     if (da !== db) return da - db;
     return (parseInt(a.index) || 0) - (parseInt(b.index) || 0);
   });
 
-  // 4. Подсчет цифр для шапки статистики (по всем контейнерам лота)
   const allDone = containers.filter(c => c.status === 'DONE');
   const allActive = containers.filter(c => c.status === 'ACTIVE');
   const allWaiting = containers.filter(c => c.status === 'WAIT');
   const today = todayDDMM();
 
-  // 5. Умный подсчет для цифр внутри кнопок фильтров
-  // Если выбран фильтр по Статусу, цифры в Материалах зависят от Статуса
   const filteredByStatusOnly = filterStatus === 'ALL' ? containers : containers.filter(c => filterStatus === 'DONE' ? c.status === 'DONE' : c.status !== 'DONE');
-  // Если выбран фильтр по Материалу, цифры в Статусах зависят от Материала
   const filteredByWsOnly = filterWs === 'ALL' ? containers : containers.filter(c => c.ws === filterWs);
 
   const countAllStatus = filteredByWsOnly.length;
@@ -153,9 +189,14 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
             <button
               onClick={() => doSearch(searchLot)}
               disabled={!searchLot.trim() || loading}
-              className="px-5 py-2.5 rounded-xl bg-accent-blue text-white font-bold text-sm uppercase tracking-wider hover:bg-accent-blue/80 transition-all disabled:opacity-50 shrink-0 flex items-center justify-center min-w-[100px]"
+              className="px-5 py-2.5 rounded-xl bg-accent-blue text-white font-bold text-sm uppercase tracking-wider hover:bg-accent-blue/80 transition-all disabled:opacity-50 shrink-0 flex items-center justify-center min-w-[110px]"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Найти"}
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>{progress}%</span>
+                </div>
+              ) : "Найти"}
             </button>
           </div>
 
@@ -169,6 +210,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
         </div>
       </div>
 
+      {/* States: Initial */}
       {!activeLot && !loading && (
         <div className={`${glass} flex-1 flex items-center justify-center`}>
           <div className="text-center">
@@ -178,15 +220,39 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
         </div>
       )}
 
+      {/* States: KРАСИВАЯ ЗАГРУЗКА */}
       {loading && (
         <div className={`${glass} flex-1 flex items-center justify-center`}>
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="w-12 h-12 text-accent-blue animate-spin" />
-            <div className="text-white/50 text-xl font-bold animate-pulse">Поиск данных по лоту...</div>
+          <div className="w-full max-w-sm flex flex-col items-center gap-8 p-6">
+            <div className="relative">
+              <Package className="w-20 h-20 text-accent-blue/30 animate-pulse" />
+              <Search className="w-10 h-10 text-accent-blue absolute -bottom-2 -right-2 animate-bounce" />
+            </div>
+            
+            <div className="w-full space-y-4 text-center">
+              {/* Текст который меняется */}
+              <div className="text-white font-bold text-lg min-h-[28px] transition-all duration-300">
+                {LOADING_STEPS[loadingTextIdx]}
+              </div>
+              
+              {/* Прогресс бар */}
+              <div className="w-full space-y-1">
+                <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-accent-blue transition-all duration-300 ease-out"
+                    style={{ width: `${progress}%` }} 
+                  />
+                </div>
+                <div className="text-accent-blue font-mono font-bold text-sm text-right">
+                  {progress}%
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
+      {/* States: Not Found */}
       {activeLot && !loading && containers.length === 0 && (
         <div className={`${glass} flex-1 flex items-center justify-center flex-col gap-3`}>
           <Package className="w-16 h-16 text-white/50" />
@@ -194,6 +260,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
         </div>
       )}
 
+      {/* Results */}
       {activeLot && !loading && containers.length > 0 && (
         <>
           <div className={`${glass} flex flex-col`}>
@@ -243,7 +310,6 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
 
             {/* Фильтры */}
             <div className="px-5 py-3 flex flex-col gap-3">
-              
               {/* Ряд 1: Фильтр по материалу */}
               {uniqueWs.length > 0 && (
                 <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1">
@@ -301,7 +367,6 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
                   НЕ ПРИНЯТО ({countPendingStatus})
                 </button>
               </div>
-
             </div>
           </div>
 
