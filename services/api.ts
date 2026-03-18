@@ -425,16 +425,22 @@ export const api = {
   // === НОВАЯ ФУНКЦИЯ ДЛЯ УВЕДОМЛЕНИЙ EMail
   subscribeToContainer: async (id: string, email: string): Promise<boolean> => {
     try {
+      // ВЫВОДИМ В КОНСОЛЬ ССЫЛКУ, КУДА ИДЕТ ЗАПРОС
+      console.log("ОТПРАВКА ЗАПРОСА НА URL:", SCRIPT_URL); 
+
       const res = await fetchWithTimeout(SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ mode: 'subscribe_notification', id, email })
       });
       const txt = await res.text();
+      
+      // ВЫВОДИМ В КОНСОЛЬ ОТВЕТ ОТ ГУГЛА
+      console.log("ОТВЕТ ОТ СЕРВЕРА:", txt); 
+      
       return txt.includes("SUBSCRIBED");
     } catch (e) {
       console.error("Subscription failed:", e);
       return false;
     }
   }
-};
