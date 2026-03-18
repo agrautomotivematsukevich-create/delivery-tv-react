@@ -14,13 +14,14 @@ const WS_TRANSLATIONS: Record<string, string> = {
   'PAINT': 'Покраска',
   'ASSEMBLY': 'Сборка',
   'WELDING': 'Сварка',
-  'БАКИ': 'Баки' // на случай, если в таблице уже по-русски
+  'БАКИ': 'Баки',
+  'BS': 'BS'
 };
 
 const translateWs = (ws: string) => {
   if (!ws) return '';
   const upperWs = ws.trim().toUpperCase();
-  return WS_TRANSLATIONS[upperWs] || ws; // Если перевода нет, оставляем как есть
+  return WS_TRANSLATIONS[upperWs] || ws; // Если перевода нет, оставляем оригинал
 };
 
 const LotTrackerView: React.FC<Props> = ({ user, t }) => {
@@ -31,13 +32,12 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
   const [priorityLot, setPriorityLot] = useState('');
   const [savingPriority, setSavingPriority] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [filterWs, setFilterWs] = useState<string>('ALL');
   
-  // Состояние для хранения подписок на уведомления (пока локально)
+  // Состояния для фильтров и подписок
+  const [filterWs, setFilterWs] = useState<string>('ALL');
   const [subscribedIds, setSubscribedIds] = useState<Set<string>>(new Set());
   
   const [, setTick] = useState(0);
-
   const isManager = user?.role === 'LOGISTIC' || user?.role === 'ADMIN';
 
   useEffect(() => {
@@ -53,7 +53,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
     if (!lot.trim()) return;
     setLoading(true);
     setActiveLot(lot.trim().toUpperCase());
-    setFilterWs('ALL');
+    setFilterWs('ALL'); // Сбрасываем фильтр при новом поиске
     const data = await api.fetchLotTracker(lot.trim());
     setContainers(data);
     setLoading(false);
@@ -71,16 +71,13 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
     setSavingPriority(false);
   };
 
-  // Функция подписки на уведомления
   const handleSubscribe = (containerId: string) => {
     if (subscribedIds.has(containerId)) {
       alert(`Вы уже подписаны на уведомления для контейнера ${containerId}.`);
       return;
     }
-    
     const email = window.prompt(`Хотите получить уведомление о начале выгрузки?\nВведите ваш Email для контейнера ${containerId}:`);
     if (email && email.includes('@')) {
-      // TODO: Здесь в будущем будет вызов API: api.subscribeToContainer(containerId, email)
       setSubscribedIds(prev => new Set(prev).add(containerId));
       alert(`Готово! Мы пришлем письмо на ${email}, как только статус изменится на "ВЫГРУЗКА".`);
     } else if (email) {
@@ -88,6 +85,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
     }
   };
 
+  // Получаем уникальные материалы (теперь фильтры будут видны всегда, если есть хоть один материал)
   const uniqueWs = Array.from(new Set(containers.map(c => c.ws).filter(Boolean))).sort();
 
   const filteredContainers = filterWs === 'ALL' 
@@ -151,14 +149,6 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
           <div className="text-center">
             <Package className="w-16 h-16 text-white/50 mx-auto mb-4" />
             <div className="text-white/50 text-xl font-bold">Введите номер лота для поиска</div>
-            {priorityLot && (
-              <button
-                onClick={() => { setSearchLot(priorityLot); doSearch(priorityLot); }}
-                className="mt-4 px-4 py-2 rounded-xl bg-accent-blue/10 border border-accent-blue/20 text-accent-blue text-sm font-bold hover:bg-accent-blue/20 transition-all"
-              >
-                Открыть текущий TV лот: {priorityLot}
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -226,8 +216,8 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
               </div>
             </div>
 
-            {/* Фильтры */}
-            {uniqueWs.length > 1 && (
+            {/* Фильтры (теперь отображаются всегда, если есть хоть 1 материал) */}
+            {uniqueWs.length > 0 && (
               <div className="px-5 py-3 flex items-center gap-2 overflow-x-auto custom-scrollbar">
                 <Filter className="w-4 h-4 text-white/50 shrink-0 mr-1" />
                 <button
@@ -303,7 +293,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
                     </div>
 
                     <div className="flex items-center gap-2 sm:gap-3 shrink-0 text-[10px] sm:text-xs">
-                      {/* ИЗМЕНЕНИЕ ТЕКСТА ETA */}
+                      {/* Ожидаемое время выгрузки */}
                       {c.eta && <span className="text-white/50">Ожидаемое время выгрузки {c.eta}</span>}
                       {c.start_time && <span className="text-emerald-400 font-bold">{c.start_time}</span>}
                       {c.end_time && <span className="text-emerald-400">→ {c.end_time}</span>}
@@ -316,7 +306,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
                       {statusTxt}
                     </div>
 
-                    {/* НОВОЕ: Кнопка подписки (показываем только для ожидающих контейнеров) */}
+                    {/* Кнопка подписки (Только для контейнеров В ОЧЕРЕДИ) */}
                     {!isDone && !isAct && (
                       <button 
                         onClick={() => handleSubscribe(c.id)}
