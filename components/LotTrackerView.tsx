@@ -122,17 +122,33 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
     setSavingPriority(false);
   };
 
-  const handleSubscribe = (containerId: string) => {
+  const handleSubscribe = async (containerId: string) => {
     if (subscribedIds.has(containerId)) {
       alert(`Вы уже подписаны на уведомления для контейнера ${containerId}.`);
       return;
     }
     const email = window.prompt(`Хотите получить уведомление о начале выгрузки?\nВведите ваш Email для контейнера ${containerId}:`);
+    
     if (email && email.includes('@')) {
+      // Сначала визуально "подписываем", чтобы юзер не ждал
       setSubscribedIds(prev => new Set(prev).add(containerId));
-      alert(`Готово! Мы пришлем письмо на ${email}, как только статус изменится на "ВЫГРУЗКА".`);
+      
+      // ВОТ ЭТОЙ СТРОКИ НЕ БЫЛО! Отправляем запрос на бэкенд
+      const success = await api.subscribeToContainer(containerId, email);
+      
+      if (success) {
+        alert(`Готово! Мы пришлем письмо на ${email}, как только статус изменится на "ВЫГРУЗКА".`);
+      } else {
+        alert('Произошла ошибка при подписке. Проверьте соединение.');
+        // Отменяем подписку визуально, если сервер ответил ошибкой
+        setSubscribedIds(prev => {
+          const next = new Set(prev);
+          next.delete(containerId);
+          return next;
+        });
+      }
     } else if (email) {
-      alert('Пожалуйста, введите корректный Email.');
+      alert('Пожалуйста, введите корректный Email (с символом @).');
     }
   };
 
