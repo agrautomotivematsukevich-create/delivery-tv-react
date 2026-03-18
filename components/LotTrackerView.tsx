@@ -1,13 +1,27 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LotContainer, User, TranslationSet } from '../types';
 import { api } from '../services/api';
-import { Package, Search, Tv, Check, Clock, Timer, CheckCircle2, Loader2, Filter } from 'lucide-react';
+import { Package, Search, Tv, Check, Clock, Timer, CheckCircle2, Loader2, Filter, Bell, BellRing } from 'lucide-react';
 import { parseHHMM, elapsedMin, todayDDMM, dateSortValue } from '../utils/time';
 
 interface Props {
   user: User | null;
   t: TranslationSet;
 }
+
+// Словарь для перевода типов материалов
+const WS_TRANSLATIONS: Record<string, string> = {
+  'PAINT': 'Покраска',
+  'ASSEMBLY': 'Сборка',
+  'WELDING': 'Сварка',
+  'БАКИ': 'Баки' // на случай, если в таблице уже по-русски
+};
+
+const translateWs = (ws: string) => {
+  if (!ws) return '';
+  const upperWs = ws.trim().toUpperCase();
+  return WS_TRANSLATIONS[upperWs] || ws; // Если перевода нет, оставляем как есть
+};
 
 const LotTrackerView: React.FC<Props> = ({ user, t }) => {
   const [searchLot, setSearchLot] = useState('');
@@ -17,17 +31,19 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
   const [priorityLot, setPriorityLot] = useState('');
   const [savingPriority, setSavingPriority] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [filterWs, setFilterWs] = useState<string>('ALL'); // НОВОЕ: Состояние фильтра
+  const [filterWs, setFilterWs] = useState<string>('ALL');
+  
+  // Состояние для хранения подписок на уведомления (пока локально)
+  const [subscribedIds, setSubscribedIds] = useState<Set<string>>(new Set());
+  
   const [, setTick] = useState(0);
 
   const isManager = user?.role === 'LOGISTIC' || user?.role === 'ADMIN';
 
-  // Load current priority lot
   useEffect(() => {
     api.getPriorityLot().then(l => setPriorityLot(l));
   }, []);
 
-  // Timer tick
   useEffect(() => {
     const id = setInterval(() => setTick(n => n + 1), 30000);
     return () => clearInterval(id);
@@ -37,7 +53,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
     if (!lot.trim()) return;
     setLoading(true);
     setActiveLot(lot.trim().toUpperCase());
-    setFilterWs('ALL'); // Сбрасываем фильтр при новом поиске
+    setFilterWs('ALL');
     const data = await api.fetchLotTracker(lot.trim());
     setContainers(data);
     setLoading(false);
@@ -55,15 +71,29 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
     setSavingPriority(false);
   };
 
-  // НОВОЕ: Получаем список уникальных материалов из найденных контейнеров
+  // Функция подписки на уведомления
+  const handleSubscribe = (containerId: string) => {
+    if (subscribedIds.has(containerId)) {
+      alert(`Вы уже подписаны на уведомления для контейнера ${containerId}.`);
+      return;
+    }
+    
+    const email = window.prompt(`Хотите получить уведомление о начале выгрузки?\nВведите ваш Email для контейнера ${containerId}:`);
+    if (email && email.includes('@')) {
+      // TODO: Здесь в будущем будет вызов API: api.subscribeToContainer(containerId, email)
+      setSubscribedIds(prev => new Set(prev).add(containerId));
+      alert(`Готово! Мы пришлем письмо на ${email}, как только статус изменится на "ВЫГРУЗКА".`);
+    } else if (email) {
+      alert('Пожалуйста, введите корректный Email.');
+    }
+  };
+
   const uniqueWs = Array.from(new Set(containers.map(c => c.ws).filter(Boolean))).sort();
 
-  // НОВОЕ: Фильтруем контейнеры перед сортировкой
   const filteredContainers = filterWs === 'ALL' 
     ? containers 
     : containers.filter(c => c.ws === filterWs);
 
-  // Сортируем уже отфильтрованный список
   const sorted = [...filteredContainers].sort((a, b) => {
     const da = dateSortValue(a.date), db = dateSortValue(b.date);
     if (da !== db) return da - db;
@@ -79,7 +109,6 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
 
   return (
     <div className="flex flex-col gap-4 flex-1 min-h-0">
-
       {/* Search bar */}
       <div className={`${glass} p-5`}>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -102,12 +131,10 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
               disabled={!searchLot.trim() || loading}
               className="px-5 py-2.5 rounded-xl bg-accent-blue text-white font-bold text-sm uppercase tracking-wider hover:bg-accent-blue/80 transition-all disabled:opacity-50 shrink-0 flex items-center justify-center min-w-[100px]"
             >
-              {/* НОВОЕ: Анимация загрузки на кнопке */}
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Найти"}
             </button>
           </div>
 
-          {/* Priority lot indicator */}
           {priorityLot && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-accent-blue/10 border border-accent-blue/20">
               <Tv className="w-4 h-4 text-accent-blue" />
@@ -118,7 +145,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
         </div>
       </div>
 
-      {/* Results */}
+      {/* States: Initial, Loading, Not Found */}
       {!activeLot && !loading && (
         <div className={`${glass} flex-1 flex items-center justify-center`}>
           <div className="text-center">
@@ -152,9 +179,9 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
         </div>
       )}
 
+      {/* Results */}
       {activeLot && !loading && containers.length > 0 && (
         <>
-          {/* Stats & Filters bar */}
           <div className={`${glass} flex flex-col`}>
             <div className="px-5 py-4 flex flex-wrap items-center gap-4 border-b border-white/5">
               <div className="flex items-center gap-3">
@@ -168,7 +195,6 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
                 <span className="flex items-center gap-1.5 text-white/50"><Clock className="w-4 h-4" />{waiting.length}</span>
               </div>
 
-              {/* Progress bar */}
               <div className="flex items-center gap-2 flex-1 min-w-[120px]">
                 <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
                   <div className="h-full bg-accent-green rounded-full transition-all duration-700"
@@ -178,7 +204,6 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
               </div>
 
               <div className="ml-auto flex items-center gap-2">
-                {/* Set as TV priority button */}
                 {isManager && (
                   <button
                     onClick={handleSetPriority}
@@ -201,7 +226,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
               </div>
             </div>
 
-            {/* НОВОЕ: Панель фильтров по материалу (W/S) */}
+            {/* Фильтры */}
             {uniqueWs.length > 1 && (
               <div className="px-5 py-3 flex items-center gap-2 overflow-x-auto custom-scrollbar">
                 <Filter className="w-4 h-4 text-white/50 shrink-0 mr-1" />
@@ -223,7 +248,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
                         filterWs === ws ? 'bg-accent-blue text-white' : 'bg-white/5 text-white/50 hover:bg-white/10 border border-white/5'
                       }`}
                     >
-                      {ws} ({count})
+                      {translateWs(ws)} ({count})
                     </button>
                   );
                 })}
@@ -231,7 +256,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
             )}
           </div>
 
-          {/* Container list */}
+          {/* Список контейнеров */}
           <div className={`${glass} flex-1 min-h-0 flex flex-col overflow-hidden`}>
             <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] px-5 pt-4 pb-2">
               Контейнеры · {sorted.length} шт
@@ -263,27 +288,23 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
                   <div key={`${c.date}-${c.id}-${i}`}
                     className={`flex flex-wrap items-center gap-3 p-3 md:p-4 rounded-2xl border transition-all ${rowCls}`}>
                     
-                    {/* Date */}
                     <div className={`text-sm font-black w-12 text-center shrink-0 ${isToday ? 'text-accent-blue' : 'text-white/50'}`}>
                       {c.date}
                     </div>
 
-                    {/* Dot */}
                     <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isDone ? 'bg-emerald-400' : isAct ? 'bg-amber-400 animate-pulse' : 'bg-white/50 border border-white/50'}`} />
 
-                    {/* ID */}
                     <div className="font-mono text-base md:text-lg font-bold text-white tracking-tight truncate min-w-0 flex-1">{c.id}</div>
 
-                    {/* Meta */}
-                    <div className="flex items-center gap-2 text-xs text-white/50 shrink-0">
-                      {c.ws && <span className="font-bold text-white/80 bg-white/5 px-2 py-0.5 rounded">{c.ws}</span>}
+                    <div className="flex items-center gap-2 text-[10px] sm:text-xs text-white/50 shrink-0">
+                      {c.ws && <span className="font-bold text-white/80 bg-white/5 px-2 py-0.5 rounded">{translateWs(c.ws)}</span>}
                       {c.pallets && <span>{c.pallets}п</span>}
                       {c.zone && <span className="text-accent-blue font-bold">{c.zone}</span>}
                     </div>
 
-                    {/* Times */}
-                    <div className="flex items-center gap-3 shrink-0 text-xs">
-                      {c.eta && <span className="text-white/50">ETA {c.eta}</span>}
+                    <div className="flex items-center gap-2 sm:gap-3 shrink-0 text-[10px] sm:text-xs">
+                      {/* ИЗМЕНЕНИЕ ТЕКСТА ETA */}
+                      {c.eta && <span className="text-white/50">Ожидаемое время выгрузки {c.eta}</span>}
                       {c.start_time && <span className="text-emerald-400 font-bold">{c.start_time}</span>}
                       {c.end_time && <span className="text-emerald-400">→ {c.end_time}</span>}
                       {isAct && c.start_time && (
@@ -291,10 +312,20 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
                       )}
                     </div>
 
-                    {/* Status */}
                     <div className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider shrink-0 ${statusCls}`}>
                       {statusTxt}
                     </div>
+
+                    {/* НОВОЕ: Кнопка подписки (показываем только для ожидающих контейнеров) */}
+                    {!isDone && !isAct && (
+                      <button 
+                        onClick={() => handleSubscribe(c.id)}
+                        className={`ml-1 p-2 rounded-lg transition-colors ${subscribedIds.has(c.id) ? 'bg-accent-blue/20 text-accent-blue' : 'bg-white/5 text-white/30 hover:bg-white/10 hover:text-white'}`}
+                        title="Уведомить о начале выгрузки"
+                      >
+                        {subscribedIds.has(c.id) ? <BellRing className="w-4 h-4 animate-pulse" /> : <Bell className="w-4 h-4" />}
+                      </button>
+                    )}
                   </div>
                 );
               })}
