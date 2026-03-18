@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LotContainer, User, TranslationSet } from '../types';
 import { api } from '../services/api';
-import { Package, Search, Tv, Check, Clock, Timer, CheckCircle2, Loader2, Filter, Bell, BellRing } from 'lucide-react';
+import { Package, Search, Tv, Check, Clock, Timer, CheckCircle2, Loader2, Filter, Bell, BellRing, Layers } from 'lucide-react';
 import { parseHHMM, elapsedMin, todayDDMM, dateSortValue } from '../utils/time';
 
 interface Props {
@@ -9,7 +9,6 @@ interface Props {
   t: TranslationSet;
 }
 
-// Словарь для перевода типов материалов
 const WS_TRANSLATIONS: Record<string, string> = {
   'PAINT': 'Покраска',
   'ASSEMBLY': 'Сборка',
@@ -21,8 +20,10 @@ const WS_TRANSLATIONS: Record<string, string> = {
 const translateWs = (ws: string) => {
   if (!ws) return '';
   const upperWs = ws.trim().toUpperCase();
-  return WS_TRANSLATIONS[upperWs] || ws; // Если перевода нет, оставляем оригинал
+  return WS_TRANSLATIONS[upperWs] || ws; 
 };
+
+type StatusFilter = 'ALL' | 'DONE' | 'PENDING';
 
 const LotTrackerView: React.FC<Props> = ({ user, t }) => {
   const [searchLot, setSearchLot] = useState('');
@@ -33,11 +34,13 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
   const [savingPriority, setSavingPriority] = useState(false);
   const [saved, setSaved] = useState(false);
   
-  // Состояния для фильтров и подписок
+  // Состояния фильтров
   const [filterWs, setFilterWs] = useState<string>('ALL');
-  const [subscribedIds, setSubscribedIds] = useState<Set<string>>(new Set());
+  const [filterStatus, setFilterStatus] = useState<StatusFilter>('ALL');
   
+  const [subscribedIds, setSubscribedIds] = useState<Set<string>>(new Set());
   const [, setTick] = useState(0);
+
   const isManager = user?.role === 'LOGISTIC' || user?.role === 'ADMIN';
 
   useEffect(() => {
@@ -53,7 +56,11 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
     if (!lot.trim()) return;
     setLoading(true);
     setActiveLot(lot.trim().toUpperCase());
-    setFilterWs('ALL'); // Сбрасываем фильтр при новом поиске
+    
+    // Сбрасываем все фильтры при новом поиске
+    setFilterWs('ALL');
+    setFilterStatus('ALL');
+    
     const data = await api.fetchLotTracker(lot.trim());
     setContainers(data);
     setLoading(false);
@@ -85,23 +92,42 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
     }
   };
 
-  // Получаем уникальные материалы (теперь фильтры будут видны всегда, если есть хоть один материал)
+  // 1. Уникальные материалы
   const uniqueWs = Array.from(new Set(containers.map(c => c.ws).filter(Boolean))).sort();
 
-  const filteredContainers = filterWs === 'ALL' 
-    ? containers 
-    : containers.filter(c => c.ws === filterWs);
+  // 2. Двойная фильтрация (Материал + Статус)
+  const filteredContainers = containers.filter(c => {
+    const passWs = filterWs === 'ALL' || c.ws === filterWs;
+    const passStatus = 
+      filterStatus === 'ALL' ? true :
+      filterStatus === 'DONE' ? c.status === 'DONE' :
+      c.status !== 'DONE'; // PENDING (Ожидание или Выгрузка)
+    
+    return passWs && passStatus;
+  });
 
+  // 3. Сортировка результата
   const sorted = [...filteredContainers].sort((a, b) => {
     const da = dateSortValue(a.date), db = dateSortValue(b.date);
     if (da !== db) return da - db;
     return (parseInt(a.index) || 0) - (parseInt(b.index) || 0);
   });
 
-  const done = sorted.filter(c => c.status === 'DONE');
-  const active = sorted.filter(c => c.status === 'ACTIVE');
-  const waiting = sorted.filter(c => c.status === 'WAIT');
+  // 4. Подсчет цифр для шапки статистики (по всем контейнерам лота)
+  const allDone = containers.filter(c => c.status === 'DONE');
+  const allActive = containers.filter(c => c.status === 'ACTIVE');
+  const allWaiting = containers.filter(c => c.status === 'WAIT');
   const today = todayDDMM();
+
+  // 5. Умный подсчет для цифр внутри кнопок фильтров
+  // Если выбран фильтр по Статусу, цифры в Материалах зависят от Статуса
+  const filteredByStatusOnly = filterStatus === 'ALL' ? containers : containers.filter(c => filterStatus === 'DONE' ? c.status === 'DONE' : c.status !== 'DONE');
+  // Если выбран фильтр по Материалу, цифры в Статусах зависят от Материала
+  const filteredByWsOnly = filterWs === 'ALL' ? containers : containers.filter(c => c.ws === filterWs);
+
+  const countAllStatus = filteredByWsOnly.length;
+  const countDoneStatus = filteredByWsOnly.filter(c => c.status === 'DONE').length;
+  const countPendingStatus = filteredByWsOnly.filter(c => c.status !== 'DONE').length;
 
   const glass = "bg-[rgba(58,60,78,0.35)] backdrop-blur-xl border border-white/10 border-t-white/15 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.4)]";
 
@@ -143,7 +169,6 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
         </div>
       </div>
 
-      {/* States: Initial, Loading, Not Found */}
       {!activeLot && !loading && (
         <div className={`${glass} flex-1 flex items-center justify-center`}>
           <div className="text-center">
@@ -169,28 +194,28 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
         </div>
       )}
 
-      {/* Results */}
       {activeLot && !loading && containers.length > 0 && (
         <>
           <div className={`${glass} flex flex-col`}>
+            {/* Статистика */}
             <div className="px-5 py-4 flex flex-wrap items-center gap-4 border-b border-white/5">
               <div className="flex items-center gap-3">
                 <span className="text-2xl font-black text-white">{activeLot}</span>
-                <span className="text-sm text-white/50 font-mono">{done.length}/{sorted.length}</span>
+                <span className="text-sm text-white/50 font-mono">{allDone.length}/{containers.length}</span>
               </div>
 
               <div className="flex items-center gap-3 text-sm font-bold">
-                <span className="flex items-center gap-1.5 text-emerald-400"><CheckCircle2 className="w-4 h-4" />{done.length}</span>
-                <span className="flex items-center gap-1.5 text-amber-400"><Timer className="w-4 h-4" />{active.length}</span>
-                <span className="flex items-center gap-1.5 text-white/50"><Clock className="w-4 h-4" />{waiting.length}</span>
+                <span className="flex items-center gap-1.5 text-emerald-400"><CheckCircle2 className="w-4 h-4" />{allDone.length}</span>
+                <span className="flex items-center gap-1.5 text-amber-400"><Timer className="w-4 h-4" />{allActive.length}</span>
+                <span className="flex items-center gap-1.5 text-white/50"><Clock className="w-4 h-4" />{allWaiting.length}</span>
               </div>
 
               <div className="flex items-center gap-2 flex-1 min-w-[120px]">
                 <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
                   <div className="h-full bg-accent-green rounded-full transition-all duration-700"
-                    style={{ width: `${sorted.length > 0 ? (done.length / sorted.length) * 100 : 0}%` }} />
+                    style={{ width: `${containers.length > 0 ? (allDone.length / containers.length) * 100 : 0}%` }} />
                 </div>
-                <span className="text-xs font-bold text-white/50">{sorted.length > 0 ? Math.round((done.length / sorted.length) * 100) : 0}%</span>
+                <span className="text-xs font-bold text-white/50">{containers.length > 0 ? Math.round((allDone.length / containers.length) * 100) : 0}%</span>
               </div>
 
               <div className="ml-auto flex items-center gap-2">
@@ -216,44 +241,78 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
               </div>
             </div>
 
-            {/* Фильтры (теперь отображаются всегда, если есть хоть 1 материал) */}
-            {uniqueWs.length > 0 && (
-              <div className="px-5 py-3 flex items-center gap-2 overflow-x-auto custom-scrollbar">
-                <Filter className="w-4 h-4 text-white/50 shrink-0 mr-1" />
+            {/* Фильтры */}
+            <div className="px-5 py-3 flex flex-col gap-3">
+              
+              {/* Ряд 1: Фильтр по материалу */}
+              {uniqueWs.length > 0 && (
+                <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1">
+                  <Filter className="w-4 h-4 text-white/50 shrink-0 mr-1" />
+                  <button
+                    onClick={() => setFilterWs('ALL')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                      filterWs === 'ALL' ? 'bg-white text-black' : 'bg-white/5 text-white/50 hover:bg-white/10 border border-white/5'
+                    }`}
+                  >
+                    ВСЕ МАТЕРИАЛЫ ({filteredByStatusOnly.length})
+                  </button>
+                  {uniqueWs.map(ws => {
+                    const count = filteredByStatusOnly.filter(c => c.ws === ws).length;
+                    return (
+                      <button
+                        key={ws}
+                        onClick={() => setFilterWs(ws)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                          filterWs === ws ? 'bg-accent-blue text-white' : 'bg-white/5 text-white/50 hover:bg-white/10 border border-white/5'
+                        }`}
+                      >
+                        {translateWs(ws)} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Ряд 2: Фильтр по статусу Принято/Не принято */}
+              <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1">
+                <Layers className="w-4 h-4 text-white/50 shrink-0 mr-1" />
                 <button
-                  onClick={() => setFilterWs('ALL')}
+                  onClick={() => setFilterStatus('ALL')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                    filterWs === 'ALL' ? 'bg-white text-black' : 'bg-white/5 text-white/50 hover:bg-white/10 border border-white/5'
+                    filterStatus === 'ALL' ? 'bg-white text-black' : 'bg-white/5 text-white/50 hover:bg-white/10 border border-white/5'
                   }`}
                 >
-                  ВСЕ ({containers.length})
+                  ВСЕ СТАТУСЫ ({countAllStatus})
                 </button>
-                {uniqueWs.map(ws => {
-                  const count = containers.filter(c => c.ws === ws).length;
-                  return (
-                    <button
-                      key={ws}
-                      onClick={() => setFilterWs(ws)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                        filterWs === ws ? 'bg-accent-blue text-white' : 'bg-white/5 text-white/50 hover:bg-white/10 border border-white/5'
-                      }`}
-                    >
-                      {translateWs(ws)} ({count})
-                    </button>
-                  );
-                })}
+                <button
+                  onClick={() => setFilterStatus('DONE')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                    filterStatus === 'DONE' ? 'bg-emerald-500 text-white' : 'bg-white/5 text-emerald-400/50 hover:bg-white/10 border border-emerald-500/20'
+                  }`}
+                >
+                  ПРИНЯТО ({countDoneStatus})
+                </button>
+                <button
+                  onClick={() => setFilterStatus('PENDING')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                    filterStatus === 'PENDING' ? 'bg-amber-500 text-white' : 'bg-white/5 text-amber-400/50 hover:bg-white/10 border border-amber-500/20'
+                  }`}
+                >
+                  НЕ ПРИНЯТО ({countPendingStatus})
+                </button>
               </div>
-            )}
+
+            </div>
           </div>
 
           {/* Список контейнеров */}
           <div className={`${glass} flex-1 min-h-0 flex flex-col overflow-hidden`}>
             <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] px-5 pt-4 pb-2">
-              Контейнеры · {sorted.length} шт
+              Отображено · {sorted.length} шт
             </div>
             <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-2 custom-scrollbar">
               {sorted.length === 0 && (
-                <div className="text-center text-white/30 py-8 text-sm font-bold">Нет контейнеров для выбранного фильтра</div>
+                <div className="text-center text-white/30 py-8 text-sm font-bold">Нет контейнеров для выбранных фильтров</div>
               )}
               {sorted.map((c, i) => {
                 const isDone = c.status === 'DONE';
@@ -293,7 +352,6 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
                     </div>
 
                     <div className="flex items-center gap-2 sm:gap-3 shrink-0 text-[10px] sm:text-xs">
-                      {/* Ожидаемое время выгрузки */}
                       {c.eta && <span className="text-white/50">Ожидаемое время выгрузки {c.eta}</span>}
                       {c.start_time && <span className="text-emerald-400 font-bold">{c.start_time}</span>}
                       {c.end_time && <span className="text-emerald-400">→ {c.end_time}</span>}
@@ -306,7 +364,6 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
                       {statusTxt}
                     </div>
 
-                    {/* Кнопка подписки (Только для контейнеров В ОЧЕРЕДИ) */}
                     {!isDone && !isAct && (
                       <button 
                         onClick={() => handleSubscribe(c.id)}
