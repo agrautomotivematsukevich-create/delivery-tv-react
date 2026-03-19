@@ -251,6 +251,14 @@ function doPost(e) {
       } else return ContentService.createTextOutput("BUSY");
     }
 
+    // === SUBSCRIBE NOTIFICATION (POST) ===
+    if (data.mode === "subscribe_notification") {
+      if (lock.tryLock(10000)) {
+        try { return handleSubscribeNotification(simulatedEvent, ss); }
+        finally { lock.releaseLock(); }
+      } else return ContentService.createTextOutput("BUSY");
+    }
+
     return ContentService.createTextOutput("UNKNOWN_MODE");
   } catch (e) { return ContentService.createTextOutput("POST_ERROR: " + e.toString()); }
 }
@@ -311,40 +319,49 @@ function handleGetFullPlan(ss, e) {
 }
 
 function handleGetLotTracker(ss, e) {
-  var lotQuery = (e.parameter.lot || "").trim().toUpperCase();
+  var lotQuery = (e.parameter.lot || "").toString().trim().toUpperCase();
   if (!lotQuery) return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
 
   var sheets = ss.getSheets();
-  var datePattern = /^\d{2}\.\d{2}$/;
   var results = [];
+  var sheetsScanned = 0; 
 
   for (var s = 0; s < sheets.length; s++) {
-    var sheetName = sheets[s].getName();
-    if (!datePattern.test(sheetName)) continue;
+    var sheetName = sheets[s].getName().trim(); 
+    
+    // Теперь пропускаем ТОЛЬКО Dashboard и Problems. Вкладку ACTUAL сканируем тоже!
+    if (sheetName.toUpperCase() === 'DASHBOARD' || sheetName.toUpperCase() === 'PROBLEMS') continue;
 
     var sheet = sheets[s];
     var lr = sheet.getLastRow();
-    if (lr < 5) continue;
+    
+    if (lr >= 5) {
+      sheetsScanned++;
+      var data = sheet.getRange(5, 1, lr - 4, 16).getDisplayValues();
 
-    var data = sheet.getRange(5, 1, lr - 4, 16).getDisplayValues();
+      for (var i = 0; i < data.length; i++) {
+        var row = data[i];
+        var lot = (row[1] || "").toString().trim().toUpperCase();
+        var id  = (row[4] || "").toString().trim().toUpperCase();
+        
+        // Ищем совпадение
+        if (lot.indexOf(lotQuery) !== -1 || id.indexOf(lotQuery) !== -1) {
+          var status = "WAIT";
+          if (row[8] !== "") status = "DONE";
+          else if (row[7] !== "") status = "ACTIVE";
 
-    for (var i = 0; i < data.length; i++) {
-      var row = data[i];
-      var lot = (row[1] || "").trim().toUpperCase();
-      var id  = row[4];
-      if (!id || lot.indexOf(lotQuery) === -1) continue;
-
-      var status = "WAIT";
-      if (row[8] !== "") status = "DONE";
-      else if (row[7] !== "") status = "ACTIVE";
-
-      results.push({
-        date: sheetName, index: row[0], lot: row[1], ws: row[2],
-        pallets: row[3], id: id, phone: row[5], eta: row[6],
-        status: status, start_time: row[7], end_time: row[8],
-        zone: row[10], operator: row[11], arrival_time: row[15]
-      });
+          results.push({
+            date: sheetName, index: row[0], lot: row[1], ws: row[2],
+            pallets: row[3], id: id || "НЕ НАЗНАЧЕН", phone: row[5], eta: row[6],
+            status: status, start_time: row[7], end_time: row[8],
+            zone: row[10], operator: row[11], arrival_time: row[15]
+          });
+        }
+      }
     }
+    
+    // Сканируем 30 вкладок (больше месяца истории + ACTUAL)
+    if (sheetsScanned >= 30) break;
   }
 
   return ContentService.createTextOutput(JSON.stringify(results)).setMimeType(ContentService.MimeType.JSON);
@@ -951,4 +968,111 @@ function testEmailSending() {
   Logger.log("Отправляем чистый тест...");
   MailApp.sendEmail("matsukevich12312@gmail.com", "Чистый тест системы AGR", "Если ты это читаешь, баг побежден!");
   Logger.log("Чистый тест завершен.");
+}
+
+// Сохраняет Email пользователя в таблицу
+function handleSubscribeNotification(e, ss) {
+  var sheet = ss.getSheetByName('SUBSCRIPTIONS');
+  if (!sheet) {
+    sheet = ss.insertSheet('SUBSCRIPTIONS');
+    sheet.getRange("A1:D1").setValues([["Timestamp", "Container ID", "Email", "Status"]]).setFontWeight("bold").setBackground("#EEE");
+    sheet.setFrozenRows(1);
+  }
+  
+  var time = Utilities.formatDate(new Date(), "Europe/Moscow", "dd.MM.yyyy HH:mm:ss");
+  sheet.appendRow([time, e.parameter.id, e.parameter.email, "PENDING"]);
+  
+  return ContentService.createTextOutput("SUBSCRIBED");
+}
+
+// РОБОТ: Проверяет таблицу и отправляет письма
+function processSubscriptions() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var subSheet = ss.getSheetByName('SUBSCRIPTIONS');
+  if (!subSheet) return;
+  
+  var lr = subSheet.getLastRow();
+  if (lr < 2) return;
+  
+  var subs = subSheet.getRange(2, 1, lr - 1, 4).getValues();
+  var todayName = getTodaySheetName();
+  var todaySheet = ss.getSheetByName(todayName);
+  
+  if (!todaySheet || todaySheet.getLastRow() < 5) return;
+  
+  // Берем данные как текст
+  var tasks = todaySheet.getRange(5, 1, todaySheet.getLastRow() - 4, 16).getDisplayValues(); 
+  
+  // Ищем все контейнеры, которые УЖЕ начали выгружаться (и запоминаем их Зону и Оператора)
+  var startedContainers = {};
+  for (var i = 0; i < tasks.length; i++) {
+     var id = tasks[i][4]; // Колонка E (ID)
+     var startTime = tasks[i][7]; // Колонка H (Время начала)
+     if (id && startTime !== "") {
+        startedContainers[id] = {
+          time: startTime,
+          zone: tasks[i][10] || "Не указана", // Колонка K (Зона)
+          operator: tasks[i][11] || "Не назначен" // Колонка L (Оператор)
+        };
+     }
+  }
+  
+  // Идем по списку подписчиков
+  for (var s = 0; s < subs.length; s++) {
+    var subId = subs[s][1];
+    var subEmail = subs[s][2];
+    var subStatus = subs[s][3];
+    
+    // Если письмо еще не отправляли и контейнер начал выгружаться
+    if (subStatus === "PENDING" && startedContainers[subId]) {
+      var containerData = startedContainers[subId];
+      var subject = "🚛 Выгрузка началась: Контейнер " + subId;
+      
+      // Формируем красивое HTML-письмо
+      var htmlBody = `
+      <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.5; max-width: 600px; border: 1px solid #eee; padding: 20px; border-radius: 8px;">
+        <h2 style="color: #2E8B57; font-size: 18px; border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-top: 0;">
+          Информация: Начата выгрузка контейнера
+        </h2>
+        <p>Уважаемые коллеги,</p>
+        <p>Настоящим письмом информируем вас о начале процесса выгрузки контейнера, на уведомления о котором вы были подписаны.</p>
+
+        <table style="border-collapse: collapse; width: 100%; margin-top: 15px; font-size: 14px;">
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; width: 40%; background-color: #f9f9f9;">Номер контейнера:</td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${subId}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; background-color: #f9f9f9;">Время начала выгрузки:</td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${containerData.time}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; background-color: #f9f9f9;">Зона выгрузки:</td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${containerData.zone}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; background-color: #f9f9f9;">Ответственный оператор:</td>
+            <td style="padding: 10px; border: 1px solid #ddd;">${containerData.operator}</td>
+          </tr>
+        </table>
+
+        <p style="margin-top: 30px; font-size: 12px; color: #777; border-top: 1px solid #eee; padding-top: 10px;">
+          <em>Данное уведомление сформировано автоматически системой мониторинга контейнеров AGR Warehouse. Пожалуйста, не отвечайте на этот адрес.</em>
+        </p>
+      </div>
+      `;
+      
+      try {
+        // Отправляем как HTML
+        MailApp.sendEmail({
+          to: subEmail,
+          subject: subject,
+          htmlBody: htmlBody
+        });
+        subSheet.getRange(s + 2, 4).setValue("SENT"); // Отмечаем как отправленное
+      } catch (err) {
+        subSheet.getRange(s + 2, 4).setValue("ERROR: " + err.message);
+      }
+    }
+  }
 }
