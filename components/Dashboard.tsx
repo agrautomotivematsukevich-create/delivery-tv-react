@@ -43,40 +43,11 @@ const UnloadTimer: React.FC<{ startTime: string; sz?: number }> = ({ startTime, 
   );
 };
 
-// ── Skeleton для одной shift-карточки ──────────────────────────────────────────
-
-const ShiftCardSkeleton: React.FC<{ tvMode?: boolean }> = ({ tvMode }) => (
-  <div className="rounded-2xl px-2 py-3 border border-white/5 bg-white/2 flex flex-col items-center gap-1 animate-pulse">
-    <div className="h-3 w-12 bg-white/10 rounded" />
-    <div className="flex items-baseline gap-1 mt-1">
-      <div className={`${tvMode ? 'h-9 w-10' : 'h-8 w-8'} bg-white/10 rounded`} />
-      <div className="h-4 w-6 bg-white/10 rounded" />
-    </div>
-  </div>
-);
-
-// ── Skeleton для ShiftNormWidget ───────────────────────────────────────────────
-
-const ShiftNormSkeleton: React.FC = () => (
-  <div className="w-full mt-3 rounded-2xl px-5 py-4 flex flex-col gap-3 border border-white/8 bg-white/4 animate-pulse">
-    <div className="flex items-center justify-between">
-      <div className="flex items-baseline gap-2">
-        <div className="h-10 w-14 bg-white/10 rounded" />
-        <div className="h-5 w-10 bg-white/10 rounded" />
-      </div>
-      <div className="h-4 w-20 bg-white/10 rounded" />
-    </div>
-    <div className="h-2 w-full bg-white/8 rounded-full mt-1" />
-  </div>
-);
-
 // ── ShiftNormWidget ─────────────────────────────────────────────────────────────
 
-const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: TranslationSet; compact?: boolean; isLoading?: boolean }> = ({ data, allTasks, t, compact, isLoading }) => {
+const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: TranslationSet; compact?: boolean }> = ({ data, allTasks, t, compact }) => {
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
-
-  if (isLoading) return <ShiftNormSkeleton />;
   
   const active = currentShift();
   const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
@@ -166,20 +137,9 @@ const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: Tran
 
 // ── ShiftStatsBlock ─────────────────────────────────────────────────────────────
 
-const ShiftStatsBlock: React.FC<{ data: DashboardData; allTasks: Task[]; tvMode?: boolean; isLoading?: boolean }> = ({ data, allTasks, tvMode, isLoading }) => {
+const ShiftStatsBlock: React.FC<{ data: DashboardData; allTasks: Task[]; tvMode?: boolean }> = ({ data, allTasks, tvMode }) => {
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
-
-  // ── Skeleton while tasks are loading ──
-  if (isLoading) {
-    return (
-      <div className="grid grid-cols-3 gap-2">
-        <ShiftCardSkeleton tvMode={tvMode} />
-        <ShiftCardSkeleton tvMode={tvMode} />
-        <ShiftCardSkeleton tvMode={tvMode} />
-      </div>
-    );
-  }
   
   const active = currentShift();
   const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
@@ -503,26 +463,16 @@ const TVClock: React.FC = () => {
 
 const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
-  const [isTasksLoading, setIsTasksLoading] = useState(true);
 
   useEffect(() => {
-    const todayStr = (() => {
+    const load = async () => {
       const now = new Date();
       const dd = String(now.getDate()).padStart(2, '0');
       const mm = String(now.getMonth() + 1).padStart(2, '0');
-      return `${dd}.${mm}`;
-    })();
-
-    const load = async () => {
-      try {
-        const tasks = await api.fetchHistory(todayStr);
-        setAllTasks(tasks);
-      } finally {
-        setIsTasksLoading(false);
-      }
+      const todayStr = `${dd}.${mm}`; 
+      const tasks = await api.fetchHistory(todayStr);
+      setAllTasks(tasks);
     };
-
-    // Запускаем первый фетч немедленно (параллельно с App-level fetchDashboard)
     load();
 
     let id: ReturnType<typeof setInterval> | null = null;
@@ -535,7 +485,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
     return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
   }, []);
 
-  if (!data) return <div className="text-white/50 animate-pulse text-center mt-20">Загрузка…</div>;
+  if (!data) return <div className="text-white/50 animate-pulse text-center mt-20">Loading…</div>;
 
   const percent       = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
   const circumference = 2 * Math.PI * 150;
@@ -583,11 +533,11 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
             {data.status === 'ACTIVE' ? t.status_active : data.status === 'PAUSE' ? t.status_pause : t.status_wait}
           </div>
 
-          <ShiftNormWidget data={data} allTasks={allTasks} t={t} isLoading={isTasksLoading} />
+          <ShiftNormWidget data={data} allTasks={allTasks} t={t} />
 
           <div className="w-full mt-3">
             <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-2">По сменам</div>
-            <ShiftStatsBlock data={data} allTasks={allTasks} tvMode isLoading={isTasksLoading} />
+            <ShiftStatsBlock data={data} allTasks={allTasks} tvMode />
           </div>
         </div>
 
@@ -685,10 +635,10 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
         <div className={`w-full py-5 rounded-2xl text-lg font-extrabold uppercase tracking-widest border ${getStatusClass(data.status)}`}>
           {data.status === 'ACTIVE' ? t.status_active : data.status === 'PAUSE' ? t.status_pause : t.status_wait}
         </div>
-        <ShiftNormWidget data={data} allTasks={allTasks} t={t} isLoading={isTasksLoading} />
+        <ShiftNormWidget data={data} allTasks={allTasks} t={t} />
         <div className="w-full mt-3">
           <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-2">По сменам</div>
-          <ShiftStatsBlock data={data} allTasks={allTasks} isLoading={isTasksLoading} />
+          <ShiftStatsBlock data={data} allTasks={allTasks} />
         </div>
       </div>
 
