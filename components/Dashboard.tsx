@@ -10,38 +10,21 @@ interface DashboardProps {
   data: DashboardData | null;
   t: TranslationSet;
   tvMode?: boolean;
+  allTasks: Task[];          // ДОБАВЛЕНО
+  isTasksLoading: boolean;   // ДОБАВЛЕНО
 }
 
-const UnloadTimer: React.FC<{ startTime: string; sz?: number }> = ({ startTime, sz = 56 }) => {
-  const [elapsed, setElapsed] = useState(() => elapsedMin(startTime));
-  useEffect(() => {
-    const id = setInterval(() => setElapsed(elapsedMin(startTime)), 30000);
-    return () => clearInterval(id);
-  }, [startTime]);
-  const r     = sz * 0.39;
-  const circ  = 2 * Math.PI * r;
-  const isOver = elapsed > UNLOAD_TARGET;
-  const isWarn = !isOver && elapsed >= UNLOAD_TARGET - 5;
-  const color  = isOver ? '#f87171' : isWarn ? '#fbbf24' : '#00e676';
-  const offset = circ * (1 - Math.min(1, elapsed / UNLOAD_TARGET));
-  return (
-    <div className="relative shrink-0 flex items-center justify-center" style={{ width: sz, height: sz }}>
-      <svg width={sz} height={sz} className="-rotate-90">
-        <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={sz * 0.07} />
-        <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke={color} strokeWidth={sz * 0.07}
-          strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset}
-          style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s' }}
-          className={isOver ? 'animate-pulse' : ''} />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-mono font-black tabular-nums leading-none" style={{ fontSize: sz * 0.22, color }}>
-          {isOver ? `+${elapsed - UNLOAD_TARGET}` : Math.max(0, UNLOAD_TARGET - elapsed)}
-        </span>
-        <span className="font-mono leading-none" style={{ fontSize: sz * 0.14, color: 'rgba(255,255,255,0.3)' }}>МИН</span>
-      </div>
+const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks, isTasksLoading }) => {
+  // Мы удалили отсюда весь блок с useEffect и стейтами загрузки!
+  // Теперь Dashboard получает всё готовенькое из App.tsx
+
+  if (!data) return (
+    <div className="flex items-center justify-center w-full h-[50vh]">
+       <div className="text-white/50 animate-pulse text-lg font-bold flex items-center gap-3">
+         <Clock className="animate-spin text-white/30" /> Загрузка дашборда...
+       </div>
     </div>
   );
-};
 
 // ── Skeleton для одной shift-карточки ──────────────────────────────────────────
 

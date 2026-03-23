@@ -44,6 +44,10 @@ function App() {
 
   const [isAppReady, setIsAppReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // 🚀 НОВОЕ: Стейты для задач (смен), перенесенные из Dashboard
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [isTasksLoading, setIsTasksLoading] = useState(true);
 
   const [showAuth, setShowAuth] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
@@ -57,7 +61,19 @@ function App() {
 
   const refreshDashboard = useCallback(async () => {
     try {
-      const data = await api.fetchDashboard();
+      const todayStr = (() => {
+        const now = new Date();
+        const dd = String(now.getDate()).padStart(2, '0');
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        return `${dd}.${mm}`;
+      })();
+
+      // 🚀 МАГИЯ ЗДЕСЬ: Параллельный запуск двух запросов
+      const [data, tasks] = await Promise.all([
+        api.fetchDashboard().catch(() => null),
+        api.fetchHistory(todayStr).catch(() => [])
+      ]);
+
       if (data) {
         setDashboardData((prev) => {
           if (deepEqual(prev, data)) return prev;
@@ -67,12 +83,18 @@ function App() {
       } else {
         setIsOffline(true);
       }
+
+      if (tasks) {
+        setAllTasks(tasks);
+      }
+
       return data;
     } catch (e) {
       setIsOffline(true);
       return null;
     } finally {
       setIsLoading(false);
+      setIsTasksLoading(false);
     }
   }, [setDashboardData, setIsOffline]);
 
@@ -143,20 +165,20 @@ function App() {
   const lazyRoutes = (
     <Suspense fallback={<ViewFallback />}>
       <Routes>
-        <Route path="/" element={<Dashboard data={dashboardData} t={t} tvMode={isTV} />} />
+        {/* 🚀 ПЕРЕДАЕМ ПРОПСЫ В ДАШБОРД */}
+        <Route path="/" element={<Dashboard data={dashboardData} allTasks={allTasks} isTasksLoading={isTasksLoading} t={t} tvMode={isTV} />} />
         <Route path="/history" element={<HistoryView t={t} />} />
         <Route path="/logistics" element={<LogisticsView t={t} />} />
         <Route path="/downtime" element={<ZoneDowntimeView t={t} />} />
         <Route path="/arrival" element={<ArrivalAnalyticsView t={t} />} />
         <Route path="/lotTracker" element={<LotTrackerView user={user} t={t} />} />
-        <Route path="*" element={<Dashboard data={dashboardData} t={t} tvMode={isTV} />} />
+        <Route path="*" element={<Dashboard data={dashboardData} allTasks={allTasks} isTasksLoading={isTasksLoading} t={t} tvMode={isTV} />} />
       </Routes>
     </Suspense>
   );
 
   return (
     <>
-      {/* Dynamic per-route SEO: title, description, canonical, OG, Twitter */}
       <PageMeta />
 
       {isOffline && (
