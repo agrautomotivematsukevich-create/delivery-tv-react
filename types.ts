@@ -61,10 +61,10 @@ export interface DashboardData {
     start: string;
     zone: string;
   }>;
-  /** Контейнеры прибывшие на территорию, ещё не начатые */
   onTerritory: number;
-  /** Выгружено по каждой смене */
-  shiftCounts: ShiftCounts;
+  shiftCounts: ShiftCounts; 
+  shiftFacts: ShiftCounts;   // НОВОЕ: Готовый факт с сервера
+  shiftTargets: ShiftCounts; // НОВОЕ: Готовые цели с сервера
 }
 
 export interface TaskInput {

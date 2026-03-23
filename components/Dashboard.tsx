@@ -69,13 +69,15 @@ const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: Tran
   useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
 
   const active = currentShift();
-  const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
-  const targets = useMemo(() => calculateShiftTargets(allTasks, facts, active), [allTasks, facts, active]);
   
-  if (isLoading) return <ShiftNormSkeleton />;
+  // ⚡️ ГИБРИДНАЯ ЛОГИКА: 
+  // Если есть allTasks (авторизован), считаем максимально точно на фронте.
+  // Если allTasks пуст (TV-режим), берем готовые цифры с бэкенда!
+  const facts = allTasks.length > 0 ? calculateShiftFact(allTasks) : data.shiftFacts;
+  const targets = allTasks.length > 0 ? calculateShiftTargets(allTasks, facts, active) : data.shiftTargets;
   
-  const target = targets[active];
-  const done = active !== 'none' ? facts[active] : 0;
+  const target = targets[active] || 0;
+  const done = active !== 'none' ? (facts[active] || 0) : 0;
   
   const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
   let fraction = 0;
@@ -145,6 +147,55 @@ const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: Tran
       ) : (
         <div className="text-[10px] text-white/40 uppercase tracking-widest mt-1">Резервное время (вне плана)</div>
       )}
+    </div>
+  );
+};
+
+// ── ShiftStatsBlock ─────────────────────────────────────────────────────────────
+const ShiftStatsBlock: React.FC<{ data: DashboardData; allTasks: Task[]; tvMode?: boolean; isLoading?: boolean }> = ({ data, allTasks, tvMode, isLoading }) => {
+  const [, setTick] = useState(0);
+  useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
+
+  const active = currentShift();
+  
+  // ⚡️ ГИБРИДНАЯ ЛОГИКА
+  const facts = allTasks.length > 0 ? calculateShiftFact(allTasks) : data.shiftFacts;
+  const targets = allTasks.length > 0 ? calculateShiftTargets(allTasks, facts, active) : data.shiftTargets;
+
+  const getCount = (key: 'morning' | 'evening' | 'night') => facts[key];
+
+  const shifts = [
+    { key: 'morning' as const, label: 'УТРО',  emoji: '☀️', color: 'text-amber-400',  border: 'border-amber-400/35',  bg: 'bg-amber-400/8' },
+    { key: 'evening' as const, label: 'ВЕЧЕР', emoji: '🌆', color: 'text-orange-400', border: 'border-orange-400/35', bg: 'bg-orange-400/8' },
+    { key: 'night'   as const, label: 'НОЧЬ',  emoji: '🌙', color: 'text-indigo-400', border: 'border-indigo-400/35', bg: 'bg-indigo-400/8' },
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-2 w-full">
+      {shifts.map(sh => {
+        const count = getCount(sh.key);
+        const target = targets[sh.key];
+        const isActive = sh.key === active;
+        return (
+          <div key={sh.key} className={`rounded-2xl px-2 py-3 border transition-all duration-300 flex flex-col items-center gap-1 ${
+            isActive ? `${sh.border} ${sh.bg}` : 'border-white/5 bg-white/2'
+          }`}>
+            <div className={`flex items-center gap-1 ${isActive ? sh.color : 'text-white/50'}`}>
+              <span className="text-sm">{sh.emoji}</span>
+              <span className="font-black uppercase tracking-wider text-[9px]">{sh.label}</span>
+              {isActive && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse shrink-0" />}
+            </div>
+            <div className="flex items-baseline gap-1 mt-1">
+              <span className={`font-black tabular-nums leading-none ${tvMode ? 'text-4xl' : 'text-3xl'} ${isActive ? sh.color : 'text-white/60'}`}>
+                {count}
+              </span>
+              <span className={`font-bold text-sm ${isActive ? 'text-current opacity-50' : 'text-white/30'}`}>
+                / {target}
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
