@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
@@ -8,21 +8,31 @@ import IssueHistoryModal from './components/IssueHistoryModal';
 import OperatorTerminal from './components/OperatorTerminal';
 import StatsModal from './components/StatsModal';
 import ActionModal from './components/ActionModal';
-import HistoryView from './components/HistoryView';
-import LogisticsView from './components/LogisticsView';
-import ZoneDowntimeView from './components/ZoneDowntimeView';
-import ArrivalAnalyticsView from './components/ArrivalAnalyticsView';
-import LotTrackerTV from './components/LotTrackerTV';
-import LotTrackerView from './components/LotTrackerView';
+import AdminPanel from './components/AdminPanel';
 import SplashScreen from './components/SplashScreen';
+import PageMeta from './components/PageMeta';
 import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
 import { Task, TaskAction } from './types';
 import { useAppContext } from './components/AppContext';
 import { deepEqual } from './utils/deepEqual';
 
+// Lazy-loaded heavy views
+const HistoryView          = React.lazy(() => import('./components/HistoryView'));
+const LogisticsView        = React.lazy(() => import('./components/LogisticsView'));
+const ZoneDowntimeView     = React.lazy(() => import('./components/ZoneDowntimeView'));
+const ArrivalAnalyticsView = React.lazy(() => import('./components/ArrivalAnalyticsView'));
+const LotTrackerTV         = React.lazy(() => import('./components/LotTrackerTV'));
+const LotTrackerView       = React.lazy(() => import('./components/LotTrackerView'));
+
+const ViewFallback = () => (
+  <div className="flex-1 flex items-center justify-center">
+    <div className="text-white/40 animate-pulse text-sm font-mono tracking-widest">LOADING...</div>
+  </div>
+);
+
 function App() {
-  const { user, setUser, dashboardData, setDashboardData, isOffline, setIsOffline, lang, setLang } = useAppContext();
+  const { user, setUser, logout, dashboardData, setDashboardData, isOffline, setIsOffline, lang, setLang } = useAppContext();
   
   const location = useLocation();
   const navigate = useNavigate();
@@ -40,6 +50,7 @@ function App() {
   const [showStats, setShowStats] = useState(false);
   const [showIssue, setShowIssue] = useState(false);
   const [showIssueHistory, setShowIssueHistory] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
   const [currentAction, setCurrentAction] = useState<TaskAction | null>(null);
 
   const t = TRANSLATIONS[lang];
@@ -123,14 +134,31 @@ function App() {
     setCurrentAction(null);
   };
 
-  // Convert old setView logic to navigation mapping
   const currentView = location.pathname.slice(1) || 'dashboard';
   const handleSetView = (view: string) => {
     navigate(view === 'dashboard' ? '/' : `/${view}`);
   };
 
+  // Shared route definitions (DRY)
+  const lazyRoutes = (
+    <Suspense fallback={<ViewFallback />}>
+      <Routes>
+        <Route path="/" element={<Dashboard data={dashboardData} t={t} tvMode={isTV} />} />
+        <Route path="/history" element={<HistoryView t={t} />} />
+        <Route path="/logistics" element={<LogisticsView t={t} />} />
+        <Route path="/downtime" element={<ZoneDowntimeView t={t} />} />
+        <Route path="/arrival" element={<ArrivalAnalyticsView t={t} />} />
+        <Route path="/lotTracker" element={<LotTrackerView user={user} t={t} />} />
+        <Route path="*" element={<Dashboard data={dashboardData} t={t} tvMode={isTV} />} />
+      </Routes>
+    </Suspense>
+  );
+
   return (
     <>
+      {/* Dynamic per-route SEO: title, description, canonical, OG, Twitter */}
+      <PageMeta />
+
       {isOffline && (
         <div className="fixed top-0 left-0 w-full bg-red-500 text-white text-center py-1 text-xs font-bold z-[100]">
           ⚠️ ПОТЕРЯНО СОЕДИНЕНИЕ С СЕРВЕРОМ (ОФФЛАЙН РЕЖИМ)
@@ -140,19 +168,13 @@ function App() {
 
       {isTV2 ? (
         <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
-          <LotTrackerTV lot={tv2Lot} />
+          <Suspense fallback={<ViewFallback />}>
+            <LotTrackerTV lot={tv2Lot} />
+          </Suspense>
         </div>
       ) : isTV ? (
         <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
-          <Routes>
-            <Route path="/" element={<Dashboard data={dashboardData} t={t} tvMode={isTV} />} />
-            <Route path="/history" element={<HistoryView t={t} />} />
-            <Route path="/logistics" element={<LogisticsView t={t} />} />
-            <Route path="/downtime" element={<ZoneDowntimeView t={t} />} />
-            <Route path="/arrival" element={<ArrivalAnalyticsView t={t} />} />
-            <Route path="/lotTracker" element={<LotTrackerView user={user} t={t} />} />
-            <Route path="*" element={<Dashboard data={dashboardData} t={t} tvMode={isTV} />} />
-          </Routes>
+          {lazyRoutes}
         </div>
       ) : (
         <div className={`relative min-h-screen w-full flex flex-col p-4 md:p-8 bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
@@ -167,24 +189,17 @@ function App() {
                 title={t.title}
                 onToggleLang={() => setLang(lang === 'RU' ? 'EN_CN' : 'RU')}
                 onLoginClick={() => setShowAuth(true)}
-                onLogoutClick={() => { setUser(null); setShowTerminal(false); }}
+                onLogoutClick={() => { logout(); setShowTerminal(false); }}
                 onTerminalClick={() => setShowTerminal(true)}
                 onStatsClick={() => setShowStats(true)}
                 onIssueClick={() => setShowIssue(true)}
                 onHistoryClick={() => setShowIssueHistory(true)}
+                onAdminClick={() => setShowAdmin(true)}
               />
             </div>
 
             <main className="relative z-10 flex-1 mt-4 flex flex-col min-h-0">
-              <Routes>
-                <Route path="/" element={<Dashboard data={dashboardData} t={t} tvMode={isTV} />} />
-                <Route path="/history" element={<HistoryView t={t} />} />
-                <Route path="/logistics" element={<LogisticsView t={t} />} />
-                <Route path="/downtime" element={<ZoneDowntimeView t={t} />} />
-                <Route path="/arrival" element={<ArrivalAnalyticsView t={t} />} />
-                <Route path="/lotTracker" element={<LotTrackerView user={user} t={t} />} />
-                <Route path="*" element={<Dashboard data={dashboardData} t={t} tvMode={isTV} />} />
-              </Routes>
+              {lazyRoutes}
             </main>
           </div>
 
@@ -193,6 +208,7 @@ function App() {
           {showStats && <StatsModal t={t} onClose={() => setShowStats(false)} />}
           {showIssue && <IssueModal t={t} user={user} onClose={() => setShowIssue(false)} />}
           {showIssueHistory && <IssueHistoryModal t={t} onClose={() => setShowIssueHistory(false)} />}
+          {showAdmin && user?.role === 'ADMIN' && <AdminPanel onClose={() => setShowAdmin(false)} />}
           {currentAction && user && <ActionModal action={currentAction} user={user} t={t} onClose={handleActionClose} onSuccess={handleActionSuccess} />}
 
           <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">

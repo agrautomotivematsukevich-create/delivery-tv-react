@@ -1,0 +1,51 @@
+# AGR Warehouse
+
+> Real-time warehouse management system (WMS) built as a Progressive Web Application.
+
+## Overview
+
+AGR Warehouse is an interactive dashboard for managing warehouse operations in real time. It is used by warehouse operators, logistics managers, and administrators to track incoming shipments, monitor zone utilization, manage task assignments, and analyze operational performance.
+
+The system is bilingual (Russian / English+Chinese) and designed for both desktop browsers and wall-mounted TV displays.
+
+## Technology Stack
+
+- Frontend: React 18, TypeScript, Vite, Tailwind CSS, Framer Motion, Recharts
+- Hosting: Vercel (SPA with client-side routing via React Router v6)
+- Backend: Google Apps Script (REST API via Google Sheets as data store)
+- PWA: Service Worker with offline caching (Workbox via vite-plugin-pwa)
+
+## Pages and Routes
+
+| Route         | Name                  | Description |
+|---------------|-----------------------|-------------|
+| /             | Dashboard             | Main control panel: active tasks by zone, operator status, KPI cards, real-time polling every 15 seconds. |
+| /arrival      | Arrival Analytics     | Shipment receiving analytics: daily arrival charts, average unloading time, carrier performance breakdown. |
+| /downtime     | Zone Downtime         | Downtime monitoring per warehouse zone: heatmap of idle periods, root cause categorization, trend analysis. |
+| /history      | Operations History    | Complete log of completed tasks: timestamps, assigned operators, duration, photo evidence of sealed cargo. |
+| /logistics    | Logistics Overview    | Outbound logistics tracking: shipment statuses, delivery routes, transport capacity utilization. |
+| /lotTracker   | Lot Tracker           | Individual lot tracking: current location within the warehouse, movement history, processing status, order linkage. |
+
+## Key Features
+
+- **Operator Terminal**: Authenticated operators can start/finish tasks, upload seal photos, and report issues — all from a mobile-friendly modal interface.
+- **Admin Panel**: Role-based access control; admins can manage users, review issue reports, and configure system parameters.
+- **TV Mode**: Append `?tv=1` to any route for a full-screen kiosk display optimized for wall-mounted monitors. `?tv=2&lot=ID` opens a dedicated lot tracking display.
+- **Offline Mode**: The PWA service worker caches API responses. When connectivity is lost, the dashboard displays cached data with an offline banner.
+- **Issue Reporting**: Operators can file issues (damaged goods, missing items, equipment problems) with photo attachments and priority levels.
+- **Statistics Modal**: Aggregated performance metrics — tasks per operator, average completion time, zone throughput.
+
+## Authentication
+
+Users authenticate via a simple login modal. Roles include OPERATOR and ADMIN, stored server-side. Authentication tokens are persisted in localStorage.
+
+## Data Flow
+
+1. The frontend polls the Google Apps Script web app endpoint every 15 seconds (configurable).
+2. API responses include all active tasks, zone statuses, and operator assignments.
+3. Write operations (start task, finish task, report issue) are POST requests to the same endpoint.
+4. An offline queue (IndexedDB-backed) stores failed writes and replays them when connectivity returns.
+
+## Contact
+
+Developed by Vladislav Matsukevich.

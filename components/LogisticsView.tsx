@@ -42,7 +42,7 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
 
   const handleSubmitCreate = async () => {
     if (createRows.some(r => !r.id)) {
-      addToast("Please fill all Container IDs", 'error');
+      addToast("Заполните все номера контейнеров", 'error');
       return;
     }
     setSubmitting(true);
@@ -54,7 +54,7 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
       addToast(t.log_success, 'success');
       setCreateRows([{ ...emptyRow }]);
     } else {
-      addToast("Error creating plan", 'error');
+      addToast("Ошибка при создании плана", 'error');
     }
   };
 
@@ -88,7 +88,7 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
       setEditingItem(null);
       loadPlan(); // Refresh table
     } else {
-      addToast("Error updating row", 'error');
+      addToast("Ошибка при обновлении строки", 'error');
     }
   };
 
@@ -186,7 +186,7 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
         {mode === 'edit' && (
           <div className="flex-1 flex flex-col min-h-0">
              {loadingPlan ? (
-               <div className="flex-1 flex items-center justify-center text-white/30 animate-pulse">Loading plan...</div>
+               <div className="flex-1 flex items-center justify-center text-white/30 animate-pulse">Загрузка плана...</div>
              ) : planRows.length === 0 ? (
                <div className="flex-1 flex items-center justify-center text-white/30">{t.log_no_data}</div>
              ) : (

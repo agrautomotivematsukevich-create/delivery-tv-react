@@ -1,73 +1,102 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
+
+    <!--
+      ===== SEO Fallback =====
+      These are default values for crawlers that don't execute JS.
+      react-helmet-async dynamically overrides title, description,
+      canonical, OG and Twitter tags on each route change.
+    -->
+    <title>AGR Warehouse — Система управления поставками</title>
+    <meta name="description" content="AGR Warehouse — интерактивная платформа управления складскими операциями: приёмка, логистика, отслеживание лотов, аналитика простоев." />
+    <!-- canonical intentionally omitted here — set dynamically by PageMeta per route -->
+
+    <!-- ===== Viewport (accessibility-safe) ===== -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- ===== Favicon & PWA ===== -->
     <link rel="icon" type="image/svg+xml" href="/agr-logo-white.svg" />
-    <meta name="theme-color" content="#191B25" />
     <link rel="apple-touch-icon" href="/icon-192x192.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>AGR Warehouse</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-              mono: ['JetBrains Mono', 'monospace'],
-            },
-            colors: {
-              bg: '#191B25',
-              'card-bg': 'rgba(58, 60, 78, 0.35)',
-              'accent-green': '#00E676',
-              'accent-yellow': '#E89F64',
-              'accent-red': '#FF3B30',
-              'accent-blue': '#1E7D7D',
-              'accent-purple': '#053838',
-              'accent-gold': '#E89F64',
-              'agr-dark': '#3A3C4E',
-              'agr-gray': '#5C5E74',
-              'agr-light': '#BDBFD1',
-              'agr-green': '#1E7D7D',
-              'agr-dark-green': '#053838',
-              'agr-orange': '#E89F64',
-            },
-            animation: {
-              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            }
-          }
+    <meta name="theme-color" content="#191B25" />
+
+    <!-- ===== Open Graph fallback (overridden per-route by Helmet) ===== -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AGR Warehouse" />
+    <meta property="og:image" content="https://agr-warehouse.vercel.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:locale:alternate" content="en_US" />
+
+    <!-- ===== Technical SEO ===== -->
+    <meta name="robots" content="index, follow" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- ===== Fonts (preconnect for speed) ===== -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+
+    <!-- ===== Structured Data (JSON-LD) ===== -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://agr-warehouse.vercel.app/#organization",
+          "name": "AGR Warehouse",
+          "url": "https://agr-warehouse.vercel.app",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://agr-warehouse.vercel.app/agr-logo-white.svg"
+          },
+          "description": "Платформа управления складскими операциями и логистикой в реальном времени."
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://agr-warehouse.vercel.app/#website",
+          "name": "AGR Warehouse",
+          "url": "https://agr-warehouse.vercel.app",
+          "publisher": { "@id": "https://agr-warehouse.vercel.app/#organization" },
+          "inLanguage": ["ru-RU", "en-US"]
+        },
+        {
+          "@type": "WebApplication",
+          "@id": "https://agr-warehouse.vercel.app/#app",
+          "name": "AGR Warehouse Dashboard",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "Any",
+          "browserRequirements": "Requires JavaScript. Requires HTML5.",
+          "url": "https://agr-warehouse.vercel.app",
+          "description": "Real-time warehouse management system with operator terminal, lot tracking, downtime analytics, and logistics monitoring.",
+          "offers": {
+            "@type": "Offer",
+            "price": "0.00",
+            "priceCurrency": "USD",
+            "availability": "https://schema.org/OnlineOnly"
+          },
+          "author": { "@id": "https://agr-warehouse.vercel.app/#organization" },
+          "featureList": [
+            "Real-time dashboard with zone status",
+            "Operator task terminal",
+            "Arrival analytics and carrier stats",
+            "Zone downtime monitoring",
+            "Lot tracking and movement history",
+            "Logistics overview",
+            "Operations history with photo reports",
+            "Multi-language support (RU/EN/CN)",
+            "PWA with offline mode"
+          ]
         }
-      }
+      ]
+    }
     </script>
-    <style>
-      body {
-        background-color: #191B25;
-        color: white;
-        background-image: 
-          radial-gradient(circle at 20% 20%, rgba(30, 125, 125, 0.12) 0%, transparent 50%),
-          radial-gradient(circle at 80% 80%, rgba(5, 56, 56, 0.10) 0%, transparent 50%);
-        background-attachment: fixed;
-      }
-      /* Custom scrollbar */
-      ::-webkit-scrollbar { width: 4px; }
-      ::-webkit-scrollbar-thumb { background: rgba(30, 125, 125, 0.4); border-radius: 4px; }
-      ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); }
-    </style>
-  <script type="importmap">
-{
-  "imports": {
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "react": "https://esm.sh/react@^19.2.4",
-    "recharts": "https://esm.sh/recharts@^3.7.0"
-  }
-}
-</script>
-</head>
+  </head>
   <body>
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>

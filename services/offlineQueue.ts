@@ -1,8 +1,11 @@
 /**
  * Offline Queue — буфер для операций при плохом соединении
- * * Хранит задачи в IndexedDB, что позволяет данным выживать при перезагрузке страницы
- * или закрытии браузера.
+ * Хранит задачи в IndexedDB для persistence across page reloads.
+ *
+ * v2: All POST requests now include the auth token from localStorage.
  */
+
+import { getToken } from './api';
 
 const DB_NAME = 'wh_offline_queue';
 const STORE_NAME = 'pending_actions';
@@ -33,7 +36,6 @@ export type QueuedAction =
 let db: IDBDatabase | null = null;
 let flushing = false;
 
-// Вспомогательная функция для открытия БД
 function openDB(): Promise<IDBDatabase> {
   if (db) return Promise.resolve(db);
   return new Promise((resolve, reject) => {
@@ -49,7 +51,6 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-// Получение всех задач из очереди
 async function getAll(): Promise<QueuedAction[]> {
   try {
     const database = await openDB();
@@ -59,7 +60,6 @@ async function getAll(): Promise<QueuedAction[]> {
       const req = store.getAll();
       req.onsuccess = () => {
         const items = (req.result || []) as QueuedAction[];
-        // Сортируем по времени, чтобы "Начало" всегда уходило раньше "Финиша"
         resolve(items.sort((a, b) => a.timestamp - b.timestamp));
       };
       req.onerror = () => reject(req.error);
@@ -69,7 +69,6 @@ async function getAll(): Promise<QueuedAction[]> {
   }
 }
 
-// Добавление/обновление задачи
 async function add(action: QueuedAction): Promise<void> {
   try {
     const database = await openDB();
@@ -80,12 +79,11 @@ async function add(action: QueuedAction): Promise<void> {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
-  } catch (e) {
-    console.error('[OfflineQueue] Failed to save:', e);
+  } catch {
+    // Failed to save — silently drop
   }
 }
 
-// Удаление задачи
 async function remove(id: string): Promise<void> {
   try {
     const database = await openDB();
@@ -96,19 +94,16 @@ async function remove(id: string): Promise<void> {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
-  } catch (e) {
-    console.error('[OfflineQueue] Failed to remove:', e);
+  } catch {
+    // Failed to remove — silently ignore
   }
 }
 
-// ── Публичный API ──────────────────────────────────────────────────────────────
+// ── Public API ──────────────────────────────────────────────────────────────
 
 export const offlineQueue = {
   _cachedCount: 0,
 
-  /**
-   * Добавить задачу в очередь
-   */
   async enqueueTaskAction(payload: TaskActionPayload): Promise<void> {
     const action: QueuedAction = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -119,7 +114,6 @@ export const offlineQueue = {
     };
     await add(action);
     await this.refreshCount();
-    console.log(`[OfflineQueue] +1 в очереди (task_action), всего: ${this._cachedCount}`);
   },
 
   async enqueuePhotoUpload(payload: PhotoUploadPayload): Promise<void> {
@@ -132,19 +126,12 @@ export const offlineQueue = {
     };
     await add(action);
     await this.refreshCount();
-    console.log(`[OfflineQueue] +1 в очереди (photo_upload), всего: ${this._cachedCount}`);
   },
 
-  /**
-   * Синхронное получение количества (для бейджей в UI)
-   */
   count(): number {
     return this._cachedCount;
   },
 
-  /**
-   * Обновить кешированный счётчик из БД
-   */
   async refreshCount(): Promise<number> {
     const items = await getAll();
     this._cachedCount = items.length;
@@ -152,7 +139,8 @@ export const offlineQueue = {
   },
 
   /**
-   * Отправить все накопленные задачи на сервер
+   * Flush all queued actions to the server.
+   * Every POST now includes the auth token.
    */
   async flush(): Promise<void> {
     if (flushing || !navigator.onLine) return;
@@ -162,8 +150,11 @@ export const offlineQueue = {
       const items = await getAll();
       if (items.length === 0) return;
 
-      console.log(`[OfflineQueue] Синхронизация: ${items.length} объектов...`);
       const { SCRIPT_URL } = await import('../constants');
+      const token = getToken();
+
+      // If no token, we can't authenticate — skip flush until user logs in
+      if (!token) return;
 
       for (const item of items) {
         try {
@@ -174,13 +165,14 @@ export const offlineQueue = {
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
               body: JSON.stringify({
                 mode: 'upload_photo',
+                token,
                 image: payload.image,
                 mimeType: payload.mimeType,
                 filename: payload.filename,
               }),
             });
             const data = await res.json();
-            
+
             if (data.status === 'SUCCESS') {
               if (payload.taskId && payload.photoField) {
                 await fetch(SCRIPT_URL, {
@@ -188,6 +180,7 @@ export const offlineQueue = {
                   headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                   body: JSON.stringify({
                     mode: 'task_action',
+                    token,
                     id: payload.taskId,
                     act: 'update_photo',
                     [payload.photoField]: data.url,
@@ -195,11 +188,10 @@ export const offlineQueue = {
                 });
               }
               await remove(item.id);
-              console.log(`[OfflineQueue] Фото загружено: ${payload.filename}`);
             } else {
               throw new Error('Server rejected photo');
             }
-          } 
+          }
           else if (item.type === 'task_action') {
             const payload = item.payload;
             const res = await fetch(SCRIPT_URL, {
@@ -207,28 +199,28 @@ export const offlineQueue = {
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
               body: JSON.stringify({
                 mode: 'task_action',
-                ...payload
+                token,
+                ...payload,
               }),
             });
             const txt = await res.text();
-            
+
             if (txt.includes('UPDATED') || txt.includes('OK') || txt.includes('ID_NOT_FOUND')) {
               await remove(item.id);
-              console.log(`[OfflineQueue] Действие синхронизировано: ${payload.id}`);
+            } else if (txt.includes('AUTH_REQUIRED')) {
+              // Token expired — stop flushing, user needs to re-login
+              break;
             } else {
               throw new Error('Action sync failed');
             }
           }
-        } catch (e) {
+        } catch {
           item.retries++;
-          console.warn(`[OfflineQueue] Ошибка в ${item.id}, попытка ${item.retries}/10`, e);
-          
           if (item.retries >= 10) {
             await remove(item.id);
           } else {
             await add(item);
           }
-          
           if (!navigator.onLine) break;
         }
       }
@@ -248,9 +240,9 @@ export const offlineQueue = {
   },
 };
 
+// ── Auto-flush on network recovery ──
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
-    console.log('[OfflineQueue] Сеть восстановлена, начинаю отправку...');
     offlineQueue.flush();
   });
 

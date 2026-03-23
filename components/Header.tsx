@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Lang, TranslationSet } from '../types';
-import { Globe, User as UserIcon, LogOut, ChevronDown, ScanBarcode, LogIn, AlertTriangle, History, LayoutDashboard, Archive, Truck, TrendingDown, Timer, Package } from 'lucide-react';
+import { Globe, User as UserIcon, LogOut, ChevronDown, ScanBarcode, LogIn, AlertTriangle, History, LayoutDashboard, Archive, Truck, TrendingDown, Timer, Package, ShieldAlert } from 'lucide-react';
 
 interface HeaderProps {
   user: User | null;
@@ -15,11 +15,12 @@ interface HeaderProps {
   onStatsClick: () => void;
   onIssueClick: () => void;
   onHistoryClick: () => void; 
+  onAdminClick?: () => void;
   title: string;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
-  user, lang, t, view, setView, onToggleLang, onLoginClick, onLogoutClick, onTerminalClick, onStatsClick, onIssueClick, onHistoryClick, title
+  user, lang, t, view, setView, onToggleLang, onLoginClick, onLogoutClick, onTerminalClick, onStatsClick, onIssueClick, onHistoryClick, onAdminClick, title
 }) => {
   const [time, setTime] = useState(new Date());
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -73,7 +74,6 @@ const Header: React.FC<HeaderProps> = ({
                <span className="hidden sm:inline lg:inline">{t.nav_history}</span>
              </button>
 
-             {/* Простои зон */}
              {(user.role === 'LOGISTIC' || user.role === 'ADMIN') && (
                <button 
                  onClick={() => setView('downtime')}
@@ -83,7 +83,6 @@ const Header: React.FC<HeaderProps> = ({
                  <span className="hidden sm:inline lg:inline">{t.nav_downtime}</span>
                </button>
              )}
-             {/* Аналитика простоя машин */}
              {(user.role === 'LOGISTIC' || user.role === 'ADMIN') && (
                <button 
                  onClick={() => setView('arrival')}
@@ -168,6 +167,17 @@ const Header: React.FC<HeaderProps> = ({
                 <button onClick={() => { setView('lotTracker'); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-3 text-sm font-bold text-white/70 hover:text-white hover:bg-white/5 rounded-lg text-left">
                   <Package size={16} /> Отслеживание Lot
                 </button>
+
+                {/* Admin Panel — visible only for ADMIN role */}
+                {user?.role === 'ADMIN' && onAdminClick && (
+                  <>
+                    <div className="h-px bg-white/5 my-1"></div>
+                    <button onClick={() => { onAdminClick(); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-3 text-sm font-bold text-amber-400 hover:bg-amber-500/10 rounded-lg text-left">
+                      <ShieldAlert size={16} /> Панель Администратора
+                    </button>
+                  </>
+                )}
+
                 <div className="h-px bg-white/5 my-1"></div>
                 <button onClick={() => { onLogoutClick(); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-3 text-sm font-bold text-accent-red hover:bg-accent-red/10 rounded-lg text-left">
                   <LogOut size={16} /> {t.menu_logout}

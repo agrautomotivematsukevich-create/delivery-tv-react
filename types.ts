@@ -3,9 +3,12 @@ export type TaskStatus = 'WAIT' | 'ACTIVE' | 'DONE';
 export type Lang = 'RU' | 'EN_CN';
 
 export interface User {
-  user: string;
-  name: string;
+  user: string;        // tabNumber — используется как уникальный ID (совместимость с бэкендом)
+  name: string;        // Полное отображаемое имя: "Имя Фамилия"
   role: UserRole;
+  tabNumber: string;   // Табельный номер
+  firstName: string;   // Имя
+  lastName: string;    // Фамилия
 }
 
 export interface PendingUser {

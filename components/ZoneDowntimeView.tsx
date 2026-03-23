@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { TranslationSet } from '../types';
-import { Clock, TrendingDown, BarChart3, Calendar, Download, AlertTriangle, Activity, CheckCircle } from 'lucide-react';
+import { Clock, TrendingDown, BarChart3, Calendar, Download, AlertTriangle, Activity, CheckCircle, Phone } from 'lucide-react';
 
 interface ZoneDowntimeViewProps {
   t: TranslationSet;
@@ -41,7 +41,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [isPlanCompleted, setIsPlanCompleted] = useState(false);
-  const [lastCompletionTime, setLastCompletionTime] = useState<string>(''); // ✅ НОВОЕ
+  const [lastCompletionTime, setLastCompletionTime] = useState<string>('');
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -83,19 +83,14 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
     const planCompleted = totalTasks > 0 && totalTasks === doneTasks;
     setIsPlanCompleted(planCompleted);
     
-    // ✅ ИСПРАВЛЕНИЕ: Находим время завершения последнего контейнера
     if (planCompleted && totalTasks > 0) {
-      // Находим все завершённые контейнеры с end_time
       const completedWithTime = tasks.filter(t => t.end_time);
-      
       if (completedWithTime.length > 0) {
-        // Сортируем по времени и берём последний
         const sorted = completedWithTime.sort((a, b) => {
           const timeA = parseTime(a.end_time!);
           const timeB = parseTime(b.end_time!);
-          return timeB - timeA; // от последнего к первому
+          return timeB - timeA;
         });
-        
         setLastCompletionTime(sorted[0].end_time!);
       }
     } else {
@@ -128,7 +123,6 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
         if (current.end_time && next.start_time) {
           const endTime = parseTime(current.end_time);
           const startTime = parseTime(next.start_time);
-          
           const downtimeMinutes = (startTime - endTime) / (1000 * 60);
           
           if (downtimeMinutes > 1) {
@@ -146,7 +140,6 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
       
       if (isToday(date) && zoneTasks.length > 0 && !planCompleted) {
         const lastTask = zoneTasks[zoneTasks.length - 1];
-        
         const allTasksInZone = tasks.filter(t => t.zone === zone);
         const hasActiveOrWaiting = allTasksInZone.some(t => 
           (t.status === 'ACTIVE' && !t.end_time) || 
@@ -260,7 +253,6 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
       {/* Header Card */}
       <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-agr-dark to-accent-blue flex items-center justify-center">
               <TrendingDown className="text-white w-8 h-8" />
@@ -295,7 +287,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
         </div>
       </div>
 
-      {/* ✅ ИСПРАВЛЕНО: Показываем время последнего контейнера */}
+      {/* План выполнен */}
       {!loading && isToday(date) && isPlanCompleted && (
         <div className="bg-gradient-to-r from-green-500/20 to-accent-blue/20 backdrop-blur-xl border-2 border-green-500/30 rounded-3xl p-6 shadow-2xl animate-in slide-in-from-top duration-500">
           <div className="flex items-center gap-4">
@@ -308,11 +300,23 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
             </div>
             <div className="text-right hidden md:block">
               <div className="text-xs text-white/60 uppercase tracking-wider mb-1">Завершено</div>
-              {/* ✅ ИСПРАВЛЕНИЕ: Показываем lastCompletionTime вместо currentTime */}
               <div className="text-3xl font-black text-green-400 font-mono">
                 {lastCompletionTime || '--:--'}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ УЛУЧШЕНИЕ 3: ЗЕЛЕНОЕ СОСТОЯНИЕ (Нет простоев) */}
+      {!loading && isToday(date) && !isPlanCompleted && activeIdles.length === 0 && zoneStats.length > 0 && (
+        <div className="bg-green-500/10 border border-green-500/20 rounded-3xl p-6 shadow-lg animate-in slide-in-from-top duration-500 flex items-center gap-4">
+          <div className="w-14 h-14 rounded-full bg-green-500/20 flex items-center justify-center border-2 border-green-500/50">
+            <CheckCircle className="text-green-400 w-8 h-8" />
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-green-400">Все зоны работают штатно</h3>
+            <p className="text-sm text-white/60">Нет критических задержек. Процесс идет по плану.</p>
           </div>
         </div>
       )}
@@ -330,7 +334,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
             {activeIdles.map((idle) => (
               <div 
                 key={idle.zone}
-                className={`relative overflow-hidden rounded-2xl border-2 p-5 transition-all hover:scale-[1.02] ${
+                className={`relative overflow-hidden rounded-2xl border-2 p-5 transition-all hover:scale-[1.02] flex flex-col justify-between ${
                   idle.status === 'critical' 
                     ? 'bg-red-500/10 border-red-500/50 shadow-[0_0_30px_rgba(239,68,68,0.3)]' 
                     : idle.status === 'warning'
@@ -338,60 +342,70 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
                     : 'bg-white/5 border-white/10'
                 }`}
               >
-                <div className={`absolute top-3 right-3 w-3 h-3 rounded-full animate-pulse ${
-                  idle.status === 'critical' ? 'bg-red-500' : 
-                  idle.status === 'warning' ? 'bg-yellow-500' : 'bg-accent-blue'
-                }`}></div>
-                
-                <div className="flex items-center justify-between mb-3">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-2xl ${
-                    idle.status === 'critical' 
-                      ? 'bg-red-500/20 text-red-400 border-2 border-red-500/50' 
-                      : idle.status === 'warning'
-                      ? 'bg-yellow-500/20 text-yellow-400 border-2 border-yellow-500/50'
-                      : 'bg-accent-blue/20 text-accent-blue border-2 border-accent-blue/50'
-                  }`}>
-                    {idle.zone}
+                <div>
+                  <div className={`absolute top-3 right-3 w-3 h-3 rounded-full animate-pulse ${
+                    idle.status === 'critical' ? 'bg-red-500' : 
+                    idle.status === 'warning' ? 'bg-yellow-500' : 'bg-accent-blue'
+                  }`}></div>
+                  
+                  <div className="flex items-center justify-between mb-3">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-2xl ${
+                      idle.status === 'critical' 
+                        ? 'bg-red-500/20 text-red-400 border-2 border-red-500/50' 
+                        : idle.status === 'warning'
+                        ? 'bg-yellow-500/20 text-yellow-400 border-2 border-yellow-500/50'
+                        : 'bg-accent-blue/20 text-accent-blue border-2 border-accent-blue/50'
+                    }`}>
+                      {idle.zone}
+                    </div>
+                    
+                    <div className="text-right">
+                      <div className="text-xs text-white/60 font-bold uppercase mb-1">Простаивает</div>
+                      <div className={`text-3xl font-black font-mono tabular-nums ${
+                        idle.status === 'critical' ? 'text-red-400' : 
+                        idle.status === 'warning' ? 'text-yellow-400' : 'text-accent-blue'
+                      }`}>
+                        {formatLiveIdleTime(idle.idleStartTime)}
+                      </div>
+                    </div>
                   </div>
                   
-                  <div className="text-right">
-                    <div className="text-xs text-white/60 font-bold uppercase mb-1">Простаивает</div>
-                    <div className={`text-3xl font-black font-mono tabular-nums ${
-                      idle.status === 'critical' ? 'text-red-400' : 
-                      idle.status === 'warning' ? 'text-yellow-400' : 'text-accent-blue'
-                    }`}>
-                      {formatLiveIdleTime(idle.idleStartTime)}
+                  <div className="space-y-2 text-sm mb-4">
+                    <div className="flex justify-between">
+                      <span className="text-white/50">Последний контейнер:</span>
+                      <span className="font-mono font-bold text-white truncate ml-2 max-w-[150px]" title={idle.lastContainerId}>{idle.lastContainerId}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-white/50">Завершён в:</span>
+                      <span className="font-mono text-green-400">{idle.lastEndTime}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-white/50">Начало простоя:</span>
+                      <span className="font-mono text-white/70">
+                        {idle.idleStartTime.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
                     </div>
                   </div>
                 </div>
                 
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-white/50">Последний контейнер:</span>
-                    <span className="font-mono font-bold text-white truncate ml-2 max-w-[150px]" title={idle.lastContainerId}>{idle.lastContainerId}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-white/50">Завершён в:</span>
-                    <span className="font-mono text-green-400">{idle.lastEndTime}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-white/50">Начало простоя:</span>
-                    <span className="font-mono text-white/70">
-                      {idle.idleStartTime.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                </div>
-                
+                {/* ✅ УЛУЧШЕНИЕ 1: КНОПКА ДЕЙСТВИЯ (Call to Action) */}
                 {idle.status !== 'normal' && (
-                  <div className={`mt-3 flex items-center gap-2 px-3 py-2 rounded-lg ${
-                    idle.status === 'critical' 
-                      ? 'bg-red-500/20 text-red-300' 
-                      : 'bg-yellow-500/20 text-yellow-300'
-                  }`}>
-                    <AlertTriangle size={14} />
-                    <span className="text-xs font-bold uppercase">
-                      {idle.status === 'critical' ? 'Критический простой!' : 'Требуется внимание'}
-                    </span>
+                  <div className="mt-auto pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+                      idle.status === 'critical' 
+                        ? 'bg-red-500/20 text-red-300' 
+                        : 'bg-yellow-500/20 text-yellow-300'
+                    }`}>
+                      <AlertTriangle size={14} />
+                      <span className="text-xs font-bold uppercase">
+                        {idle.status === 'critical' ? 'Критично!' : 'Внимание'}
+                      </span>
+                    </div>
+                    
+                    <button className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-lg transition-colors">
+                      <Phone size={14} />
+                      Связаться
+                    </button>
                   </div>
                 )}
               </div>
@@ -408,7 +422,16 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
               <Clock className="text-red-400 w-5 h-5" />
               <span className="text-xs font-bold text-white/60 uppercase tracking-wider">Общий простой</span>
             </div>
-            <div className="text-4xl font-black text-white tabular-nums">{formatMinutes(getTotalDowntime())}</div>
+            {/* ✅ УЛУЧШЕНИЕ 2: КОНТЕКСТ ДЛЯ МЕТРИКИ (расчет от 12ч смены) */}
+            <div className="flex items-baseline gap-3">
+              <div className="text-4xl font-black text-white tabular-nums">{formatMinutes(getTotalDowntime())}</div>
+              <div 
+                className="text-sm font-bold text-red-400 bg-red-500/10 px-2 py-1 rounded-md" 
+                title="Процент от общего фонда времени (расчет на 12ч смену)"
+              >
+                ~{Math.min(100, Math.round((getTotalDowntime() / (Math.max(zoneStats.length, 1) * 720)) * 100))}% смены
+              </div>
+            </div>
           </div>
 
           <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-2xl p-6">

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { TranslationSet, User } from '../types';
-import { Camera, X, Upload, CheckCircle } from 'lucide-react';
+import { Camera, X, Upload, CheckCircle, Loader2 } from 'lucide-react';
 import { useEscape } from '../utils/useEscape';
 import { useAppContext } from './AppContext';
 
@@ -28,9 +28,22 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
   const [loading, setLoading] = useState(false);
   const [loadingIds, setLoadingIds] = useState(true);
   const [uploadStatus, setUploadStatus] = useState("");
+  const [processingPhoto, setProcessingPhoto] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activePhotoIndex = useRef<number>(0);
+  const workerRef = useRef<Worker | null>(null);
+
+  // ── Initialize Web Worker for off-thread image compression ──
+  useEffect(() => {
+    workerRef.current = new Worker(
+      new URL('../utils/ImageWorker.ts', import.meta.url),
+      { type: 'module' }
+    );
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, []);
 
   useEffect(() => {
     const loadIds = async () => {
@@ -46,36 +59,41 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
     fileInputRef.current?.click();
   };
 
+  // ── Photo compression via Web Worker (no main-thread freeze) ──
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          
-          const scale = 1200 / img.width;
-          canvas.width = 1200;
-          canvas.height = img.height * scale;
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          
-          const newPhotos = [...photos];
-          newPhotos[activePhotoIndex.current] = {
-            data: canvas.toDataURL('image/jpeg', 0.8),
-            mime: 'image/jpeg',
-            name: `issue_${Date.now()}_${activePhotoIndex.current}.jpg`,
-            preview: canvas.toDataURL('image/jpeg', 0.1)
-          };
-          setPhotos(newPhotos);
-        };
-        if (evt.target?.result) img.src = evt.target.result as string;
-      };
-      reader.readAsDataURL(file);
-    }
+    const file = e.target.files?.[0];
+    if (!file || !workerRef.current) return;
     e.target.value = '';
+
+    const idx = activePhotoIndex.current;
+    setProcessingPhoto(true);
+
+    const suffix = `issue_${Date.now()}_${idx}`;
+
+    const onMessage = (event: MessageEvent) => {
+      workerRef.current?.removeEventListener('message', onMessage);
+      setProcessingPhoto(false);
+
+      const result = event.data;
+      if (result.success) {
+        const newPhotos = [...photos];
+        newPhotos[idx] = {
+          data: result.data,
+          mime: result.mime,
+          name: result.name,
+          // Generate a tiny preview from the same data URL
+          // (Worker already compressed to 1200px — good enough for thumbnail)
+          preview: result.data,
+        };
+        setPhotos(newPhotos);
+      } else {
+        addToast('Ошибка сжатия фото. Попробуйте другой файл.', 'error');
+      }
+    };
+
+    workerRef.current.addEventListener('message', onMessage);
+    // Send the raw File object to the Worker — it uses createImageBitmap + OffscreenCanvas
+    workerRef.current.postMessage({ file, maxW: 1200, quality: 0.8, suffix });
   };
 
   const removePhoto = (index: number, e: React.MouseEvent) => {
@@ -163,10 +181,10 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
               {photos.map((p, idx) => (
                 <div 
                   key={idx}
-                  onClick={() => triggerFile(idx)}
+                  onClick={() => !processingPhoto && triggerFile(idx)}
                   className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer relative overflow-hidden transition-all ${
                     p ? 'border-accent-green bg-black' : 'border-white/20 hover:bg-white/5 hover:border-accent-blue'
-                  }`}
+                  } ${processingPhoto ? 'opacity-60 cursor-wait' : ''}`}
                 >
                    {p ? (
                      <>
@@ -179,13 +197,14 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
                          <X size={12} className="text-white" />
                        </button>
                      </>
+                   ) : processingPhoto && activePhotoIndex.current === idx ? (
+                     <Loader2 className="w-7 h-7 text-accent-blue animate-spin" />
                    ) : (
                      <Camera className="text-white/30 w-6 h-6" />
                    )}
                 </div>
               ))}
            </div>
-           {/* ИСПРАВЛЕННЫЙ ИНПУТ: добавлен capture="environment" */}
            <input 
              type="file" 
              ref={fileInputRef} 
@@ -200,7 +219,7 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
         <div className="mt-2">
            <button 
              onClick={handleSubmit}
-             disabled={loading || !selectedId || !description}
+             disabled={loading || processingPhoto || !selectedId || !description}
              className="w-full py-4 bg-accent-blue hover:bg-accent-blue/90 text-white font-bold rounded-2xl shadow-lg shadow-accent-blue/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] flex items-center justify-center gap-2"
            >
              {loading ? <Upload className="animate-bounce w-5 h-5" /> : null}

@@ -1,8 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { HashRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom';
+import { HelmetProvider } from 'react-helmet-async';
 import App from './App';
 import { AppProvider } from './components/AppContext';
+import './index.css';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -12,10 +14,12 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <AppProvider>
-      <HashRouter>
-        <App />
-      </HashRouter>
-    </AppProvider>
+    <HelmetProvider>
+      <AppProvider>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </AppProvider>
+    </HelmetProvider>
   </React.StrictMode>
 );
