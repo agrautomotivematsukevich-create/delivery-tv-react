@@ -10,14 +10,12 @@ interface DashboardProps {
   data: DashboardData | null;
   t: TranslationSet;
   tvMode?: boolean;
-  allTasks: Task[];          // ДОБАВЛЕНО
-  isTasksLoading: boolean;   // ДОБАВЛЕНО
+  allTasks: Task[];
+  isTasksLoading: boolean;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks, isTasksLoading }) => {
-  // Мы удалили отсюда весь блок с useEffect и стейтами загрузки!
-  // Теперь Dashboard получает всё готовенькое из App.tsx
-
+  
   if (!data) return (
     <div className="flex items-center justify-center w-full h-[50vh]">
        <div className="text-white/50 animate-pulse text-lg font-bold flex items-center gap-3">
