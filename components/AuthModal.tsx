@@ -26,12 +26,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  /** Allow only digits in the tab number field */
-  const handleTabNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, '');
-    setTabNumber(value);
-  };
-
   const validate = (): boolean => {
     if (!tabNumber.trim()) {
       setError('Введите табельный номер');
@@ -81,7 +75,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
         });
         addToast('Вход выполнен успешно', 'success');
       } else {
-        setError('Неверный табельный номер или пароль');
+        setError('Неверный логин или пароль');
       }
     } else {
       try {
@@ -90,7 +84,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
         if (success) {
           addToast('Регистрация прошла успешно. Пожалуйста, выполните вход.', 'success');
           setMode('login');
-          // Сбрасываем поля регистрации, оставляем табельный номер для удобства
+          // Сбрасываем поля регистрации, оставляем логин для удобства
           setFirstName('');
           setLastName('');
           setPassword('');
@@ -155,18 +149,17 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
             </>
           )}
 
-          {/* ── Shared: Табельный номер ── */}
+          {/* ── Shared: Табельный номер / Логин ── */}
           <div className="relative">
             <label className="absolute -top-2.5 left-4 bg-[#0F0F12] px-1.5 text-[10px] font-bold text-white/40 uppercase tracking-wider">
-              Табельный номер
+              Табельный номер / Логин
             </label>
             <input
               type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="Введите табельный номер"
+              placeholder="Введите табельный номер или логин"
               value={tabNumber}
-              onChange={handleTabNumberChange}
+              // Просто сохраняем введенное значение без фильтрации цифр
+              onChange={(e) => setTabNumber(e.target.value)}
               className={inputClass}
               autoComplete="username"
             />
