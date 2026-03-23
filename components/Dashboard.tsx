@@ -6,26 +6,39 @@ import { parseHHMM, elapsedMin, formatWait } from '../utils/time';
 import { currentShift, calculateShiftFact, calculateShiftTargets, formatMinutes, calculateTimeDiff } from '../utils/business';
 import { AVAILABLE_ZONES, UNLOAD_TARGET } from '../utils/zones';
 
-interface DashboardProps {
-  data: DashboardData | null;
-  t: TranslationSet;
-  tvMode?: boolean;
-  allTasks: Task[];
-  isTasksLoading: boolean;
-}
-
-const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks, isTasksLoading }) => {
-  
-  if (!data) return (
-    <div className="flex items-center justify-center w-full h-[50vh]">
-       <div className="text-white/50 animate-pulse text-lg font-bold flex items-center gap-3">
-         <Clock className="animate-spin text-white/30" /> Загрузка дашборда...
-       </div>
+// ── UnloadTimer ─────────────────────────────────────────────────────────────────
+const UnloadTimer: React.FC<{ startTime: string; sz?: number }> = ({ startTime, sz = 56 }) => {
+  const [elapsed, setElapsed] = useState(() => elapsedMin(startTime));
+  useEffect(() => {
+    const id = setInterval(() => setElapsed(elapsedMin(startTime)), 30000);
+    return () => clearInterval(id);
+  }, [startTime]);
+  const r     = sz * 0.39;
+  const circ  = 2 * Math.PI * r;
+  const isOver = elapsed > UNLOAD_TARGET;
+  const isWarn = !isOver && elapsed >= UNLOAD_TARGET - 5;
+  const color  = isOver ? '#f87171' : isWarn ? '#fbbf24' : '#00e676';
+  const offset = circ * (1 - Math.min(1, elapsed / UNLOAD_TARGET));
+  return (
+    <div className="relative shrink-0 flex items-center justify-center" style={{ width: sz, height: sz }}>
+      <svg width={sz} height={sz} className="-rotate-90">
+        <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={sz * 0.07} />
+        <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke={color} strokeWidth={sz * 0.07}
+          strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset}
+          style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s' }}
+          className={isOver ? 'animate-pulse' : ''} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="font-mono font-black tabular-nums leading-none" style={{ fontSize: sz * 0.22, color }}>
+          {isOver ? `+${elapsed - UNLOAD_TARGET}` : Math.max(0, UNLOAD_TARGET - elapsed)}
+        </span>
+        <span className="font-mono leading-none" style={{ fontSize: sz * 0.14, color: 'rgba(255,255,255,0.3)' }}>МИН</span>
+      </div>
     </div>
   );
+};
 
 // ── Skeleton для одной shift-карточки ──────────────────────────────────────────
-
 const ShiftCardSkeleton: React.FC<{ tvMode?: boolean }> = ({ tvMode }) => (
   <div className="rounded-2xl px-2 py-3 border border-white/5 bg-white/2 flex flex-col items-center gap-1 animate-pulse w-full">
     <div className="h-3 w-12 bg-white/10 rounded" />
@@ -37,7 +50,6 @@ const ShiftCardSkeleton: React.FC<{ tvMode?: boolean }> = ({ tvMode }) => (
 );
 
 // ── Skeleton для ShiftNormWidget ───────────────────────────────────────────────
-
 const ShiftNormSkeleton: React.FC = () => (
   <div className="w-full mt-3 rounded-2xl px-5 py-4 flex flex-col gap-3 border border-white/8 bg-white/4 animate-pulse">
     <div className="flex items-center justify-between">
@@ -52,12 +64,10 @@ const ShiftNormSkeleton: React.FC = () => (
 );
 
 // ── ShiftNormWidget ─────────────────────────────────────────────────────────────
-
 const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: TranslationSet; compact?: boolean; isLoading?: boolean }> = ({ data, allTasks, t, compact, isLoading }) => {
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
 
-  // ВАЖНО: Все хуки вызываем ДО раннего возврата, чтобы избежать React Error #310
   const active = currentShift();
   const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
   const targets = useMemo(() => calculateShiftTargets(allTasks, facts, active), [allTasks, facts, active]);
@@ -112,16 +122,11 @@ const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: Tran
 
   return (
     <div className={`w-full mt-3 rounded-2xl px-5 py-4 flex flex-col justify-center gap-3 border transition-colors duration-500 ${bgCls}`}>
-      
-      {/* Верхний блок: Цифры + Статус */}
       <div className="flex items-center justify-between w-full">
-        {/* Левая часть: цифры */}
         <div className="flex items-baseline gap-2 shrink-0">
           <span className={`font-black tabular-nums leading-none ${statusCls} ${compact ? 'text-4xl' : 'text-5xl'}`}>{done}</span>
           <span className="text-xl font-bold text-white/30 tabular-nums">/ {target}</span>
         </div>
-        
-        {/* Правая часть: статус */}
         <div className="flex flex-col items-end justify-center text-right shrink-0">
           <span className={`font-bold uppercase tracking-widest ${statusCls} opacity-80 text-[10px] leading-tight`}>{labelTop}</span>
           {labelBottom && (
@@ -129,8 +134,6 @@ const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: Tran
           )}
         </div>
       </div>
-      
-      {/* Нижний блок: Шкала */}
       {target > 0 ? (
         <div className="relative h-2 w-full rounded-full bg-white/8 overflow-visible mt-1">
           <div className="absolute top-1/2 -translate-y-1/2 w-[3px] h-5 bg-white/50 rounded-full z-10 shadow-[0_0_8px_rgba(255,255,255,0.8)]" 
@@ -147,12 +150,10 @@ const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: Tran
 };
 
 // ── ShiftStatsBlock ─────────────────────────────────────────────────────────────
-
 const ShiftStatsBlock: React.FC<{ data: DashboardData; allTasks: Task[]; tvMode?: boolean; isLoading?: boolean }> = ({ data, allTasks, tvMode, isLoading }) => {
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
 
-  // ВАЖНО: Все хуки вызываем ДО раннего возврата
   const active = currentShift();
   const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
   const targets = useMemo(() => calculateShiftTargets(allTasks, facts, active), [allTasks, facts, active]);
@@ -206,7 +207,6 @@ const ShiftStatsBlock: React.FC<{ data: DashboardData; allTasks: Task[]; tvMode?
 };
 
 // ── DockZonesGrid ───────────────────────────────────────────────────────────────
-
 interface ZoneInfo {
   name: string;
   active: boolean;
@@ -423,7 +423,6 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
 };
 
 // ── OnTerritoryBlock ────────────────────────────────────────────────────────────
-
 const OnTerritoryBlock: React.FC<{ arrivedTasks: Task[]; tvMode?: boolean }> = ({ arrivedTasks, tvMode }) => {
   const count = arrivedTasks.length;
   const hasAuto = count > 0;
@@ -479,7 +478,6 @@ const OnTerritoryBlock: React.FC<{ arrivedTasks: Task[]; tvMode?: boolean }> = (
 };
 
 // ── TVClock ─────────────────────────────────────────────────────────────────────
-
 const TVClock: React.FC = () => {
   const [time, setTime] = useState('');
   const [date, setDate] = useState('');
@@ -502,41 +500,16 @@ const TVClock: React.FC = () => {
 };
 
 // ── ГЛАВНЫЙ КОМПОНЕНТ ──────────────────────────────────────────────────────────
+interface DashboardProps {
+  data: DashboardData | null;
+  t: TranslationSet;
+  tvMode?: boolean;
+  allTasks: Task[];          
+  isTasksLoading: boolean;   
+}
 
-const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false }) => {
-  const [allTasks, setAllTasks] = useState<Task[]>([]);
-  const [isTasksLoading, setIsTasksLoading] = useState(true);
-
-  useEffect(() => {
-    const todayStr = (() => {
-      const now = new Date();
-      const dd = String(now.getDate()).padStart(2, '0');
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      return `${dd}.${mm}`;
-    })();
-
-    const load = async () => {
-      try {
-        const tasks = await api.fetchHistory(todayStr);
-        setAllTasks(tasks);
-      } finally {
-        setIsTasksLoading(false);
-      }
-    };
-
-    // Запускаем первый фетч
-    load();
-
-    let id: ReturnType<typeof setInterval> | null = null;
-    const start = () => { if (!id) id = setInterval(load, 60000); };
-    const stop = () => { if (id) { clearInterval(id); id = null; } };
-    const onVis = () => { if (document.hidden) stop(); else { load(); start(); } };
-
-    start();
-    document.addEventListener('visibilitychange', onVis);
-    return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
-  }, []);
-
+const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks, isTasksLoading }) => {
+  
   if (!data) return (
     <div className="flex items-center justify-center w-full h-[50vh]">
        <div className="text-white/50 animate-pulse text-lg font-bold flex items-center gap-3">
