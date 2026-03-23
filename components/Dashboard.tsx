@@ -69,8 +69,17 @@ const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: Tran
   useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
 
   const active = currentShift();
-  const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
-  const targets = useMemo(() => calculateShiftTargets(allTasks, facts, active), [allTasks, facts, active]);
+  const hasTasks = allTasks.length > 0;
+  const facts = useMemo(() => {
+    if (hasTasks) return calculateShiftFact(allTasks);
+    // Fallback: use shift counts from the public dashboard endpoint
+    return { morning: data.shiftCounts.morning, evening: data.shiftCounts.evening, night: data.shiftCounts.night, none: 0 };
+  }, [allTasks, hasTasks, data.shiftCounts]);
+  const targets = useMemo(() => {
+    if (hasTasks) return calculateShiftTargets(allTasks, facts, active);
+    // Fallback: use total as the combined target for the active shift
+    return { morning: data.total, evening: data.total, night: data.total, none: 0 };
+  }, [allTasks, hasTasks, facts, active, data.total]);
   
   if (isLoading) return <ShiftNormSkeleton />;
   
@@ -155,8 +164,15 @@ const ShiftStatsBlock: React.FC<{ data: DashboardData; allTasks: Task[]; tvMode?
   useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
 
   const active = currentShift();
-  const facts = useMemo(() => calculateShiftFact(allTasks), [allTasks]);
-  const targets = useMemo(() => calculateShiftTargets(allTasks, facts, active), [allTasks, facts, active]);
+  const hasTasks = allTasks.length > 0;
+  const facts = useMemo(() => {
+    if (hasTasks) return calculateShiftFact(allTasks);
+    return { morning: data.shiftCounts.morning, evening: data.shiftCounts.evening, night: data.shiftCounts.night, none: 0 };
+  }, [allTasks, hasTasks, data.shiftCounts]);
+  const targets = useMemo(() => {
+    if (hasTasks) return calculateShiftTargets(allTasks, facts, active);
+    return { morning: data.total, evening: data.total, night: data.total, none: 0 };
+  }, [allTasks, hasTasks, facts, active, data.total]);
 
   if (isLoading) {
     return (
