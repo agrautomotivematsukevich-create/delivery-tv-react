@@ -38,7 +38,7 @@ var COL_TOKEN  = 5;
 
 var ROUTES = {
   // ── Public (no auth at all) ──
-  "login":                 { handler: handleLogin,              auth: false, lock: true  },
+  "login":                 { handler: handleLogin,              auth: false, lock: false },
   "register":              { handler: handleRegister,           auth: false, lock: true  },
 
   // ── TV display endpoints (static API key, anonymized data) ──
@@ -341,7 +341,7 @@ function handleTvLotTracker(params, ss) {
 
     sheetsScanned++;
     var rowCount = lr - 4;
-    var narrow = sheet.getRange(5, 2, rowCount, 4).getDisplayValues(); 
+    var narrow = sheet.getRange(5, 2, rowCount, 4).getValues(); 
     var matchedRows = [];
 
     for (var i = 0; i < narrow.length; i++) {
@@ -719,7 +719,7 @@ function handleGetLotTracker(params, ss) {
 
     sheetsScanned++;
     var rowCount = lr - 4;
-    var narrow = sheet.getRange(5, 2, rowCount, 4).getDisplayValues(); 
+    var narrow = sheet.getRange(5, 2, rowCount, 4).getValues(); 
     var matchedRows = [];
 
     for (var i = 0; i < narrow.length; i++) {
