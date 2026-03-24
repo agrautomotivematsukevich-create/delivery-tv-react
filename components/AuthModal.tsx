@@ -67,28 +67,38 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
 
     if (!validate()) return;
 
+    // 🚀 НОРМАЛИЗАЦИЯ ЛОГИНА
+    const normalizeLogin = (input: string) => {
+      let str = input.trim().toLowerCase();
+      // Если только цифры (напр. "990" или "000990") -> "u000990"
+      if (/^\d+$/.test(str)) return 'u' + str.padStart(6, '0');
+      // Если начинается на "u" и дальше цифры (напр. "u990") -> "u000990"
+      if (/^u\d+$/.test(str)) return 'u' + str.substring(1).padStart(6, '0');
+      // Иначе (dmitry, test1 и т.д.) оставляем как есть
+      return str;
+    };
+
+    const finalLogin = normalizeLogin(tabNumber);
     setLoading(true);
 
     if (mode === 'login') {
-      const res = await api.login(tabNumber, password);
+      // 🚀 Используем finalLogin вместо tabNumber
+      const res = await api.login(finalLogin, password);
       if (res.success) {
-        // Parse firstName / lastName from the name returned by backend
-        // Backend returns "Имя Фамилия" in res.name
-        const nameParts = (res.name || tabNumber).split(' ');
-        const fName = nameParts[0] || tabNumber;
+        const nameParts = (res.name || finalLogin).split(' ');
+        const fName = nameParts[0] || finalLogin;
         const lName = nameParts.slice(1).join(' ') || '';
 
         onLoginSuccess({
-          user: tabNumber,
-          name: res.name || tabNumber,
+          user: finalLogin,
+          name: res.name || finalLogin,
           role: (res.role as 'OPERATOR' | 'LOGISTIC' | 'ADMIN') || 'OPERATOR',
-          tabNumber,
+          tabNumber: finalLogin, // Сохраняем нормализованный
           firstName: fName,
           lastName: lName,
         });
         addToast('Вход выполнен успешно', 'success');
       } else {
-        // 🚀 ОБНОВЛЕННАЯ ЛОГИКА ВЫВОДА ОШИБОК
         const errorCode = res.error || 'UNKNOWN';
         const message = LOGIN_ERROR_MESSAGES[errorCode] || LOGIN_ERROR_MESSAGES.UNKNOWN;
 
@@ -108,14 +118,16 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
     } else {
       try {
         const fullName = `${firstName.trim()} ${lastName.trim()}`;
-        const success = await api.register(tabNumber, password, fullName);
+        // 🚀 Используем finalLogin вместо tabNumber при регистрации
+        const success = await api.register(finalLogin, password, fullName);
         if (success) {
           addToast('Регистрация прошла успешно. Пожалуйста, выполните вход.', 'success');
           setMode('login');
-          // Сбрасываем поля регистрации, оставляем логин для удобства
           setFirstName('');
           setLastName('');
           setPassword('');
+          // Оставляем в поле ввода то, что он ввёл, или уже отформатированное значение:
+          setTabNumber(finalLogin); 
         } else {
           setError('Ошибка регистрации. Попробуйте позже.');
         }
