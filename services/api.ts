@@ -86,9 +86,6 @@ async function cachedFetch<T>(key: string, ttlMs: number, fn: () => Promise<T>):
 
 // ══════════════════════════════════════════════════════════════════════════════
 // AUTH-AWARE GET HELPER
-// Injects token as URL parameter: &token=<value>
-// Checks response body for AUTH_REQUIRED → triggers session expiry.
-// Returns null if no token available (caller handles the fallback).
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function authGet(baseUrl: string): Promise<Response | null> {
@@ -100,7 +97,6 @@ async function authGet(baseUrl: string): Promise<Response | null> {
 
   const res = await fetchWithTimeout(url);
 
-  // Check for auth errors in the response
   const clone = res.clone();
   const txt = await clone.text();
   if (txt.includes('"error"') && (txt.includes("AUTH_REQUIRED") || txt.includes("ADMIN_REQUIRED"))) {
@@ -112,7 +108,6 @@ async function authGet(baseUrl: string): Promise<Response | null> {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // AUTH-AWARE POST HELPER
-// Injects token into JSON body.
 // ══════════════════════════════════════════════════════════════════════════════
 
 interface PostOptions {
@@ -140,7 +135,7 @@ async function authPost(payload: Record<string, unknown>, opts: PostOptions = {}
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// DASHBOARD PARSER
+// DASHBOARD PARSER (Остался твой рабочий из основы!)
 // ══════════════════════════════════════════════════════════════════════════════
 
 export const parseDashboardData = (text: string): DashboardData | null => {
@@ -165,18 +160,39 @@ export const parseDashboardData = (text: string): DashboardData | null => {
       }
     }
 
-    let shiftCounts = { morning: 0, evening: 0, night: 0 };
+    let shiftFacts = { morning: 0, evening: 0, night: 0 };
+    let shiftTargets = { morning: 0, evening: 0, night: 0 };
+    
     if (r1[4]) {
       const sc = r1[4].split("|");
-      shiftCounts = {
+      shiftFacts = {
         morning: parseInt(sc[0]) || 0,
         evening: parseInt(sc[1]) || 0,
         night:   parseInt(sc[2]) || 0,
       };
+      if (sc.length >= 6) {
+        shiftTargets = {
+          morning: parseInt(sc[3]) || 0,
+          evening: parseInt(sc[4]) || 0,
+          night:   parseInt(sc[5]) || 0,
+        };
+      }
     }
+    
     const onTerritory = r1[5] ? (parseInt(r1[5]) || 0) : 0;
 
-    return { status: r1[0].trim(), done, total, nextId: r1[2].trim(), nextTime: r1[3].trim(), activeList, shiftCounts, onTerritory };
+    return { 
+      status: r1[0].trim(), 
+      done, 
+      total, 
+      nextId: r1[2].trim(), 
+      nextTime: r1[3].trim(), 
+      activeList, 
+      shiftCounts: shiftFacts, 
+      shiftFacts,              
+      shiftTargets,            
+      onTerritory 
+    };
   } catch {
     return null;
   }
@@ -187,16 +203,11 @@ export const parseDashboardData = (text: string): DashboardData | null => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 export const api = {
-
-  // ── AUTHENTICATED READS (token injected via authGet) ───────────────────────
-
   fetchDashboard: async (): Promise<DashboardData | null> => {
     return cachedFetch("dashboard", 10000, async () => {
       try {
-        // Используем обычный fetch, так как этот эндпоинт публичный и не требует токена
         const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}`);
         if (!res.ok) return null; 
-        
         const text = await res.text();
         return parseDashboardData(text);
       } catch (e: unknown) {
@@ -297,8 +308,6 @@ export const api = {
     }
   },
 
-  // ── Image proxy (client-side URL transform, no backend call) ───────────────
-
   getProxyImage: async (url: string): Promise<string> => {
     try {
       if (!url) return "";
@@ -313,7 +322,7 @@ export const api = {
     }
   },
 
-  // ── LOGIN / REGISTER (no token — these CREATE the session) ─────────────────
+  // ── LOGIN / REGISTER (ОБНОВЛЕННАЯ ЛОГИКА ДЛЯ PENDING/REJECTED) ───────────────
 
   login: async (user: string, pass: string): Promise<{ success: boolean; name?: string; role?: string; token?: string; error?: string }> => {
     const hash = await hashPassword(pass);
@@ -325,7 +334,7 @@ export const api = {
       });
       const txt = await res.text();
 
-      // Success path: backend returns "CORRECT|Name|Role|Token"
+      // 1. Успех
       if (txt.startsWith("CORRECT")) {
         const parts = txt.split("|");
         const token = parts.length > 3 ? parts[3] : "";
@@ -338,17 +347,14 @@ export const api = {
         };
       }
 
-      // Error path: backend returns JSON { success: false, error: "..." }
+      // 2. Обработка ошибок (JSON)
       try {
         const json = JSON.parse(txt);
-        if (json.error) {
-          return { success: false, error: json.error };
-        }
-      } catch {
-        // Not JSON — legacy plain-text error, fall through
+        return { success: false, error: json.error || "UNKNOWN" };
+      } catch (e) {
+        if (txt.includes("RATE_LIMITED")) return { success: false, error: "RATE_LIMITED" };
+        return { success: false, error: "WRONG_PASSWORD" };
       }
-
-      return { success: false, error: "UNKNOWN" };
     } catch {
       return { success: false, error: "NETWORK_ERROR" };
     }
@@ -368,7 +374,7 @@ export const api = {
     }
   },
 
-  // ── AUTH-PROTECTED WRITES (token injected via authPost) ────────────────────
+  // ── AUTH-PROTECTED WRITES ──────────────────────────────────────────────────
 
   createPlan: async (dateStr: string, tasks: TaskInput[]): Promise<boolean> => {
     try {
@@ -454,7 +460,7 @@ export const api = {
     }
   },
 
-  // ── ADMIN-ONLY (token + ADMIN role verified server-side) ───────────────────
+  // ── ADMIN-ONLY ─────────────────────────────────────────────────────────────
 
   getPendingUsers: async (): Promise<PendingUser[]> => {
     try {

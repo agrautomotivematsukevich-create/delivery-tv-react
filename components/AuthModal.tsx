@@ -10,7 +10,7 @@ interface AuthModalProps {
   t: TranslationSet;
 }
 
-/** Maps backend error codes to user-friendly Russian messages */
+// 🚀 ДОБАВЛЕН СЛОВАРЬ ОШИБОК И СТАТУСОВ
 const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   WRONG_PASSWORD: 'Неверный логин или пароль',
   PENDING:        'Ваша заявка на регистрацию ещё не одобрена администратором. Пожалуйста, подождите.',
@@ -20,6 +20,7 @@ const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   NETWORK_ERROR:  'Ошибка сети. Проверьте подключение к интернету.',
   SERVER_ERROR:   'Ошибка сервера. Попробуйте позже.',
   INVALID_INPUT:  'Заполните все поля',
+  UNKNOWN:        'Неверный логин или пароль'
 };
 
 const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => {
@@ -71,6 +72,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
     if (mode === 'login') {
       const res = await api.login(tabNumber, password);
       if (res.success) {
+        // Parse firstName / lastName from the name returned by backend
+        // Backend returns "Имя Фамилия" in res.name
         const nameParts = (res.name || tabNumber).split(' ');
         const fName = nameParts[0] || tabNumber;
         const lName = nameParts.slice(1).join(' ') || '';
@@ -85,11 +88,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
         });
         addToast('Вход выполнен успешно', 'success');
       } else {
-        // ── Map backend error code to Russian message ──
+        // 🚀 ОБНОВЛЕННАЯ ЛОГИКА ВЫВОДА ОШИБОК
         const errorCode = res.error || 'UNKNOWN';
-        const message = LOGIN_ERROR_MESSAGES[errorCode] || 'Ошибка входа. Попробуйте позже.';
+        const message = LOGIN_ERROR_MESSAGES[errorCode] || LOGIN_ERROR_MESSAGES.UNKNOWN;
 
-        // PENDING and REJECTED are informational — show as toast too for visibility
         if (errorCode === 'PENDING') {
           setError(message);
           addToast('Заявка ожидает одобрения', 'info');
@@ -110,6 +112,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
         if (success) {
           addToast('Регистрация прошла успешно. Пожалуйста, выполните вход.', 'success');
           setMode('login');
+          // Сбрасываем поля регистрации, оставляем логин для удобства
           setFirstName('');
           setLastName('');
           setPassword('');
@@ -131,11 +134,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
   const inputClass =
     'w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-white placeholder:text-white/30 focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all';
 
-  /** Determine error style: yellow for PENDING (informational), red for the rest */
+  // 🎨 Определяем стиль ошибки (желтый для PENDING, красный для остальных)
   const isPendingError = error === LOGIN_ERROR_MESSAGES.PENDING;
   const errorBgClass = isPendingError
     ? 'text-amber-400 bg-amber-400/10 border border-amber-400/20'
-    : 'text-accent-red bg-red-500/10 border border-red-500/20'; // Добавил фон и для красной ошибки, чтобы смотрелось красиво
+    : 'text-accent-red bg-red-500/10 border border-red-500/20';
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
@@ -189,8 +192,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
               type="text"
               placeholder="Введите табельный номер или логин"
               value={tabNumber}
-              // ✅ Больше никакой фильтрации цифр!
-              onChange={e => setTabNumber(e.target.value)}
+              // Просто сохраняем введенное значение без фильтрации цифр
+              onChange={(e) => setTabNumber(e.target.value)}
               className={inputClass}
               autoComplete="username"
             />
