@@ -165,42 +165,18 @@ export const parseDashboardData = (text: string): DashboardData | null => {
       }
     }
 
-    // 🚀 НОВАЯ ЛОГИКА ПАРСИНГА СМЕН
-    let shiftFacts = { morning: 0, evening: 0, night: 0 };
-    let shiftTargets = { morning: 0, evening: 0, night: 0 };
-    
+    let shiftCounts = { morning: 0, evening: 0, night: 0 };
     if (r1[4]) {
       const sc = r1[4].split("|");
-      // Первые 3 цифры — это ФАКТ
-      shiftFacts = {
+      shiftCounts = {
         morning: parseInt(sc[0]) || 0,
         evening: parseInt(sc[1]) || 0,
         night:   parseInt(sc[2]) || 0,
       };
-      // Если бэкенд обновили и он шлет 6 цифр, парсим ТАРГЕТЫ
-      if (sc.length >= 6) {
-        shiftTargets = {
-          morning: parseInt(sc[3]) || 0,
-          evening: parseInt(sc[4]) || 0,
-          night:   parseInt(sc[5]) || 0,
-        };
-      }
     }
-    
     const onTerritory = r1[5] ? (parseInt(r1[5]) || 0) : 0;
 
-    return { 
-      status: r1[0].trim(), 
-      done, 
-      total, 
-      nextId: r1[2].trim(), 
-      nextTime: r1[3].trim(), 
-      activeList, 
-      shiftCounts: shiftFacts, // Для обратной совместимости
-      shiftFacts,              // ✅ Готовый факт
-      shiftTargets,            // ✅ Готовые цели
-      onTerritory 
-    };
+    return { status: r1[0].trim(), done, total, nextId: r1[2].trim(), nextTime: r1[3].trim(), activeList, shiftCounts, onTerritory };
   } catch {
     return null;
   }
@@ -339,7 +315,7 @@ export const api = {
 
   // ── LOGIN / REGISTER (no token — these CREATE the session) ─────────────────
 
-  login: async (user: string, pass: string): Promise<{ success: boolean; name?: string; role?: string; token?: string }> => {
+  login: async (user: string, pass: string): Promise<{ success: boolean; name?: string; role?: string; token?: string; error?: string }> => {
     const hash = await hashPassword(pass);
     try {
       const res = await fetchWithTimeout(SCRIPT_URL, {
@@ -349,11 +325,7 @@ export const api = {
       });
       const txt = await res.text();
 
-      // Handle rate-limiting response from backend
-      if (txt.includes("RATE_LIMITED")) {
-        return { success: false };
-      }
-
+      // Success path: backend returns "CORRECT|Name|Role|Token"
       if (txt.startsWith("CORRECT")) {
         const parts = txt.split("|");
         const token = parts.length > 3 ? parts[3] : "";
@@ -365,9 +337,20 @@ export const api = {
           token,
         };
       }
-      return { success: false };
+
+      // Error path: backend returns JSON { success: false, error: "..." }
+      try {
+        const json = JSON.parse(txt);
+        if (json.error) {
+          return { success: false, error: json.error };
+        }
+      } catch {
+        // Not JSON — legacy plain-text error, fall through
+      }
+
+      return { success: false, error: "UNKNOWN" };
     } catch {
-      return { success: false };
+      return { success: false, error: "NETWORK_ERROR" };
     }
   },
 
