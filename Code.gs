@@ -389,7 +389,6 @@ function handleLogin(params, ss) {
   var cache = CacheService.getScriptCache();
   var cacheKey = "login_fail_" + user;
   var attempts = parseInt(cache.get(cacheKey) || "0", 10);
-
   if (attempts >= LOGIN_MAX_ATTEMPTS) {
     Utilities.sleep(3000);
     return jsonOut({ error: "RATE_LIMITED", retry_after_seconds: LOGIN_WINDOW_SECONDS });
@@ -408,20 +407,32 @@ function handleLogin(params, ss) {
   }
 
   var data = authSheet.getRange(2, USER_COL_START, lr - 1, USER_COL_COUNT).getDisplayValues();
-
   for (var i = 0; i < data.length; i++) {
-    if (data[i][COL_LOGIN].toLowerCase() === user &&
-        data[i][COL_HASH] === hash &&
-        data[i][COL_STATUS] === "APPROVED") {
+    // 🚀 Сначала проверяем только логин и пароль
+    if (data[i][COL_LOGIN].toLowerCase() === user && data[i][COL_HASH] === hash) {
+      
+      var status = (data[i][COL_STATUS] || "").toUpperCase().trim();
 
-      cache.remove(cacheKey);
-      var token = generateToken();
-      authSheet.getRange(i + 2, USER_COL_START + COL_TOKEN).setValue(token);
-
-      return textOut("CORRECT|" + data[i][COL_NAME] + "|" + data[i][COL_ROLE] + "|" + token);
+      // Пароль верный, теперь смотрим статус
+      if (status === "APPROVED") {
+        cache.remove(cacheKey);
+        var token = generateToken();
+        authSheet.getRange(i + 2, USER_COL_START + COL_TOKEN).setValue(token);
+        return textOut("CORRECT|" + data[i][COL_NAME] + "|" + data[i][COL_ROLE] + "|" + token);
+      } 
+      else if (status === "PENDING") {
+        return jsonOut({ error: "PENDING" });
+      } 
+      else if (status === "REJECTED") {
+        return jsonOut({ error: "REJECTED" });
+      } 
+      else {
+        return jsonOut({ error: "NOT_APPROVED" });
+      }
     }
   }
 
+  // Если дошли сюда — логин или пароль реально неверные
   attempts++;
   cache.put(cacheKey, String(attempts), LOGIN_WINDOW_SECONDS);
   Utilities.sleep(LOGIN_FAIL_DELAY_MS);
@@ -474,13 +485,18 @@ function handleRegister(params, ss) {
 
 function handleReadComplex(params, ss) {
   var sheet = ss.getSheetByName(getTodaySheetName());
-  if (!sheet && !isNightCarryover()) return textOut("WAIT;0|0;---;00:00;0|0|0;0\n###MSG###");
+  // 1. Заглушка теперь отдает 6 нулей (3 для факта, 3 для плана)
+  if (!sheet && !isNightCarryover()) return textOut("WAIT;0|0;---;00:00;0|0|0|0|0|0;0\n###MSG###");
 
   var total = 0, done = 0, nextId = "---", nextTime = "";
   var activeRows = [];
-  var shiftMorning = 0, shiftEvening = 0, shiftNight = 0;
   var onTerritory = 0;
   var seenIds = {};
+
+  // 2. СЧЕТЧИКИ ДЛЯ СМЕН (ФАКТ И ПЛАН)
+  var m_fact = 0, e_fact = 0, n_fact = 0;
+  var m_base = 0, e_base = 0, n_base = 0;
+  var noEtaCount = 0;
 
   if (sheet) {
     var lr = sheet.getLastRow();
@@ -491,25 +507,38 @@ function handleReadComplex(params, ss) {
         if (row[4]) {
           seenIds[row[4]] = true;
           total++;
+          
+          // --- СЧИТАЕМ ФАКТ (По времени завершения - колонка I / row[8]) ---
           if (row[8]) {
             done++;
             var endMin = parseTimeToMin(row[8]);
             if (endMin !== null) {
-              if (endMin >= 470 && endMin < 1010) shiftMorning++;
-              else if (endMin >= 1010 || endMin < 110) shiftEvening++;
-              else shiftNight++;
-            } else { shiftMorning++; }
-          }
+              if (endMin >= 470 && endMin < 1010) m_fact++;
+              else if (endMin >= 1010 || endMin < 110) e_fact++;
+              else if (endMin >= 110 && endMin < 470) n_fact++;
+            }
+          } 
           else if (row[7]) activeRows.push(row[4] + "|" + row[7] + "|0|" + row[2] + "|" + row[10]);
           else {
             if (nextId === "---") { nextId = row[4]; nextTime = row[6]; }
             if (row[15] && row[15] !== "") onTerritory++;
+          }
+
+          // --- СЧИТАЕМ БАЗОВЫЙ ПЛАН (По времени ETA - колонка G / row[6]) ---
+          var etaMin = parseTimeToMin(row[6]);
+          if (etaMin === null) {
+            noEtaCount++;
+          } else {
+            if (etaMin >= 470 && etaMin < 1010) m_base++;
+            else if (etaMin >= 1010 || etaMin < 110) e_base++;
+            else if (etaMin >= 110 && etaMin < 470) n_base++;
           }
         }
       }
     }
   }
 
+  // --- ОБРАБАТЫВАЕМ ПЕРЕХОДЯЩИЕ НОЧНЫЕ ЗАДАЧИ ---
   if (isNightCarryover()) {
     var ySheet = ss.getSheetByName(getYesterdaySheetName());
     if (ySheet && ySheet.getLastRow() >= 5) {
@@ -523,14 +552,54 @@ function handleReadComplex(params, ss) {
             if (nextId === "---") { nextId = yRow[4]; nextTime = yRow[6]; }
             if (yRow[15] && yRow[15] !== "") onTerritory++;
           }
+
+          // Добавляем их в план смены по ETA
+          var yEtaMin = parseTimeToMin(yRow[6]);
+          if (yEtaMin === null) {
+            noEtaCount++;
+          } else {
+            if (yEtaMin >= 470 && yEtaMin < 1010) m_base++;
+            else if (yEtaMin >= 1010 || yEtaMin < 110) e_base++;
+            else if (yEtaMin >= 110 && yEtaMin < 470) n_base++;
+          }
         }
       }
     }
   }
 
+  // 3. РАСПРЕДЕЛЯЕМ ЗАДАЧИ БЕЗ ETA И ПЕРЕНОСИМ ДОЛГИ
+  if (noEtaCount > 0) {
+    var half = Math.ceil(noEtaCount / 2);
+    m_base += half;
+    e_base += (noEtaCount - half);
+  }
+
+  var m_target = m_base, e_target = e_base, n_target = n_base;
+
+  // Узнаем текущую смену
+  var now = new Date();
+  var nowMin = now.getHours() * 60 + now.getMinutes();
+  var activeShift = "none";
+  if (nowMin >= 470 && nowMin < 1010) activeShift = "morning";
+  else if (nowMin >= 1010 || nowMin < 110) activeShift = "evening";
+  else if (nowMin >= 110 && nowMin < 470) activeShift = "night";
+
+  // Перекидываем невыполненные цели на следующие смены
+  if (activeShift === "evening" || activeShift === "night") {
+    var m_debt = m_base - m_fact;
+    e_target = Math.max(0, e_base + m_debt);
+  }
+  if (activeShift === "night") {
+    var e_debt = e_target - e_fact;
+    n_target = Math.max(0, n_base + e_debt);
+  }
+
   var status = (total > 0 && done === total) ? "DONE" : "ACTIVE";
-  var body = status + ";" + done + "|" + total + ";" + nextId + ";" + nextTime +
-             ";" + shiftMorning + "|" + shiftEvening + "|" + shiftNight + ";" + onTerritory;
+  
+  // 4. ФОРМИРУЕМ ОТВЕТ (6 цифр: 3 для факта и 3 для плана)
+  var shiftString = m_fact + "|" + e_fact + "|" + n_fact + "|" + m_target + "|" + e_target + "|" + n_target;
+
+  var body = status + ";" + done + "|" + total + ";" + nextId + ";" + nextTime + ";" + shiftString + ";" + onTerritory;
   if (activeRows.length > 0) body += "\n" + activeRows.join("\n");
 
   return textOut(body + "\n###MSG###");
@@ -1007,7 +1076,8 @@ function handleRejectUser(params, ss) {
   var data = authSheet.getRange(2, USER_COL_START, lr - 1, 1).getDisplayValues();
   for (var i = 0; i < data.length; i++) {
     if (data[i][0].toLowerCase().trim() === login) {
-      authSheet.deleteRow(i + 2);
+      // 🚀 Вместо удаления строки, просто меняем её статус на REJECTED
+      authSheet.getRange(i + 2, USER_COL_START + COL_STATUS).setValue("REJECTED");
       return textOut("REJECTED");
     }
   }
