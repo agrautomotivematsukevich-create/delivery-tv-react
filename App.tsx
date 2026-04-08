@@ -16,6 +16,7 @@ import { TRANSLATIONS } from './constants';
 import { Task, TaskAction } from './types';
 import { useAppContext } from './components/AppContext';
 import { deepEqual } from './utils/deepEqual';
+import TVLoginScreen from './components/TVLoginScreen';
 
 // Lazy-loaded heavy views
 const HistoryView          = React.lazy(() => import('./components/HistoryView'));
@@ -44,6 +45,7 @@ function App() {
 
   const [isAppReady, setIsAppReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [tvAuthed, setTvAuthed] = useState(false);
   
   // 🚀 НОВОЕ: Стейты для задач (смен), перенесенные из Dashboard
   const [allTasks, setAllTasks] = useState<Task[]>([]);
@@ -62,10 +64,7 @@ function App() {
   const refreshDashboard = useCallback(async () => {
     try {
       const todayStr = (() => {
-        // Принудительно устанавливаем московское время, 
-        // чтобы игнорировать сбитые часы на телевизорах
-        const moscowTime = new Date().toLocaleString("en-US", {timeZone: "Europe/Moscow"});
-        const now = new Date(moscowTime);
+        const now = new Date();
         const dd = String(now.getDate()).padStart(2, '0');
         const mm = String(now.getMonth() + 1).padStart(2, '0');
         return `${dd}.${mm}`;
@@ -103,16 +102,19 @@ function App() {
 
   useEffect(() => {
     if (isTV2) {
+      if (!tvAuthed) return;           // ← ждём авторизации
       setTimeout(() => setIsAppReady(true), 800);
       return;
     }
+    if (isTV && !tvAuthed) return;     // ← ждём авторизации
     refreshDashboard().then(() => {
       setTimeout(() => setIsAppReady(true), 1200);
     });
-  }, [refreshDashboard, isTV2]);
+  }, [refreshDashboard, isTV2, isTV, tvAuthed]);
 
   useEffect(() => {
     if (location.pathname !== '/' || isTV2) return;
+    if (isTV && !tvAuthed) return;
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
@@ -134,7 +136,7 @@ function App() {
       stopPolling();
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [refreshDashboard, location.pathname, isTV2]);
+  }, [refreshDashboard, location.pathname, isTV2, isTV, tvAuthed]);
 
   const handleTaskActionRequest = (task: Task, actionType: 'start' | 'finish') => {
     return new Promise<void>((resolve, reject) => {
@@ -191,7 +193,9 @@ function App() {
       )}
       <SplashScreen isLoaded={!isLoading} />
 
-      {isTV2 ? (
+      {(isTV || isTV2) && !tvAuthed ? (
+        <TVLoginScreen onSuccess={() => setTvAuthed(true)} />
+      ) : isTV2 ? (
         <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
           <Suspense fallback={<ViewFallback />}>
             <LotTrackerTV lot={tv2Lot} />
