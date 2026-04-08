@@ -62,7 +62,10 @@ function App() {
   const refreshDashboard = useCallback(async () => {
     try {
       const todayStr = (() => {
-        const now = new Date();
+        // Принудительно устанавливаем московское время, 
+        // чтобы игнорировать сбитые часы на телевизорах
+        const moscowTime = new Date().toLocaleString("en-US", {timeZone: "Europe/Moscow"});
+        const now = new Date(moscowTime);
         const dd = String(now.getDate()).padStart(2, '0');
         const mm = String(now.getMonth() + 1).padStart(2, '0');
         return `${dd}.${mm}`;
