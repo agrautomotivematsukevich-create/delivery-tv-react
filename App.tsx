@@ -11,12 +11,12 @@ import ActionModal from './components/ActionModal';
 import AdminPanel from './components/AdminPanel';
 import SplashScreen from './components/SplashScreen';
 import PageMeta from './components/PageMeta';
+import TVLoginScreen from './components/TVLoginScreen';
 import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
 import { Task, TaskAction } from './types';
 import { useAppContext } from './components/AppContext';
 import { deepEqual } from './utils/deepEqual';
-import TVLoginScreen from './components/TVLoginScreen';
 
 // Lazy-loaded heavy views
 const HistoryView          = React.lazy(() => import('./components/HistoryView'));
@@ -45,9 +45,7 @@ function App() {
 
   const [isAppReady, setIsAppReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [tvAuthed, setTvAuthed] = useState(false);
   
-  // 🚀 НОВОЕ: Стейты для задач (смен), перенесенные из Dashboard
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [isTasksLoading, setIsTasksLoading] = useState(true);
 
@@ -64,13 +62,14 @@ function App() {
   const refreshDashboard = useCallback(async () => {
     try {
       const todayStr = (() => {
-        const now = new Date();
+        // Принудительное московское время для ТВ
+        const moscowTime = new Date().toLocaleString("en-US", {timeZone: "Europe/Moscow"});
+        const now = new Date(moscowTime);
         const dd = String(now.getDate()).padStart(2, '0');
         const mm = String(now.getMonth() + 1).padStart(2, '0');
         return `${dd}.${mm}`;
       })();
 
-      // 🚀 МАГИЯ ЗДЕСЬ: Параллельный запуск двух запросов
       const [data, tasks] = await Promise.all([
         api.fetchDashboard().catch(() => null),
         api.fetchHistory(todayStr).catch(() => [])
@@ -100,21 +99,29 @@ function App() {
     }
   }, [setDashboardData, setIsOffline]);
 
+  // 🚀 GATE 1: Первичная загрузка
   useEffect(() => {
+    // Если режим ТВ и мы НЕ авторизованы — прерываем загрузку и сразу показываем окно логина
+    if ((isTV || isTV2) && !user) {
+      setIsLoading(false); // <--- ЭТУ СТРОКУ ЗАБЫЛ CLAUDE (Она убивает "LOADING...")
+      setTimeout(() => setIsAppReady(true), 500);
+      return;
+    }
+
     if (isTV2) {
-      if (!tvAuthed) return;           // ← ждём авторизации
       setTimeout(() => setIsAppReady(true), 800);
       return;
     }
-    if (isTV && !tvAuthed) return;     // ← ждём авторизации
+    
     refreshDashboard().then(() => {
       setTimeout(() => setIsAppReady(true), 1200);
     });
-  }, [refreshDashboard, isTV2, isTV, tvAuthed]);
+  }, [refreshDashboard, isTV2, isTV, user]);
 
+  // 🚀 GATE 2: Остановка фонового обновления без авторизации
   useEffect(() => {
     if (location.pathname !== '/' || isTV2) return;
-    if (isTV && !tvAuthed) return;
+    if (isTV && !user) return; // Не обновлять, если нет прав
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
@@ -136,7 +143,7 @@ function App() {
       stopPolling();
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [refreshDashboard, location.pathname, isTV2, isTV, tvAuthed]);
+  }, [refreshDashboard, location.pathname, isTV2, isTV, user]);
 
   const handleTaskActionRequest = (task: Task, actionType: 'start' | 'finish') => {
     return new Promise<void>((resolve, reject) => {
@@ -166,11 +173,9 @@ function App() {
     navigate(view === 'dashboard' ? '/' : `/${view}`);
   };
 
-  // Shared route definitions (DRY)
   const lazyRoutes = (
     <Suspense fallback={<ViewFallback />}>
       <Routes>
-        {/* 🚀 ПЕРЕДАЕМ ПРОПСЫ В ДАШБОРД */}
         <Route path="/" element={<Dashboard data={dashboardData} allTasks={allTasks} isTasksLoading={isTasksLoading} t={t} tvMode={isTV} />} />
         <Route path="/history" element={<HistoryView t={t} />} />
         <Route path="/logistics" element={<LogisticsView t={t} />} />
@@ -193,8 +198,14 @@ function App() {
       )}
       <SplashScreen isLoaded={!isLoading} />
 
-      {(isTV || isTV2) && !tvAuthed ? (
-        <TVLoginScreen onSuccess={() => setTvAuthed(true)} />
+      {/* 🚀 ЛОГИКА ОТОБРАЖЕНИЯ ТВ ЭКРАНОВ */}
+      {(isTV || isTV2) && !user ? (
+        <div className={`fixed inset-0 bg-[#191B25] flex flex-col transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} z-50`}>
+          <TVLoginScreen onSuccess={() => {
+            setIsLoading(true);
+            refreshDashboard().then(() => setIsLoading(false));
+          }} />
+        </div>
       ) : isTV2 ? (
         <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
           <Suspense fallback={<ViewFallback />}>
