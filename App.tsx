@@ -200,20 +200,20 @@ function App() {
 
       {/* 🚀 ЛОГИКА ОТОБРАЖЕНИЯ ТВ ЭКРАНОВ */}
       {(isTV || isTV2) && !user ? (
-        <div className={`relative min-h-screen w-full bg-[#191B25] flex flex-col transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} z-50`}>
+        <div className={`fixed inset-0 bg-[#191B25] flex flex-col transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} z-50`}>
           <TVLoginScreen onSuccess={() => {
             setIsLoading(true);
             refreshDashboard().then(() => setIsLoading(false));
           }} />
         </div>
       ) : isTV2 ? (
-        <div className={`relative min-h-screen w-full bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-x-hidden`}>
+        <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-y-auto overflow-x-hidden`}>
           <Suspense fallback={<ViewFallback />}>
             <LotTrackerTV lot={tv2Lot} />
           </Suspense>
         </div>
       ) : isTV ? (
-        <div className={`relative min-h-screen w-full bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-x-hidden`}>
+        <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-y-auto overflow-x-hidden`}>
           {lazyRoutes}
         </div>
       ) : (
