@@ -103,7 +103,7 @@ function App() {
   useEffect(() => {
     // Если режим ТВ и мы НЕ авторизованы — прерываем загрузку и сразу показываем окно логина
     if ((isTV || isTV2) && !user) {
-      setIsLoading(false); // <--- ЭТУ СТРОКУ ЗАБЫЛ CLAUDE (Она убивает "LOADING...")
+      setIsLoading(false);
       setTimeout(() => setIsAppReady(true), 500);
       return;
     }
@@ -200,24 +200,24 @@ function App() {
 
       {/* 🚀 ЛОГИКА ОТОБРАЖЕНИЯ ТВ ЭКРАНОВ */}
       {(isTV || isTV2) && !user ? (
-        <div className={`fixed inset-0 bg-[#191B25] flex flex-col transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} z-50`}>
+        <div className={`relative min-h-screen w-full bg-[#191B25] flex flex-col transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} z-50`}>
           <TVLoginScreen onSuccess={() => {
             setIsLoading(true);
             refreshDashboard().then(() => setIsLoading(false));
           }} />
         </div>
       ) : isTV2 ? (
-        <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+        <div className={`relative min-h-screen w-full bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-x-hidden`}>
           <Suspense fallback={<ViewFallback />}>
             <LotTrackerTV lot={tv2Lot} />
           </Suspense>
         </div>
       ) : isTV ? (
-        <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+        <div className={`relative min-h-screen w-full bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-x-hidden`}>
           {lazyRoutes}
         </div>
       ) : (
-        <div className={`relative min-h-screen w-full flex flex-col p-4 md:p-8 bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'}`}>
+        <div className={`relative min-h-screen w-full flex flex-col p-4 md:p-8 bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-x-hidden`}>
           <div className="relative z-20 flex-1 flex flex-col max-w-[1920px] mx-auto w-full">
             <div className="relative z-50"> 
               <Header 
