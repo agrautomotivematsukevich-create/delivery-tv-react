@@ -25,6 +25,7 @@ const ZoneDowntimeView     = React.lazy(() => import('./components/ZoneDowntimeV
 const ArrivalAnalyticsView = React.lazy(() => import('./components/ArrivalAnalyticsView'));
 const LotTrackerTV         = React.lazy(() => import('./components/LotTrackerTV'));
 const LotTrackerView       = React.lazy(() => import('./components/LotTrackerView'));
+const AccountingView       = React.lazy(() => import('./components/AccountingView'));
 
 const ViewFallback = () => (
   <div className="flex-1 flex items-center justify-center">
@@ -201,6 +202,7 @@ function App() {
         <Route path="/downtime" element={<ZoneDowntimeView t={t} />} />
         <Route path="/arrival" element={<ArrivalAnalyticsView t={t} />} />
         <Route path="/lotTracker" element={<LotTrackerView user={user} t={t} />} />
+        <Route path="/accounting" element={<AccountingView t={t} />} />
         <Route path="*" element={<Dashboard data={dashboardData} allTasks={allTasks} isTasksLoading={isTasksLoading} t={t} tvMode={isTV} />} />
       </Routes>
     </Suspense>

@@ -63,6 +63,7 @@ var ROUTES = {
   "create_plan":           { handler: handleCreatePlan,         auth: true,  lock: true  },
   "set_priority_lot":      { handler: handleSetPriorityLot,     auth: true,  lock: true  },
   "upload_photo":          { handler: handleUploadPhoto,        auth: true,  lock: false },
+  "update_accounting":     { handler: handleUpdateAccounting,   auth: true,  lock: true  },
   "subscribe_notification":{ handler: handleSubscribeNotification, auth: true, lock: true },
 
   // ── Admin (user token + ADMIN role) ──
@@ -662,7 +663,7 @@ function handleGetHistory(params, ss) {
   var lr = sheet.getLastRow();
   if (lr < 5) return jsonOut([]);
 
-  var data = sheet.getRange(5, 1, lr - 4, 16).getDisplayValues();
+  var data = sheet.getRange(5, 1, lr - 4, 18).getDisplayValues();
   var tasks = [];
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
@@ -672,11 +673,59 @@ function handleGetHistory(params, ss) {
         id: id, type: row[2], pallets: row[3], phone: row[5], eta: row[6],
         status: deriveStatus(row[7], row[8]), start_time: row[7], end_time: row[8],
         zone: row[10], operator: row[11], photo_gen: row[12],
-        photo_seal: row[13], photo_empty: row[14], arrival_time: row[15]
+        photo_seal: row[13], photo_empty: row[14], arrival_time: row[15],
+        sap_status: mapAccountingFromSheet(row[16]),
+        les_status: mapAccountingFromSheet(row[17])
       });
     }
   }
   return jsonOut(tasks);
+}
+
+// ── Accounting status mapping helpers ──
+
+function mapAccountingFromSheet(val) {
+  var v = (val || "").toString().trim();
+  if (v === "Принят") return "ACCEPTED";
+  if (v === "Не принят") return "REJECTED";
+  return "WAIT";
+}
+
+function mapAccountingToSheet(status) {
+  if (status === "ACCEPTED") return "Принят";
+  if (status === "REJECTED") return "Не принят";
+  return "Ожидает";
+}
+
+function handleUpdateAccounting(params, ss) {
+  var id     = (params.id || "").toString().trim();
+  var system = (params.system || "").toString().trim();
+  var status = (params.status || "").toString().trim();
+
+  if (!id || (system !== "SAP" && system !== "LES")) {
+    return jsonOut({ error: "INVALID_PARAMS" });
+  }
+  if (status !== "WAIT" && status !== "ACCEPTED" && status !== "REJECTED") {
+    return jsonOut({ error: "INVALID_STATUS" });
+  }
+
+  var sheetName = getTodaySheetName();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return jsonOut({ error: "SHEET_NOT_FOUND" });
+
+  var lr = sheet.getLastRow();
+  if (lr < 5) return jsonOut({ error: "NO_DATA" });
+
+  var ids = sheet.getRange(5, 5, lr - 4, 1).getDisplayValues();
+  var col = (system === "SAP") ? 17 : 18; // Q=17, R=18
+
+  for (var i = 0; i < ids.length; i++) {
+    if (ids[i][0] === id) {
+      sheet.getRange(i + 5, col).setValue(mapAccountingToSheet(status));
+      return jsonOut({ status: "OK" });
+    }
+  }
+  return jsonOut({ error: "NOT_FOUND" });
 }
 
 function handleGetFullPlan(params, ss) {

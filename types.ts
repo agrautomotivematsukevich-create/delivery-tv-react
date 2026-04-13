@@ -34,6 +34,8 @@ export interface Task {
   photo_seal?: string;
   photo_empty?: string;
   arrival_time?: string; // Col P: Время прибытия на территорию
+  sap_status?: 'WAIT' | 'ACCEPTED' | 'REJECTED';
+  les_status?: 'WAIT' | 'ACCEPTED' | 'REJECTED';
 }
 
 export interface Issue {

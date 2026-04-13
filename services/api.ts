@@ -493,4 +493,15 @@ export const api = {
   rejectUser: async (login: string): Promise<void> => {
     await authPost({ mode: "reject_user", login });
   },
+
+  updateAccountingStatus: async (taskId: string, system: 'SAP' | 'LES', status: 'WAIT' | 'ACCEPTED' | 'REJECTED'): Promise<boolean> => {
+    try {
+      const res = await authPost({ mode: "update_accounting", id: taskId, system, status });
+      const txt = await res.text();
+      return txt.includes("OK");
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === "AUTH_EXPIRED") throw e;
+      return false;
+    }
+  },
 };

@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { User, Lang, TranslationSet } from '../types';
-import { Globe, User as UserIcon, LogOut, ChevronDown, ScanBarcode, LogIn, AlertTriangle, History, LayoutDashboard, Archive, Truck, TrendingDown, Timer, Package, ShieldAlert } from 'lucide-react';
+import { Globe, User as UserIcon, LogOut, ChevronDown, ScanBarcode, LogIn, AlertTriangle, History, LayoutDashboard, Archive, Truck, TrendingDown, Timer, Package, ShieldAlert, FileSpreadsheet } from 'lucide-react';
 
 interface HeaderProps {
   user: User | null;
   lang: Lang;
   t: TranslationSet;
-  view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival' | 'lotTracker';
-  setView: (view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival' | 'lotTracker') => void;
+  view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival' | 'lotTracker' | 'accounting';
+  setView: (view: 'dashboard' | 'history' | 'logistics' | 'downtime' | 'arrival' | 'lotTracker' | 'accounting') => void;
   onToggleLang: () => void;
   onLoginClick: () => void;
   onLogoutClick: () => void;
@@ -166,6 +166,10 @@ const Header: React.FC<HeaderProps> = ({
                 </button>
                 <button onClick={() => { setView('lotTracker'); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-3 text-sm font-bold text-white/70 hover:text-white hover:bg-white/5 rounded-lg text-left">
                   <Package size={16} /> Отслеживание Lot
+                </button>
+
+                <button onClick={() => { setView('accounting'); setIsDropdownOpen(false); }} className="w-full flex items-center gap-3 px-3 py-3 text-sm font-bold text-white/70 hover:text-white hover:bg-white/5 rounded-lg text-left">
+                  <FileSpreadsheet size={16} /> Учет SAP/LES
                 </button>
 
                 {/* Admin Panel — visible only for ADMIN role */}
