@@ -259,7 +259,7 @@ function App() {
               />
             </div>
 
-            <main className="relative z-10 flex-1 mt-4 flex flex-col min-h-0">
+            <main className="relative z-10 flex-1 mt-4 min-h-0 overflow-y-auto custom-scrollbar">
               {lazyRoutes}
             </main>
           </div>
