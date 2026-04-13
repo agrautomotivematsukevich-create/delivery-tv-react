@@ -124,67 +124,68 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
   }, [doneTasks]);
 
   return (
-    <div className="flex flex-col h-full min-h-screen bg-[#191B25]">
-      {/* Sticky Header */}
-      <div className="sticky top-0 z-50 bg-[#191B25] pt-4 pb-2 shadow-md">
-        {/* Title + Actions */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg md:text-xl font-extrabold text-white tracking-tight uppercase">
-            Учет SAP / LES
-          </h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={loadData}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white/60 hover:text-white bg-white/5 border border-white/5 transition-all"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              Обновить
-            </button>
-            <button
-              onClick={exportCSV}
-              disabled={doneTasks.length === 0}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Download size={14} />
-              Выгрузить отчет (CSV)
-            </button>
+    <div className="flex flex-col flex-1 h-[calc(100vh-140px)] min-h-0 w-full">
+      <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-50 bg-[#191B25] pt-2 pb-4 shadow-xl border-b border-white/5">
+          {/* Title + Actions */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg md:text-xl font-extrabold text-white tracking-tight uppercase">
+              Учет SAP / LES
+            </h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={loadData}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white/60 hover:text-white bg-white/5 border border-white/5 transition-all"
+              >
+                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                Обновить
+              </button>
+              <button
+                onClick={exportCSV}
+                disabled={doneTasks.length === 0}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Download size={14} />
+                Выгрузить отчет (CSV)
+              </button>
+            </div>
+          </div>
+
+          {/* Stats Widgets */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="bg-white/5 border border-white/5 rounded-xl p-4">
+              <div className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1">Всего завершено</div>
+              <div className="text-2xl font-black text-white tabular-nums">{stats.total}</div>
+            </div>
+            <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-xl p-4">
+              <div className="text-[10px] font-bold text-emerald-400/60 uppercase tracking-wider mb-1">Принято SAP</div>
+              <div className="text-2xl font-black text-emerald-400 tabular-nums">{stats.sapAccepted}</div>
+            </div>
+            <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-xl p-4">
+              <div className="text-[10px] font-bold text-emerald-400/60 uppercase tracking-wider mb-1">Принято LES</div>
+              <div className="text-2xl font-black text-emerald-400 tabular-nums">{stats.lesAccepted}</div>
+            </div>
+            <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-4">
+              <div className="text-[10px] font-bold text-amber-400/60 uppercase tracking-wider mb-1">Ожидает проверки</div>
+              <div className="text-2xl font-black text-amber-400 tabular-nums">{stats.waiting}</div>
+            </div>
+          </div>
+
+          {/* Table Header */}
+          <div className="hidden md:grid grid-cols-[50px_1fr_1fr_1fr_1fr_140px_140px] gap-2 px-4 py-2 text-[10px] font-bold text-white/30 uppercase tracking-wider">
+            <div>№</div>
+            <div>ID контейнера</div>
+            <div>Зона выгрузки</div>
+            <div>Окончание выгрузки</div>
+            <div>Оператор</div>
+            <div className="text-center">Статус SAP</div>
+            <div className="text-center">Статус LES</div>
           </div>
         </div>
 
-        {/* Stats Widgets */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div className="bg-white/5 border border-white/5 rounded-xl p-4">
-            <div className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1">Всего завершено</div>
-            <div className="text-2xl font-black text-white tabular-nums">{stats.total}</div>
-          </div>
-          <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-xl p-4">
-            <div className="text-[10px] font-bold text-emerald-400/60 uppercase tracking-wider mb-1">Принято SAP</div>
-            <div className="text-2xl font-black text-emerald-400 tabular-nums">{stats.sapAccepted}</div>
-          </div>
-          <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-xl p-4">
-            <div className="text-[10px] font-bold text-emerald-400/60 uppercase tracking-wider mb-1">Принято LES</div>
-            <div className="text-2xl font-black text-emerald-400 tabular-nums">{stats.lesAccepted}</div>
-          </div>
-          <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-4">
-            <div className="text-[10px] font-bold text-amber-400/60 uppercase tracking-wider mb-1">Ожидает проверки</div>
-            <div className="text-2xl font-black text-amber-400 tabular-nums">{stats.waiting}</div>
-          </div>
-        </div>
-
-        {/* Table Header */}
-        <div className="hidden md:grid grid-cols-[50px_1fr_1fr_1fr_1fr_140px_140px] gap-2 px-4 py-2 text-[10px] font-bold text-white/30 uppercase tracking-wider border-b border-white/5">
-          <div>№</div>
-          <div>ID контейнера</div>
-          <div>Зона выгрузки</div>
-          <div>Окончание выгрузки</div>
-          <div>Оператор</div>
-          <div className="text-center">Статус SAP</div>
-          <div className="text-center">Статус LES</div>
-        </div>
-      </div>
-
-      {/* Table Body */}
-      <div className="flex-1 pb-8">
+        {/* Table Body */}
+        <div className="pb-8">
         {loading && doneTasks.length === 0 ? (
           <div className="flex items-center justify-center py-20">
             <div className="text-white/40 animate-pulse text-sm font-mono tracking-widest">ЗАГРУЗКА...</div>
@@ -230,6 +231,7 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
             ))}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

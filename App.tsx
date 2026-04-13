@@ -238,8 +238,8 @@ function App() {
           {lazyRoutes}
         </div>
       ) : (
-        <div className={`relative min-h-screen w-full flex flex-col p-4 md:p-8 bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-x-hidden`}>
-          <div className="relative z-20 flex-1 flex flex-col max-w-[1920px] mx-auto w-full">
+        <div className={`relative h-screen w-full flex flex-col p-4 md:p-8 bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-hidden`}>
+          <div className="relative z-20 flex-1 flex flex-col min-h-0 max-w-[1920px] mx-auto w-full">
             <div className="relative z-50"> 
               <Header 
                 user={user} 
