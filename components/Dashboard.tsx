@@ -649,7 +649,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
     <div className="dashboard-root grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] gap-6 lg:gap-8 flex-1 min-h-0">
       
       {/* ── ЛЕВАЯ КОЛОНКА (Общий прогресс + Смены) ── */}
-      <div className={`${glass} relative flex flex-col p-6 lg:p-8 overflow-hidden h-full`}>
+      <div className={`${glass} relative flex flex-col p-6 lg:p-8 overflow-hidden h-full min-w-0`}>
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[250px] h-[250px] bg-accent-green blur-[130px] opacity-[0.03] pointer-events-none" />
         
         <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] w-full text-left mb-6">{t.progress}</div>
@@ -691,7 +691,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
       </div>
 
       {/* ── ПРАВАЯ КОЛОНКА (Очередь + Территория + Зоны) ── */}
-      <div className="flex flex-col gap-6 lg:gap-8 h-full min-h-0">
+      <div className="flex flex-col gap-6 lg:gap-8 h-full min-h-0 min-w-0">
         
         {/* Верхний ряд: Следующий + На территории */}
         {!isVictory && !isEmpty && (
