@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
@@ -38,10 +38,15 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const urlParams = new URLSearchParams(window.location.search);
-  const isTV = urlParams.get('tv') === '1';
-  const isTV2 = urlParams.get('tv') === '2';
-  const tv2Lot = urlParams.get('lot') || '';
+  // Мемоизируем URL-параметры — читаем один раз, не пересоздаём на каждый рендер
+  const { isTV, isTV2, tv2Lot } = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      isTV: params.get('tv') === '1',
+      isTV2: params.get('tv') === '2',
+      tv2Lot: params.get('lot') || '',
+    };
+  }, []);
 
   const [isAppReady, setIsAppReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -59,10 +64,18 @@ function App() {
 
   const t = TRANSLATIONS[lang];
 
+  // Флаг для защиты от наложения промисов polling'а
+  const isFetchingRef = useRef(false);
+  // Ref для хранения предыдущего allTasks (deepEqual проверка)
+  const prevTasksRef = useRef<Task[]>([]);
+
   const refreshDashboard = useCallback(async () => {
+    // Защита: если предыдущий запрос ещё не завершился — пропускаем
+    if (isFetchingRef.current) return null;
+    isFetchingRef.current = true;
+
     try {
       const todayStr = (() => {
-        // Принудительное московское время для ТВ
         const moscowTime = new Date().toLocaleString("en-US", {timeZone: "Europe/Moscow"});
         const now = new Date(moscowTime);
         const dd = String(now.getDate()).padStart(2, '0');
@@ -85,8 +98,12 @@ function App() {
         setIsOffline(true);
       }
 
+      // Защита от лишних ререндеров: сравниваем tasks через deepEqual
       if (tasks) {
-        setAllTasks(tasks);
+        if (!deepEqual(prevTasksRef.current, tasks)) {
+          prevTasksRef.current = tasks;
+          setAllTasks(tasks);
+        }
       }
 
       return data;
@@ -94,6 +111,7 @@ function App() {
       setIsOffline(true);
       return null;
     } finally {
+      isFetchingRef.current = false;
       setIsLoading(false);
       setIsTasksLoading(false);
     }
@@ -101,27 +119,28 @@ function App() {
 
   // 🚀 GATE 1: Первичная загрузка
   useEffect(() => {
-    // Если режим ТВ и мы НЕ авторизованы — прерываем загрузку и сразу показываем окно логина
     if ((isTV || isTV2) && !user) {
       setIsLoading(false);
-      setTimeout(() => setIsAppReady(true), 500);
-      return;
+      const timer = setTimeout(() => setIsAppReady(true), 500);
+      return () => clearTimeout(timer);
     }
 
     if (isTV2) {
-      setTimeout(() => setIsAppReady(true), 800);
-      return;
+      const timer = setTimeout(() => setIsAppReady(true), 800);
+      return () => clearTimeout(timer);
     }
     
+    let timer: ReturnType<typeof setTimeout>;
     refreshDashboard().then(() => {
-      setTimeout(() => setIsAppReady(true), 1200);
+      timer = setTimeout(() => setIsAppReady(true), 1200);
     });
+    return () => clearTimeout(timer);
   }, [refreshDashboard, isTV2, isTV, user]);
 
-  // 🚀 GATE 2: Остановка фонового обновления без авторизации
+  // 🚀 GATE 2: Polling с защитой от наложения
   useEffect(() => {
     if (location.pathname !== '/' || isTV2) return;
-    if (isTV && !user) return; // Не обновлять, если нет прав
+    if (isTV && !user) return;
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {

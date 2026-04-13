@@ -67,6 +67,18 @@ const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: 
 // ── Cache + in-flight dedup ──
 const _cache: Record<string, { data: unknown; ts: number }> = {};
 const _inflight: Record<string, Promise<unknown>> = {};
+const CACHE_MAX_ENTRIES = 50;
+
+function pruneCache(): void {
+  const keys = Object.keys(_cache);
+  if (keys.length <= CACHE_MAX_ENTRIES) return;
+  // Удаляем самые старые записи
+  keys.sort((a, b) => _cache[a].ts - _cache[b].ts);
+  const toRemove = keys.length - CACHE_MAX_ENTRIES;
+  for (let i = 0; i < toRemove; i++) {
+    delete _cache[keys[i]];
+  }
+}
 
 async function cachedFetch<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
   const cached = _cache[key];
@@ -75,6 +87,7 @@ async function cachedFetch<T>(key: string, ttlMs: number, fn: () => Promise<T>):
   const promise = fn().then(data => {
     _cache[key] = { data, ts: Date.now() };
     delete _inflight[key];
+    pruneCache();
     return data;
   }).catch(err => {
     delete _inflight[key];

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { User, DashboardData } from '../types';
 import { getToken, clearToken, onSessionExpired } from '../services/api';
 
@@ -114,12 +114,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // ── Toast system ──
 
+  // Трекинг таймеров для очистки при unmount
+  const toastTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => {
+    return () => {
+      // Очистка всех pending таймеров при размонтировании
+      toastTimersRef.current.forEach(id => clearTimeout(id));
+      toastTimersRef.current.clear();
+    };
+  }, []);
+
   const addToast = useCallback((message: string, type: ToastMessage['type'] = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
+    setToasts((prev) => {
+      const next = [...prev, { id, message, type }];
+      // Лимит 5 тостов — защита от накопления при частых ошибках
+      return next.length > 5 ? next.slice(-5) : next;
+    });
+    const timerId = setTimeout(() => {
+      toastTimersRef.current.delete(timerId);
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
+    toastTimersRef.current.add(timerId);
   }, []);
 
   const removeToast = useCallback((id: string) => {

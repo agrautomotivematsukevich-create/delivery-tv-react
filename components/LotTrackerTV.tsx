@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { LotContainer } from '../types';
 import { api } from '../services/api';
 import { Clock, Package, Truck, Timer, CheckCircle2 } from 'lucide-react';
@@ -7,7 +7,28 @@ import { parseHHMM, elapsedMin, nowMinutes, minutesUntil, formatDuration, todayD
 interface Props {
   lot?: string;
 }
-
+// ── LotClock (отдельный компонент — не вызывает ререндер родителя) ───────────────────
+const LotClock = memo(() => {
+  const [time, setTime] = useState(() => new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+  const [date, setDate] = useState(() => new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', weekday: 'short' }));
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      const newTime = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      const newDate = now.toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', weekday: 'short' });
+      setTime(prev => prev === newTime ? prev : newTime);
+      setDate(prev => prev === newDate ? prev : newDate);
+    };
+    const id = setInterval(tick, 30000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <>
+      <div className="font-mono text-3xl font-black text-white/80 tabular-nums">{time}</div>
+      <div className="text-xs text-white/50 capitalize">{date}</div>
+    </>
+  );
+});
 // ── Component ─────────────────────────────────────────────────────────────────
 
 const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
@@ -50,55 +71,37 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
   }, [fetchData]);
 
-  // Tick every 30s for live timers
+  // Tick every 30s for live timers (elapsed minutes in JSX)
   useEffect(() => {
     const id = setInterval(() => setTick(n => n + 1), 30000);
     return () => clearInterval(id);
   }, []);
 
-  // Clock
-  const [time, setTime] = useState('');
-  const [date, setDate] = useState('');
-  useEffect(() => {
-    const tick = () => {
-      const now = new Date();
-      setTime(now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
-      setDate(now.toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', weekday: 'short' }));
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
+  // Мемоизация тяжёлых вычислений — пересчитываются только при смене containers
+  const { sorted, done, active, waiting, totalCount, doneCount, today, nextWait, nextCountdown, percent } = useMemo(() => {
+    const sorted = [...containers].sort((a, b) => {
+      const da = dateSortValue(a.date), db = dateSortValue(b.date);
+      if (da !== db) return da - db;
+      const ia = parseInt(a.index) || 0, ib = parseInt(b.index) || 0;
+      return ia - ib;
+    });
+    const done = sorted.filter(c => c.status === 'DONE');
+    const active = sorted.filter(c => c.status === 'ACTIVE');
+    const waiting = sorted.filter(c => c.status === 'WAIT');
+    const totalCount = sorted.length;
+    const doneCount = done.length;
+    const today = todayDDMM();
+    const nextWait = waiting.find(c => {
+      if (c.date === today && c.eta) return minutesUntil(c.eta) > -30;
+      return dateSortValue(c.date) >= dateSortValue(today);
+    }) || waiting[0] || null;
+    const nextCountdown = nextWait?.date === today && nextWait?.eta ? minutesUntil(nextWait.eta) : null;
+    const percent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+    return { sorted, done, active, waiting, totalCount, doneCount, today, nextWait, nextCountdown, percent };
+  }, [containers]);
 
-  // Sort: by date, then by index/eta
-  const sorted = [...containers].sort((a, b) => {
-    const da = dateSortValue(a.date), db = dateSortValue(b.date);
-    if (da !== db) return da - db;
-    const ia = parseInt(a.index) || 0, ib = parseInt(b.index) || 0;
-    return ia - ib;
-  });
-
-  const done = sorted.filter(c => c.status === 'DONE');
-  const active = sorted.filter(c => c.status === 'ACTIVE');
-  const waiting = sorted.filter(c => c.status === 'WAIT');
-  const totalCount = sorted.length;
-  const doneCount = done.length;
-
-  const today = todayDDMM();
-
-  // Next waiting container (today with ETA in future, or next date)
-  const nextWait = waiting.find(c => {
-    if (c.date === today && c.eta) {
-      return minutesUntil(c.eta) > -30; // allow 30min past
-    }
-    return dateSortValue(c.date) >= dateSortValue(today);
-  }) || waiting[0];
-
-  const nextCountdown = nextWait?.date === today && nextWait?.eta ? minutesUntil(nextWait.eta) : null;
-
-  const percent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
-
-  const glass = "bg-[rgba(58,60,78,0.35)] backdrop-blur-xl border border-white/10 border-t-white/15 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.4)]";
+  // Убран backdrop-blur — тяжёлый GPU-эффект для Android TV
+  const glass = "bg-[rgba(40,42,56,0.95)] border border-white/10 border-t-white/15 rounded-3xl shadow-lg";
 
   if (loading) {
     return (
@@ -156,10 +159,9 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
           </div>
         </div>
 
-        {/* Clock */}
+        {/* Clock (отдельный компонент — не вызывает ререндер всего LotTrackerTV) */}
         <div className="flex items-center gap-3">
-          <div className="font-mono text-3xl font-black text-white/80 tabular-nums">{time}</div>
-          <div className="text-xs text-white/50 capitalize">{date}</div>
+          <LotClock />
         </div>
       </div>
 
@@ -377,10 +379,6 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
         </div>
       </div>
 
-      <style>{`
-        .lot-scroll::-webkit-scrollbar { width: 3px; }
-        .lot-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
-      `}</style>
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
 import { DashboardData, TranslationSet, Task } from '../types';
 import { Clock, Truck } from 'lucide-react';
 import { api } from '../services/api';
@@ -7,7 +7,7 @@ import { currentShift, calculateShiftFact, calculateShiftTargets, formatMinutes,
 import { AVAILABLE_ZONES, UNLOAD_TARGET } from '../utils/zones';
 
 // ── UnloadTimer ─────────────────────────────────────────────────────────────────
-const UnloadTimer: React.FC<{ startTime: string; sz?: number }> = ({ startTime, sz = 56 }) => {
+const UnloadTimer: React.FC<{ startTime: string; sz?: number }> = memo(({ startTime, sz = 56 }) => {
   const [elapsed, setElapsed] = useState(() => elapsedMin(startTime));
   useEffect(() => {
     const id = setInterval(() => setElapsed(elapsedMin(startTime)), 30000);
@@ -36,7 +36,7 @@ const UnloadTimer: React.FC<{ startTime: string; sz?: number }> = ({ startTime, 
       </div>
     </div>
   );
-};
+});
 
 // ── Skeleton для одной shift-карточки ──────────────────────────────────────────
 const ShiftCardSkeleton: React.FC<{ tvMode?: boolean }> = ({ tvMode }) => (
@@ -64,9 +64,10 @@ const ShiftNormSkeleton: React.FC = () => (
 );
 
 // ── ShiftNormWidget ─────────────────────────────────────────────────────────────
-const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: TranslationSet; compact?: boolean; isLoading?: boolean }> = ({ data, allTasks, t, compact, isLoading }) => {
-  const [, setTick] = useState(0);
-  useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
+const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: TranslationSet; compact?: boolean; isLoading?: boolean }> = memo(({ data, allTasks, t, compact, isLoading }) => {
+  // Пересчитываем время только при изменении данных — без лишнего setInterval
+  const [nowMin, setNowMin] = useState(() => new Date().getHours() * 60 + new Date().getMinutes());
+  useEffect(() => { const id = setInterval(() => setNowMin(new Date().getHours() * 60 + new Date().getMinutes()), 60000); return () => clearInterval(id); }, []);
 
   const active = currentShift();
   
@@ -79,7 +80,6 @@ const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: Tran
   const target = targets[active] || 0;
   const done = active !== 'none' ? (facts[active] || 0) : 0;
   
-  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
   let fraction = 0;
   if (active === 'morning') {
     fraction = (nowMin - 470) / 540;
@@ -149,12 +149,11 @@ const ShiftNormWidget: React.FC<{ data: DashboardData; allTasks: Task[]; t: Tran
       )}
     </div>
   );
-};
+});
 
 // ── ShiftStatsBlock ─────────────────────────────────────────────────────────────
-const ShiftStatsBlock: React.FC<{ data: DashboardData; allTasks: Task[]; tvMode?: boolean; isLoading?: boolean }> = ({ data, allTasks, tvMode, isLoading }) => {
-  const [, setTick] = useState(0);
-  useEffect(() => { const id = setInterval(() => setTick(n => n + 1), 60000); return () => clearInterval(id); }, []);
+const ShiftStatsBlock: React.FC<{ data: DashboardData; allTasks: Task[]; tvMode?: boolean; isLoading?: boolean }> = memo(({ data, allTasks, tvMode, isLoading }) => {
+  // Убран лишний setInterval — данные обновляются извне через props каждые 15 сек
 
   const active = currentShift();
   
@@ -208,7 +207,7 @@ const ShiftStatsBlock: React.FC<{ data: DashboardData; allTasks: Task[]; tvMode?
       })}
     </div>
   );
-};
+});
 
 // ── DockZonesGrid ───────────────────────────────────────────────────────────────
 interface ZoneInfo {
@@ -220,13 +219,8 @@ interface ZoneInfo {
   idleMinutes?: number; 
 }
 
-const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTasks?: Task[]; tvMode?: boolean }> = ({ activeList, allTasks = [], tvMode }) => {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (!tvMode) return;
-    const id = setInterval(() => setTick(n => n + 1), 60000);
-    return () => clearInterval(id);
-  }, [tvMode]);
+const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTasks?: Task[]; tvMode?: boolean }> = memo(({ activeList, allTasks = [], tvMode }) => {
+  // Убран лишний setInterval — данные обновляются через polling props каждые 15 сек
 
   const zoneMap = new Map<string, { id: string; start: string; elapsed: number }>();
   for (const item of activeList) {
@@ -424,7 +418,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
       </div>
     </div>
   );
-};
+});
 
 // ── OnTerritoryBlock ────────────────────────────────────────────────────────────
 const OnTerritoryBlock: React.FC<{ arrivedTasks: Task[]; tvMode?: boolean }> = ({ arrivedTasks, tvMode }) => {
@@ -481,18 +475,19 @@ const OnTerritoryBlock: React.FC<{ arrivedTasks: Task[]; tvMode?: boolean }> = (
   );
 };
 
-// ── TVClock ─────────────────────────────────────────────────────────────────────
-const TVClock: React.FC = () => {
-  const [time, setTime] = useState('');
-  const [date, setDate] = useState('');
+// ── TVClock (обновляется каждые 30 сек — достаточно для HH:MM) ──────────────
+const TVClock: React.FC = memo(() => {
+  const [time, setTime] = useState(() => new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+  const [date, setDate] = useState(() => new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', weekday: 'short' }));
   useEffect(() => {
     const tick = () => {
       const now = new Date();
-      setTime(now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
-      setDate(now.toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', weekday: 'short' }));
+      const newTime = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      const newDate = now.toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', weekday: 'short' });
+      setTime(prev => prev === newTime ? prev : newTime);
+      setDate(prev => prev === newDate ? prev : newDate);
     };
-    tick();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(tick, 30000);
     return () => clearInterval(id);
   }, []);
   return (
@@ -501,7 +496,7 @@ const TVClock: React.FC = () => {
       <div className="text-xs font-medium text-white/50 capitalize">{date}</div>
     </div>
   );
-};
+});
 
 // ── ГЛАВНЫЙ КОМПОНЕНТ ──────────────────────────────────────────────────────────
 interface DashboardProps {
@@ -541,7 +536,10 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
     return 'bg-white/5 border-white/5 text-white/70';
   };
 
-  const glass = "bg-card-bg backdrop-blur-xl border border-white/10 border-t-white/15 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.4)]";
+  // На TV убираем backdrop-blur — тяжёлый GPU-эффект для слабых устройств
+  const glass = tvMode
+    ? "bg-[rgba(25,27,37,0.95)] border border-white/10 border-t-white/15 rounded-3xl shadow-lg"
+    : "bg-card-bg backdrop-blur-xl border border-white/10 border-t-white/15 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.4)]";
 
   if (tvMode) {
     return (
@@ -628,7 +626,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
           {(isVictory || isEmpty) && (
             <div className={`${glass} flex-1 flex flex-col items-center justify-center text-center p-8`}>
               {isVictory
-                ? <><div className="text-8xl mb-5 animate-bounce">🏆</div><div className="text-5xl font-black text-white">{t.victory}</div></>
+                ? <><div className="text-8xl mb-5">🏆</div><div className="text-5xl font-black text-white">{t.victory}</div></>
                 : <><div className="text-8xl mb-5 opacity-30">📅</div><div className="text-5xl font-black text-white/50">{t.empty}</div></>
               }
             </div>
@@ -642,10 +640,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
           <TVClock />
         </div>
 
-        <style>{`
-          .tv-root .tv-scroll::-webkit-scrollbar { width: 3px; }
-          .tv-root .tv-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
-        `}</style>
+
       </div>
     );
   }
@@ -785,11 +780,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
         )}
       </div>
 
-      <style>{`
-        .dashboard-root .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .dashboard-root .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        .dashboard-root .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
-      `}</style>
+
     </div>
   );
 };
