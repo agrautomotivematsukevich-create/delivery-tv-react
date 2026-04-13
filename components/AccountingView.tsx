@@ -124,9 +124,9 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
   }, [doneTasks]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-screen bg-[#191B25]">
       {/* Sticky Header */}
-      <div className="sticky top-0 z-20 pb-4 bg-[#191B25]">
+      <div className="sticky top-0 z-50 bg-[#191B25] pt-4 pb-2 shadow-md">
         {/* Title + Actions */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg md:text-xl font-extrabold text-white tracking-tight uppercase">
@@ -184,7 +184,7 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
       </div>
 
       {/* Table Body */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 pb-8">
         {loading && doneTasks.length === 0 ? (
           <div className="flex items-center justify-center py-20">
             <div className="text-white/40 animate-pulse text-sm font-mono tracking-widest">ЗАГРУЗКА...</div>
