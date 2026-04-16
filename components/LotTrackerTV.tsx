@@ -48,7 +48,7 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
       setLotFromSheet(l);
     };
     fetchLot();
-    const id = setInterval(fetchLot, 15000);
+    const id = setInterval(fetchLot, 30000);
     return () => clearInterval(id);
   }, [lotProp]);
 
@@ -62,7 +62,7 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
   // Polling
   useEffect(() => {
     fetchData();
-    const id = setInterval(fetchData, 20000);
+    const id = setInterval(fetchData, 30000);
 
     const onVis = () => {
       if (!document.hidden) fetchData();
