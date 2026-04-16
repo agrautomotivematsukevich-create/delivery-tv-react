@@ -43,7 +43,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
   const startPolling = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(fetchQueue, 15000);
+    intervalRef.current = setInterval(fetchQueue, 30000);
   }, [fetchQueue]);
 
   const stopPolling = useCallback(() => {
