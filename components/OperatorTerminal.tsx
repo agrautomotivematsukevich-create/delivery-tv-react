@@ -43,7 +43,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
   const startPolling = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(fetchQueue, 30000);
+    intervalRef.current = setInterval(fetchQueue, 45000);
   }, [fetchQueue]);
 
   const stopPolling = useCallback(() => {
@@ -56,7 +56,15 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   useEffect(() => {
     fetchQueue();
     startPolling();
-    return () => stopPolling();
+    const onVis = () => {
+      if (document.hidden) stopPolling();
+      else { fetchQueue(); startPolling(); }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [fetchQueue, startPolling, stopPolling]);
 
   useEffect(() => {

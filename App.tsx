@@ -84,10 +84,11 @@ function App() {
         return `${dd}.${mm}`;
       })();
 
-      const [data, tasks] = await Promise.all([
-        api.fetchDashboard().catch(() => null),
-        api.fetchHistory(todayStr).catch(() => null)
-      ]);
+      // Single HTTP call: bundle auto-falls back to 2 parallel calls if backend
+      // route is not deployed yet (api.fetchDashboardBundle handles that).
+      const bundle = await api.fetchDashboardBundle(todayStr).catch(() => null);
+      const data = bundle?.dashboard ?? null;
+      const tasks = bundle?.tasks ?? null;
 
       if (data) {
         setDashboardData((prev) => {
@@ -146,7 +147,7 @@ function App() {
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
-      if (!intervalId) { intervalId = setInterval(refreshDashboard, 30000); }
+      if (!intervalId) { intervalId = setInterval(refreshDashboard, 45000); }
     };
     const stopPolling = () => {
       if (intervalId) { clearInterval(intervalId); intervalId = null; }

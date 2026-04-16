@@ -215,7 +215,7 @@ export const parseDashboardData = (text: string): DashboardData | null => {
 
 export const api = {
   fetchDashboard: async (): Promise<DashboardData | null> => {
-    return cachedFetch("dashboard", 10000, async () => {
+    return cachedFetch("dashboard", 60000, async () => {
       const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}`, { timeout: 60000 });
       const text = await res.text();
       return parseDashboardData(text);
@@ -223,7 +223,7 @@ export const api = {
   },
 
   fetchTasks: async (mode: "get_operator_tasks" | "get_stats"): Promise<Task[]> => {
-    return cachedFetch(`tasks_${mode}`, 10000, async () => {
+    return cachedFetch(`tasks_${mode}`, 60000, async () => {
       const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=${mode}`);
       if (!res) return [];
       const data = await res.json();
@@ -232,11 +232,35 @@ export const api = {
   },
 
   fetchHistory: async (dateStr: string): Promise<Task[]> => {
-    return cachedFetch(`history_${dateStr}`, 20000, async () => {
+    return cachedFetch(`history_${dateStr}`, 60000, async () => {
       const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
       if (!res) return [];
       const data = await res.json();
       return Array.isArray(data) ? data : [];
+    });
+  },
+
+  // One HTTP request that returns { dashboard, tasks }. Falls back to two parallel
+  // legacy calls when backend does not yet expose get_dashboard_bundle — this lets
+  // frontend and backend roll out independently without breaking prod.
+  fetchDashboardBundle: async (dateStr: string): Promise<{ dashboard: DashboardData | null; tasks: Task[] | null }> => {
+    return cachedFetch(`bundle_${dateStr}`, 60000, async () => {
+      try {
+        const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_dashboard_bundle&date=${encodeURIComponent(dateStr)}`);
+        if (!res) return { dashboard: null, tasks: null };
+        const text = await res.text();
+        if (!text || text.includes("UNKNOWN_MODE")) throw new Error("NO_BUNDLE_ROUTE");
+        const json = JSON.parse(text);
+        const dashboard = json?.dashboardText ? parseDashboardData(json.dashboardText) : null;
+        const tasks = Array.isArray(json?.tasks) ? json.tasks as Task[] : null;
+        return { dashboard, tasks };
+      } catch {
+        const [dashboard, tasks] = await Promise.all([
+          api.fetchDashboard().catch(() => null),
+          api.fetchHistory(dateStr).catch(() => null),
+        ]);
+        return { dashboard, tasks };
+      }
     });
   },
 
@@ -248,7 +272,7 @@ export const api = {
   },
 
   fetchLotTracker: async (lot: string): Promise<LotContainer[]> => {
-    return cachedFetch(`lot_${lot}`, 15000, async () => {
+    return cachedFetch(`lot_${lot}`, 60000, async () => {
       const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_lot_tracker&lot=${encodeURIComponent(lot)}`);
       if (!res) return [];
       const data = await res.json();
@@ -257,7 +281,7 @@ export const api = {
   },
 
   getPriorityLot: async (): Promise<string> => {
-    return cachedFetch("priority_lot", 10000, async () => {
+    return cachedFetch("priority_lot", 600000, async () => {
       const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_priority_lot`);
       if (!res) return "";
       const data = await res.json();

@@ -40,7 +40,8 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
   // The active lot: URL param takes priority, otherwise read from sheet
   const lot = lotProp || lotFromSheet;
 
-  // Poll priority lot from sheet (if no URL param)
+  // Poll priority lot from sheet (if no URL param).
+  // Priority lot changes at most a few times per day → 5 min is plenty, cuts req/day ~10x.
   useEffect(() => {
     if (lotProp) return; // URL param provided, skip
     const fetchLot = async () => {
@@ -48,7 +49,7 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
       setLotFromSheet(l);
     };
     fetchLot();
-    const id = setInterval(fetchLot, 30000);
+    const id = setInterval(fetchLot, 300000);
     return () => clearInterval(id);
   }, [lotProp]);
 
@@ -59,16 +60,21 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
     setLoading(false);
   }, [lot]);
 
-  // Polling
+  // Polling with pause-on-hidden. fetchLotTracker scans up to 30 sheets server-side,
+  // so skipping ticks on hidden tabs materially reduces GAS load.
   useEffect(() => {
     fetchData();
-    const id = setInterval(fetchData, 30000);
+    let id: ReturnType<typeof setInterval> | null = null;
+    const start = () => { if (!id) id = setInterval(fetchData, 45000); };
+    const stop  = () => { if (id) { clearInterval(id); id = null; } };
+    start();
 
     const onVis = () => {
-      if (!document.hidden) fetchData();
+      if (document.hidden) stop();
+      else { fetchData(); start(); }
     };
     document.addEventListener('visibilitychange', onVis);
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+    return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
   }, [fetchData]);
 
   // Tick every 30s for live timers (elapsed minutes in JSX)

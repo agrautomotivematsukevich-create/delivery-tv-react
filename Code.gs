@@ -55,6 +55,7 @@ var ROUTES = {
   "get_full_plan":         { handler: handleGetFullPlan,        auth: true,  lock: false },
   "get_lot_tracker":       { handler: handleGetLotTracker,      auth: true,  lock: false },
   "get_priority_lot":      { handler: handleGetPriorityLot,     auth: true,  lock: false },
+  "get_dashboard_bundle":  { handler: handleGetDashboardBundle,  auth: true,  lock: false },
 
   // ── Authenticated writes (user token required) ──
   "task_action":           { handler: handleTaskAction,         auth: true,  lock: true  },
@@ -158,8 +159,33 @@ function generateToken() {
   return Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
 }
 
+// Short-lived cache of token → caller identity. Each positive hit saves one
+// openById(SECRET_AUTH_DB) + full-sheet getDisplayValues() call. 60s TTL means
+// a revoked/rejected user may keep access for up to 60s; login/approve/reject
+// explicitly invalidate via invalidateTokenCache().
+var TOKEN_CACHE_TTL_OK  = 60;
+var TOKEN_CACHE_TTL_NEG = 30;
+
+function tokenCacheKey(token) {
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, token);
+  var hex = "";
+  for (var i = 0; i < bytes.length; i++) hex += ((bytes[i] + 256) & 255).toString(16).slice(-2);
+  return "tok_" + hex;
+}
+
+function invalidateTokenCache(token) {
+  if (!token) return;
+  try { CacheService.getScriptCache().remove(tokenCacheKey(token)); } catch (e) {}
+}
+
 function verifyToken(token) {
   if (!token || typeof token !== "string" || token.length < 20) return null;
+
+  var cache = CacheService.getScriptCache();
+  var ck = tokenCacheKey(token);
+  var cached = cache.get(ck);
+  if (cached === "NEG") return null;
+  if (cached) { try { return JSON.parse(cached); } catch (e) {} }
 
   var sheet = getAuthSheet();
   if (!sheet) return null;
@@ -170,14 +196,41 @@ function verifyToken(token) {
   var data = sheet.getRange(2, USER_COL_START, lr - 1, USER_COL_COUNT).getDisplayValues();
   for (var i = 0; i < data.length; i++) {
     if (data[i][COL_TOKEN] === token && data[i][COL_STATUS] === "APPROVED") {
-      return {
+      var caller = {
         login: data[i][COL_LOGIN],
         name:  data[i][COL_NAME],
         role:  data[i][COL_ROLE]
       };
+      try { cache.put(ck, JSON.stringify(caller), TOKEN_CACHE_TTL_OK); } catch (e) {}
+      return caller;
     }
   }
+  try { cache.put(ck, "NEG", TOKEN_CACHE_TTL_NEG); } catch (e) {}
   return null;
+}
+
+// ── Today-sheet read cache ──────────────────────────────────────────────────
+// Shared 15s cache for handleReadComplex + handleGetStats keyed by today's
+// sheet name. With N clients polling in parallel, only one actually reads the
+// sheet per 15s window; others hit CacheService. Write handlers invalidate
+// immediately, so operator UI never sees its own stale action.
+var TODAY_READ_CACHE_TTL = 15;
+
+function todayCacheKey(prefix) { return prefix + "_" + getTodaySheetName(); }
+
+function invalidateTodayReadCache() {
+  try {
+    var c = CacheService.getScriptCache();
+    c.removeAll([todayCacheKey("rcx"), todayCacheKey("stats")]);
+  } catch (e) {}
+}
+
+function invalidateDateReadCache(dateStr) {
+  if (!dateStr) return;
+  try {
+    var c = CacheService.getScriptCache();
+    c.removeAll(["rcx_" + dateStr, "stats_" + dateStr]);
+  } catch (e) {}
 }
 
 
@@ -417,10 +470,12 @@ function handleLogin(params, ss) {
       // Пароль верный, теперь смотрим статус
       if (status === "APPROVED") {
         cache.remove(cacheKey);
+        var prevToken = data[i][COL_TOKEN];
+        invalidateTokenCache(prevToken);
         var token = generateToken();
         authSheet.getRange(i + 2, USER_COL_START + COL_TOKEN).setValue(token);
         return textOut("CORRECT|" + data[i][COL_NAME] + "|" + data[i][COL_ROLE] + "|" + token);
-      } 
+      }
       else if (status === "PENDING") {
         return jsonOut({ error: "PENDING" });
       } 
@@ -485,6 +540,11 @@ function handleRegister(params, ss) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function handleReadComplex(params, ss) {
+  var cache = CacheService.getScriptCache();
+  var ck = todayCacheKey("rcx");
+  var hit = cache.get(ck);
+  if (hit) return textOut(hit);
+
   var sheet = ss.getSheetByName(getTodaySheetName());
   // 1. Заглушка теперь отдает 6 нулей (3 для факта, 3 для плана)
   if (!sheet && !isNightCarryover()) return textOut("WAIT;0|0;---;00:00;0|0|0|0|0|0;0\n###MSG###");
@@ -603,10 +663,17 @@ function handleReadComplex(params, ss) {
   var body = status + ";" + done + "|" + total + ";" + nextId + ";" + nextTime + ";" + shiftString + ";" + onTerritory;
   if (activeRows.length > 0) body += "\n" + activeRows.join("\n");
 
-  return textOut(body + "\n###MSG###");
+  var out = body + "\n###MSG###";
+  try { cache.put(ck, out, TODAY_READ_CACHE_TTL); } catch (e) {}
+  return textOut(out);
 }
 
 function handleGetStats(params, ss) {
+  var cache = CacheService.getScriptCache();
+  var ck = todayCacheKey("stats");
+  var hit = cache.get(ck);
+  if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
+
   var tasks = [];
   var seenIds = {};
 
@@ -652,7 +719,25 @@ function handleGetStats(params, ss) {
       }
     }
   }
-  return jsonOut(tasks);
+  var json = JSON.stringify(tasks);
+  try { CacheService.getScriptCache().put(ck, json, TODAY_READ_CACHE_TTL); } catch (e) {}
+  return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
+}
+
+// Bundle endpoint: one HTTP call → {dashboardText, tasks}.
+// Intentionally delegates to existing handlers so the contract cannot drift.
+// Both handlers share the 15s server-side cache on today's sheet, so a single
+// sheet read is amortized across all bundle+legacy callers in the TTL window.
+// Future optimization: single-pass implementation that reads the sheet once
+// and builds both outputs — not worth the risk until prod is stable.
+function handleGetDashboardBundle(params, ss) {
+  var dashboardOut = handleReadComplex(params, ss);
+  var statsOut = handleGetStats(params, ss);
+  var dashboardText = dashboardOut.getContent();
+  var tasksJson = statsOut.getContent();
+  var tasks;
+  try { tasks = JSON.parse(tasksJson); } catch (e) { tasks = []; }
+  return jsonOut({ dashboardText: dashboardText, tasks: tasks });
 }
 
 function handleGetHistory(params, ss) {
@@ -722,6 +807,8 @@ function handleUpdateAccounting(params, ss) {
   for (var i = 0; i < ids.length; i++) {
     if (ids[i][0] === id) {
       sheet.getRange(i + 5, col).setValue(mapAccountingToSheet(status));
+      invalidateTodayReadCache();
+      invalidateDateReadCache(sheetName);
       return jsonOut({ status: "OK" });
     }
   }
@@ -858,7 +945,7 @@ function handleTaskAction(params, ss) {
   var sheet = ss.getSheetByName(todayName);
   if (sheet) {
     var result = applyTaskAction(sheet, id, act, time, params);
-    if (result) return result;
+    if (result) { invalidateTodayReadCache(); return result; }
   }
 
   if (isNightCarryover()) {
@@ -866,7 +953,7 @@ function handleTaskAction(params, ss) {
     var ySheet = ss.getSheetByName(yName);
     if (ySheet) {
       var yResult = applyTaskAction(ySheet, id, act, time, params);
-      if (yResult) return yResult;
+      if (yResult) { invalidateTodayReadCache(); invalidateDateReadCache(yName); return yResult; }
     }
   }
   return textOut("ID_NOT_FOUND");
@@ -992,6 +1079,8 @@ function handleUpdateContainerRow(params, ss) {
 
   var vals = [[(params.lot || ""), (params.ws || ""), (params.pallets || ""), (params.id || ""), (params.phone || ""), (params.eta || "")]];
   sheet.getRange(rowIndex, 2, 1, 6).setValues(vals);
+  invalidateDateReadCache(dateStr);
+  if (dateStr === getTodaySheetName()) invalidateTodayReadCache();
   return textOut("UPDATED");
 }
 
@@ -1027,6 +1116,8 @@ function handleCreatePlan(params, ss) {
   if (rows.length > 0) {
     sheet.getRange(lastRow + 1, 1, rows.length, 15).setValues(rows);
   }
+  invalidateDateReadCache(dateStr);
+  if (dateStr === getTodaySheetName()) invalidateTodayReadCache();
   return textOut("CREATED");
 }
 
@@ -1101,11 +1192,13 @@ function handleApproveUser(params, ss) {
   var lr = authSheet.getLastRow();
   if (lr < 2) return textOut("NOT_FOUND");
 
-  var data = authSheet.getRange(2, USER_COL_START, lr - 1, 1).getDisplayValues();
+  // Row-level read so we can also grab the stored token for cache invalidation.
+  var data = authSheet.getRange(2, USER_COL_START, lr - 1, USER_COL_COUNT).getDisplayValues();
   for (var i = 0; i < data.length; i++) {
-    if (data[i][0].toLowerCase().trim() === login) {
+    if (data[i][COL_LOGIN].toLowerCase().trim() === login) {
       authSheet.getRange(i + 2, USER_COL_START + COL_ROLE).setValue(role);
       authSheet.getRange(i + 2, USER_COL_START + COL_STATUS).setValue("APPROVED");
+      invalidateTokenCache(data[i][COL_TOKEN]);
       return textOut("APPROVED");
     }
   }
@@ -1122,11 +1215,13 @@ function handleRejectUser(params, ss) {
   var lr = authSheet.getLastRow();
   if (lr < 2) return textOut("NOT_FOUND");
 
-  var data = authSheet.getRange(2, USER_COL_START, lr - 1, 1).getDisplayValues();
+  // Row-level read so we can invalidate the cached token for the rejected user.
+  var data = authSheet.getRange(2, USER_COL_START, lr - 1, USER_COL_COUNT).getDisplayValues();
   for (var i = 0; i < data.length; i++) {
-    if (data[i][0].toLowerCase().trim() === login) {
+    if (data[i][COL_LOGIN].toLowerCase().trim() === login) {
       // 🚀 Вместо удаления строки, просто меняем её статус на REJECTED
       authSheet.getRange(i + 2, USER_COL_START + COL_STATUS).setValue("REJECTED");
+      invalidateTokenCache(data[i][COL_TOKEN]);
       return textOut("REJECTED");
     }
   }
