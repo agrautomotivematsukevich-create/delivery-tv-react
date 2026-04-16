@@ -576,7 +576,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
 
         <div className="flex flex-col gap-3 h-full min-h-0 min-w-0">
           {!isVictory && !isEmpty && (
-            <div className={`${glass} p-5 flex flex-col min-h-0 overflow-hidden`}>
+            <div className={`${glass} p-5 flex flex-col overflow-hidden shrink-0`}>
               <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-1 shrink-0">{t.next}</div>
               <div className="font-mono font-bold tracking-tighter bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent break-all leading-tight shrink-0"
                 style={{ fontSize: 'clamp(2.5rem, 5vw, 4.5rem)' }}>
@@ -586,7 +586,8 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
                 <Clock className="w-4 h-4 shrink-0" />
                 {calculateTimeDiff(data.nextTime, t)}
               </div>
-              <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 min-h-0">
+              {/* Ограничение max-h-48 не даёт списку "на территории" вытеснять карточку "В работе" ниже */}
+              <div className="overflow-y-auto custom-scrollbar pr-2 mt-2 max-h-48">
                 <OnTerritoryBlock arrivedTasks={arrivedTasks} tvMode />
               </div>
             </div>
