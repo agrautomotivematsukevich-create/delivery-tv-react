@@ -110,13 +110,12 @@ async function authGet(baseUrl: string): Promise<Response | null> {
 
   const res = await fetchWithTimeout(url);
 
-  const clone = res.clone();
-  const txt = await clone.text();
+  const txt = await res.text();
   if (txt.includes('"error"') && (txt.includes("AUTH_REQUIRED") || txt.includes("ADMIN_REQUIRED"))) {
     handleAuthError();
   }
 
-  return res;
+  return new Response(txt, { status: res.status, statusText: res.statusText, headers: res.headers });
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -138,13 +137,12 @@ async function authPost(payload: Record<string, unknown>, opts: PostOptions = {}
     timeout: opts.timeout,
   });
 
-  const clone = res.clone();
-  const txt = await clone.text();
+  const txt = await res.text();
   if (txt.includes("AUTH_REQUIRED") || txt.includes("ADMIN_REQUIRED")) {
     handleAuthError();
   }
 
-  return res;
+  return new Response(txt, { status: res.status, statusText: res.statusText, headers: res.headers });
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -218,107 +216,67 @@ export const parseDashboardData = (text: string): DashboardData | null => {
 export const api = {
   fetchDashboard: async (): Promise<DashboardData | null> => {
     return cachedFetch("dashboard", 10000, async () => {
-      try {
-        const res = await fetch(`${SCRIPT_URL}?nocache=${Date.now()}`);
-        if (!res.ok) return null; 
-        const text = await res.text();
-        return parseDashboardData(text);
-      } catch (e: unknown) {
-        return null;
-      }
+      const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}`, { timeout: 60000 });
+      const text = await res.text();
+      return parseDashboardData(text);
     });
   },
 
   fetchTasks: async (mode: "get_operator_tasks" | "get_stats"): Promise<Task[]> => {
     return cachedFetch(`tasks_${mode}`, 10000, async () => {
-      try {
-        const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=${mode}`);
-        if (!res) return [];
-        const data = await res.json();
-        return Array.isArray(data) ? data : [];
-      } catch (e: unknown) {
-        if (e instanceof Error && e.message === "AUTH_EXPIRED") throw e;
-        return [];
-      }
+      const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=${mode}`);
+      if (!res) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
     });
   },
 
   fetchHistory: async (dateStr: string): Promise<Task[]> => {
     return cachedFetch(`history_${dateStr}`, 20000, async () => {
-      try {
-        const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
-        if (!res) return [];
-        const data = await res.json();
-        return Array.isArray(data) ? data : [];
-      } catch (e: unknown) {
-        if (e instanceof Error && e.message === "AUTH_EXPIRED") throw e;
-        return [];
-      }
+      const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
+      if (!res) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
     });
   },
 
   fetchFullPlan: async (dateStr: string): Promise<PlanRow[]> => {
-    try {
-      const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_full_plan&date=${encodeURIComponent(dateStr)}`);
-      if (!res) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch (e: unknown) {
-      if (e instanceof Error && e.message === "AUTH_EXPIRED") throw e;
-      return [];
-    }
+    const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_full_plan&date=${encodeURIComponent(dateStr)}`);
+    if (!res) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   },
 
   fetchLotTracker: async (lot: string): Promise<LotContainer[]> => {
     return cachedFetch(`lot_${lot}`, 15000, async () => {
-      try {
-        const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_lot_tracker&lot=${encodeURIComponent(lot)}`);
-        if (!res) return [];
-        const data = await res.json();
-        return Array.isArray(data) ? data : [];
-      } catch (e: unknown) {
-        if (e instanceof Error && e.message === "AUTH_EXPIRED") throw e;
-        return [];
-      }
+      const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_lot_tracker&lot=${encodeURIComponent(lot)}`);
+      if (!res) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
     });
   },
 
   getPriorityLot: async (): Promise<string> => {
     return cachedFetch("priority_lot", 10000, async () => {
-      try {
-        const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_priority_lot`);
-        if (!res) return "";
-        const data = await res.json();
-        return (data?.lot || "") as string;
-      } catch (e: unknown) {
-        if (e instanceof Error && e.message === "AUTH_EXPIRED") throw e;
-        return "";
-      }
+      const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_priority_lot`);
+      if (!res) return "";
+      const data = await res.json();
+      return (data?.lot || "") as string;
     });
   },
 
   fetchAllContainers: async (): Promise<string[]> => {
-    try {
-      const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_all_containers`);
-      if (!res) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch (e: unknown) {
-      if (e instanceof Error && e.message === "AUTH_EXPIRED") throw e;
-      return [];
-    }
+    const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_all_containers`);
+    if (!res) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   },
 
   fetchIssues: async (): Promise<Issue[]> => {
-    try {
-      const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_issues`);
-      if (!res) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch (e: unknown) {
-      if (e instanceof Error && e.message === "AUTH_EXPIRED") throw e;
-      return [];
-    }
+    const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_issues`);
+    if (!res) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   },
 
   getProxyImage: async (url: string): Promise<string> => {

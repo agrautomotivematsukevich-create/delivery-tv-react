@@ -86,7 +86,7 @@ function App() {
 
       const [data, tasks] = await Promise.all([
         api.fetchDashboard().catch(() => null),
-        api.fetchHistory(todayStr).catch(() => [])
+        api.fetchHistory(todayStr).catch(() => null)
       ]);
 
       if (data) {
@@ -100,7 +100,8 @@ function App() {
       }
 
       // Защита от лишних ререндеров: сравниваем tasks через deepEqual
-      if (tasks) {
+      // При ошибке (tasks === null) сохраняем предыдущие данные (Last Known Good Data)
+      if (tasks !== null) {
         if (!deepEqual(prevTasksRef.current, tasks)) {
           prevTasksRef.current = tasks;
           setAllTasks(tasks);

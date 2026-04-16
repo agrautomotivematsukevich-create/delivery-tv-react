@@ -544,7 +544,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
   if (tvMode) {
     return (
       <div className="tv-root grid h-full min-h-0" style={{ gridTemplateColumns: '360px 1fr 320px', gap: '14px' }}>
-        <div className={`${glass} relative flex flex-col items-center p-6 overflow-hidden`}>
+        <div className={`${glass} relative flex flex-col items-center p-6 overflow-hidden min-w-0`}>
           <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[160px] h-[160px] bg-accent-green blur-[100px] opacity-5 pointer-events-none" />
           <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] w-full mb-1">{t.progress}</div>
 
@@ -574,19 +574,21 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 h-full min-h-0">
+        <div className="flex flex-col gap-3 h-full min-h-0 min-w-0">
           {!isVictory && !isEmpty && (
-            <div className={`${glass} p-5`}>
-              <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-1">{t.next}</div>
-              <div className="font-mono font-bold tracking-tighter bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent break-all leading-tight"
+            <div className={`${glass} p-5 flex flex-col min-h-0 overflow-hidden`}>
+              <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-1 shrink-0">{t.next}</div>
+              <div className="font-mono font-bold tracking-tighter bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent break-all leading-tight shrink-0"
                 style={{ fontSize: 'clamp(2.5rem, 5vw, 4.5rem)' }}>
                 {data.nextId}
               </div>
-              <div className="text-base text-accent-blue font-semibold flex items-center gap-2 mt-1">
+              <div className="text-base text-accent-blue font-semibold flex items-center gap-2 mt-1 shrink-0">
                 <Clock className="w-4 h-4 shrink-0" />
                 {calculateTimeDiff(data.nextTime, t)}
               </div>
-              <OnTerritoryBlock arrivedTasks={arrivedTasks} tvMode />
+              <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 min-h-0">
+                <OnTerritoryBlock arrivedTasks={arrivedTasks} tvMode />
+              </div>
             </div>
           )}
 
@@ -633,7 +635,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
           )}
         </div>
 
-        <div className={`${glass} flex flex-col p-5 overflow-hidden`}>
+        <div className={`${glass} flex flex-col p-5 overflow-hidden min-w-0`}>
           <div className="flex-1 min-h-0">
             <DockZonesGrid activeList={data.activeList} allTasks={allTasks} tvMode />
           </div>
