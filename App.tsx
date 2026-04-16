@@ -146,7 +146,7 @@ function App() {
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
-      if (!intervalId) { intervalId = setInterval(refreshDashboard, 15000); }
+      if (!intervalId) { intervalId = setInterval(refreshDashboard, 30000); }
     };
     const stopPolling = () => {
       if (intervalId) { clearInterval(intervalId); intervalId = null; }
