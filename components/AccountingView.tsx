@@ -124,7 +124,7 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
   }, [doneTasks]);
 
   return (
-    <div className="flex flex-col flex-1 h-[calc(100vh-140px)] min-h-0 w-full">
+    <div className="flex flex-col flex-1 min-h-0 w-full">
       <div className="flex-1 overflow-y-auto custom-scrollbar relative">
         {/* Sticky Header */}
         <div className="sticky top-0 z-50 bg-[#191B25] pt-2 pb-4 shadow-xl border-b border-white/5">
