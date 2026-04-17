@@ -679,7 +679,7 @@ function handleGetStats(params, ss) {
 
   var sheet = ss.getSheetByName(getTodaySheetName());
   if (sheet && sheet.getLastRow() >= 5) {
-    var data = sheet.getRange(5, 1, sheet.getLastRow() - 4, 15).getDisplayValues();
+    var data = sheet.getRange(5, 1, sheet.getLastRow() - 4, 16).getDisplayValues();
     for (var i = 0; i < data.length; i++) {
       var row = data[i];
       var id = row[4];
@@ -693,7 +693,8 @@ function handleGetStats(params, ss) {
           id: id, type: row[2], pallets: row[3], phone: row[5], eta: row[6],
           status: status, time: timeDisplay, start_time: row[7], end_time: row[8],
           zone: row[10] || "", operator: row[11] || "",
-          photo_gen: row[12] || "", photo_seal: row[13] || ""
+          photo_gen: row[12] || "", photo_seal: row[13] || "",
+          arrival_time: row[15] || ""
         });
       }
     }
@@ -702,7 +703,7 @@ function handleGetStats(params, ss) {
   if (isNightCarryover()) {
     var ySheet = ss.getSheetByName(getYesterdaySheetName());
     if (ySheet && ySheet.getLastRow() >= 5) {
-      var yData = ySheet.getRange(5, 1, ySheet.getLastRow() - 4, 15).getDisplayValues();
+      var yData = ySheet.getRange(5, 1, ySheet.getLastRow() - 4, 16).getDisplayValues();
       for (var j = 0; j < yData.length; j++) {
         var yRow = yData[j];
         var yId = yRow[4];
@@ -713,7 +714,8 @@ function handleGetStats(params, ss) {
             id: yId, type: yRow[2], pallets: yRow[3], phone: yRow[5], eta: yRow[6],
             status: yStatus, time: yTime, start_time: yRow[7], end_time: "",
             zone: yRow[10] || "", operator: yRow[11] || "",
-            photo_gen: yRow[12] || "", photo_seal: yRow[13] || ""
+            photo_gen: yRow[12] || "", photo_seal: yRow[13] || "",
+            arrival_time: yRow[15] || ""
           });
         }
       }
