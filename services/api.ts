@@ -247,7 +247,7 @@ export const api = {
     return cachedFetch(`bundle_${dateStr}`, 60000, async () => {
       try {
         const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_dashboard_bundle&date=${encodeURIComponent(dateStr)}`);
-        if (!res) return { dashboard: null, tasks: null };
+        if (!res) throw new Error("NO_TOKEN");
         const text = await res.text();
         if (!text || text.includes("UNKNOWN_MODE")) throw new Error("NO_BUNDLE_ROUTE");
         const json = JSON.parse(text);
