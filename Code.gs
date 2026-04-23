@@ -12,7 +12,8 @@ var ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
 var MAX_PHOTO_BASE64_LEN = 7000000;  // ~5 MB decoded
 
 // TV displays use a static API key instead of user tokens.
-var TV_API_KEY = "TV-AGR-2026-SECURE-PANEL-KEY";  // TODO: replace before deploy
+// Value stored in Apps Script Project Settings → Script Properties → TV_API_KEY
+var TV_API_KEY = PropertiesService.getScriptProperties().getProperty('TV_API_KEY') || '';
 
 // Rate-limiting for login
 var LOGIN_MAX_ATTEMPTS   = 5;    // max failures before lockout
@@ -20,7 +21,8 @@ var LOGIN_WINDOW_SECONDS = 300;  // 5-minute window
 var LOGIN_FAIL_DELAY_MS  = 1500; // artificial delay on every failed attempt
 
 // ── SECRET DATABASE CONFIGURATION (ISOLATION) ────────────────────────────────
-var SECRET_AUTH_DB_ID = '1WjKGZtb1LjuBbSgorxjBP5zS3DGI_dssnwEUBfq5y4Y'; 
+// Value stored in Apps Script Project Settings → Script Properties → SECRET_AUTH_DB_ID
+var SECRET_AUTH_DB_ID = PropertiesService.getScriptProperties().getProperty('SECRET_AUTH_DB_ID') || '';
 var AUTH_SHEET_NAME   = 'USERS'; // Имя листа в секретной таблице
 
 // Layout for the Secret DB (row 2+):

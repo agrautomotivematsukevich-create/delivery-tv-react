@@ -1,6 +1,9 @@
 import { Lang, TranslationSet } from "./types";
 
-export const SCRIPT_URL = import.meta.env.VITE_SCRIPT_URL;
+export const SCRIPT_URL: string = import.meta.env.VITE_SCRIPT_URL || (() => {
+  if (import.meta.env.DEV) console.error('[config] VITE_SCRIPT_URL is not set or empty — all API calls will fail');
+  return '';
+})();
 
 export const TRANSLATIONS: Record<Lang, TranslationSet> = {
   RU: {

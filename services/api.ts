@@ -98,9 +98,35 @@ async function cachedFetch<T>(key: string, ttlMs: number, fn: () => Promise<T>):
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// AUTH-AWARE GET HELPER
+// AUTH-AWARE READ HELPER (POST-based — token never appears in URL)
+//
+// GAS Web Apps do not expose e.headers, so custom request headers cannot be
+// read server-side. The only safe alternative to query-string tokens is the
+// POST body. dispatch() in Code.gs is HTTP-method agnostic: doGet and doPost
+// both call dispatch(params), so any read route works equally via POST.
+// This also eliminates the need for ?nocache= hacks — POST responses are never
+// cached by GAS infrastructure.
 // ══════════════════════════════════════════════════════════════════════════════
 
+async function authRead(mode: string, extraParams: Record<string, string> = {}): Promise<Response | null> {
+  const token = getToken();
+  if (!token) return null;
+
+  const res = await fetchWithTimeout(SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ mode, token, ...extraParams }),
+  });
+
+  const txt = await res.text();
+  if (txt.includes("AUTH_REQUIRED") || txt.includes("ADMIN_REQUIRED")) {
+    handleAuthError();
+  }
+
+  return new Response(txt, { status: res.status, statusText: res.statusText, headers: res.headers });
+}
+
+/** @deprecated Token in URL — use authRead() instead. Kept for emergency rollback only. */
 async function authGet(baseUrl: string): Promise<Response | null> {
   const token = getToken();
   if (!token) return null;
@@ -224,7 +250,7 @@ export const api = {
 
   fetchTasks: async (mode: "get_operator_tasks" | "get_stats"): Promise<Task[]> => {
     return cachedFetch(`tasks_${mode}`, 60000, async () => {
-      const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=${mode}`);
+      const res = await authRead(mode);
       if (!res) return [];
       const data = await res.json();
       return Array.isArray(data) ? data : [];
@@ -233,7 +259,7 @@ export const api = {
 
   fetchHistory: async (dateStr: string): Promise<Task[]> => {
     return cachedFetch(`history_${dateStr}`, 60000, async () => {
-      const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_history&date=${encodeURIComponent(dateStr)}`);
+      const res = await authRead("get_history", { date: dateStr });
       if (!res) return [];
       const data = await res.json();
       return Array.isArray(data) ? data : [];
@@ -246,7 +272,7 @@ export const api = {
   fetchDashboardBundle: async (dateStr: string): Promise<{ dashboard: DashboardData | null; tasks: Task[] | null }> => {
     return cachedFetch(`bundle_${dateStr}`, 60000, async () => {
       try {
-        const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_dashboard_bundle&date=${encodeURIComponent(dateStr)}`);
+        const res = await authRead("get_dashboard_bundle", { date: dateStr });
         if (!res) throw new Error("NO_TOKEN");
         const text = await res.text();
         if (!text || text.includes("UNKNOWN_MODE")) throw new Error("NO_BUNDLE_ROUTE");
@@ -265,7 +291,7 @@ export const api = {
   },
 
   fetchFullPlan: async (dateStr: string): Promise<PlanRow[]> => {
-    const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_full_plan&date=${encodeURIComponent(dateStr)}`);
+    const res = await authRead("get_full_plan", { date: dateStr });
     if (!res) return [];
     const data = await res.json();
     return Array.isArray(data) ? data : [];
@@ -273,7 +299,7 @@ export const api = {
 
   fetchLotTracker: async (lot: string): Promise<LotContainer[]> => {
     return cachedFetch(`lot_${lot}`, 60000, async () => {
-      const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_lot_tracker&lot=${encodeURIComponent(lot)}`);
+      const res = await authRead("get_lot_tracker", { lot });
       if (!res) return [];
       const data = await res.json();
       return Array.isArray(data) ? data : [];
@@ -282,7 +308,7 @@ export const api = {
 
   getPriorityLot: async (): Promise<string> => {
     return cachedFetch("priority_lot", 600000, async () => {
-      const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_priority_lot`);
+      const res = await authRead("get_priority_lot");
       if (!res) return "";
       const data = await res.json();
       return (data?.lot || "") as string;
@@ -290,14 +316,14 @@ export const api = {
   },
 
   fetchAllContainers: async (): Promise<string[]> => {
-    const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_all_containers`);
+    const res = await authRead("get_all_containers");
     if (!res) return [];
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   },
 
   fetchIssues: async (): Promise<Issue[]> => {
-    const res = await authGet(`${SCRIPT_URL}?nocache=${Date.now()}&mode=get_issues`);
+    const res = await authRead("get_issues");
     if (!res) return [];
     const data = await res.json();
     return Array.isArray(data) ? data : [];

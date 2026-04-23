@@ -49,8 +49,11 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
       setLotFromSheet(l);
     };
     fetchLot();
-    const id = setInterval(fetchLot, 300000);
-    return () => clearInterval(id);
+    let id: ReturnType<typeof setInterval> | null = setInterval(fetchLot, 300000);
+    const stop  = () => { if (id) { clearInterval(id); id = null; } };
+    const onVis = () => { if (document.hidden) stop(); else { fetchLot(); if (!id) id = setInterval(fetchLot, 300000); } };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
   }, [lotProp]);
 
   const fetchData = useCallback(async () => {

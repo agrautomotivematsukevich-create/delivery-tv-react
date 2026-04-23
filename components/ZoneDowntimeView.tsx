@@ -46,7 +46,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
-    }, 1000);
+    }, 60000);
     return () => clearInterval(timer);
   }, []);
 

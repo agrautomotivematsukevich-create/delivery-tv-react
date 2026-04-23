@@ -36,9 +36,14 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
     if (!lot.trim()) return;
     setLoading(true);
     setActiveLot(lot.trim().toUpperCase());
-    const data = await api.fetchLotTracker(lot.trim());
-    setContainers(data);
-    setLoading(false);
+    try {
+      const data = await api.fetchLotTracker(lot.trim());
+      setContainers(data);
+    } catch {
+      // keep previous results on error
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const handleSetPriority = async () => {

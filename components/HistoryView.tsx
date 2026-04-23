@@ -28,11 +28,16 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
 
   const fetchData = async (d: string) => {
     setLoading(true);
-    const [y, m, day] = d.split('-');
-    const formattedDate = `${day}.${m}`;
-    const data = await api.fetchHistory(formattedDate);
-    setTasks(data);
-    setLoading(false);
+    try {
+      const [, m, day] = d.split('-');
+      const formattedDate = `${day}.${m}`;
+      const data = await api.fetchHistory(formattedDate);
+      setTasks(data);
+    } catch {
+      // keep previous tasks on network error (LKG pattern)
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {

@@ -3,6 +3,8 @@ import { parseHHMM } from './time';
 
 export type ShiftName = 'morning' | 'evening' | 'night' | 'none';
 
+// SHIFT BOUNDARIES — must stay in sync with Code.gs::handleReadComplex (search "isNightCarryover")
+// morning: 07:50–16:50 (470–1010 min), evening: 16:50–01:50 (≥1010 or <110), night: 01:50–07:50 (110–470)
 export function currentShift(): ShiftName {
   const m = new Date().getHours() * 60 + new Date().getMinutes();
   if (m >= 470 && m < 1010) return 'morning';

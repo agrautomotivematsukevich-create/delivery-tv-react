@@ -7,6 +7,13 @@
 
 import { getToken } from './api';
 
+const FLUSH_TIMEOUT_MS = 30000;
+function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), FLUSH_TIMEOUT_MS);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+}
+
 const DB_NAME = 'wh_offline_queue';
 const STORE_NAME = 'pending_actions';
 const DB_VERSION = 1;
@@ -160,7 +167,7 @@ export const offlineQueue = {
         try {
           if (item.type === 'photo_upload') {
             const payload = item.payload;
-            const res = await fetch(SCRIPT_URL, {
+            const res = await fetchWithTimeout(SCRIPT_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
               body: JSON.stringify({
@@ -175,7 +182,7 @@ export const offlineQueue = {
 
             if (data.status === 'SUCCESS') {
               if (payload.taskId && payload.photoField) {
-                await fetch(SCRIPT_URL, {
+                await fetchWithTimeout(SCRIPT_URL, {
                   method: 'POST',
                   headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                   body: JSON.stringify({
@@ -194,7 +201,7 @@ export const offlineQueue = {
           }
           else if (item.type === 'task_action') {
             const payload = item.payload;
-            const res = await fetch(SCRIPT_URL, {
+            const res = await fetchWithTimeout(SCRIPT_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
               body: JSON.stringify({

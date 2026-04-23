@@ -47,11 +47,16 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
 
   const fetchData = async (d: string) => {
     setLoading(true);
-    const [y, m, day] = d.split('-');
-    const formattedDate = `${day}.${m}`;
-    const data = await api.fetchHistory(formattedDate);
-    setTasks(data);
-    setLoading(false);
+    try {
+      const [, m, day] = d.split('-');
+      const formattedDate = `${day}.${m}`;
+      const data = await api.fetchHistory(formattedDate);
+      setTasks(data);
+    } catch {
+      // keep previous data on network error
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchData(date); }, [date]);
