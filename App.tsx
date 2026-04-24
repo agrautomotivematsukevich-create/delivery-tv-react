@@ -14,7 +14,7 @@ import PageMeta from './components/PageMeta';
 import TVLoginScreen from './components/TVLoginScreen';
 import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
-import { Task, TaskAction } from './types';
+import { DashboardData, Task, TaskAction, TaskActionResult } from './types';
 import { useAppContext } from './components/AppContext';
 import { deepEqual } from './utils/deepEqual';
 
@@ -26,6 +26,53 @@ const ArrivalAnalyticsView = React.lazy(() => import('./components/ArrivalAnalyt
 const LotTrackerTV         = React.lazy(() => import('./components/LotTrackerTV'));
 const LotTrackerView       = React.lazy(() => import('./components/LotTrackerView'));
 const AccountingView       = React.lazy(() => import('./components/AccountingView'));
+
+const DASHBOARD_LKG_KEY = 'warehouse_dashboard_last_nonzero';
+const NIGHT_PLAN_CARRYOVER_END_MIN = 7 * 60;
+
+function getMoscowMinutes(): number {
+  const [hh, mm] = new Date()
+    .toLocaleTimeString('en-GB', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', hour12: false })
+    .split(':')
+    .map(Number);
+  return (hh || 0) * 60 + (mm || 0);
+}
+
+function isNightPlanCarryoverWindow(): boolean {
+  return getMoscowMinutes() < NIGHT_PLAN_CARRYOVER_END_MIN;
+}
+
+function isEmptyDashboardSnapshot(data: DashboardData): boolean {
+  return data.total === 0 && data.done === 0 && data.activeList.length === 0 && data.onTerritory === 0;
+}
+
+function saveLastNonZeroDashboard(data: DashboardData): void {
+  if (data.total <= 0) return;
+  try {
+    localStorage.setItem(DASHBOARD_LKG_KEY, JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {
+    // LKG persistence is best-effort; in-memory state still protects open TVs.
+  }
+}
+
+function loadRecentNonZeroDashboard(): DashboardData | null {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_LKG_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { savedAt?: number; data?: DashboardData };
+    if (!parsed.savedAt || !parsed.data || parsed.data.total <= 0) return null;
+    if (Date.now() - parsed.savedAt > 12 * 60 * 60 * 1000) return null;
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+function getNightCarryoverDashboard(prev: DashboardData | null, next: DashboardData): DashboardData | null {
+  if (!isNightPlanCarryoverWindow() || !isEmptyDashboardSnapshot(next)) return null;
+  if (prev && prev.total > 0) return prev;
+  return loadRecentNonZeroDashboard();
+}
 
 const ViewFallback = () => (
   <div className="flex-1 flex items-center justify-center">
@@ -69,6 +116,11 @@ function App() {
   const isFetchingRef = useRef(false);
   // Ref для хранения предыдущего allTasks (deepEqual проверка)
   const prevTasksRef = useRef<Task[]>([]);
+  const lastDashboardRef = useRef<DashboardData | null>(dashboardData);
+
+  useEffect(() => {
+    lastDashboardRef.current = dashboardData;
+  }, [dashboardData]);
 
   const refreshDashboard = useCallback(async () => {
     // Защита: если предыдущий запрос ещё не завершился — пропускаем
@@ -89,12 +141,16 @@ function App() {
       const bundle = await api.fetchDashboardBundle(todayStr).catch(() => null);
       const data = bundle?.dashboard ?? null;
       const tasks = bundle?.tasks ?? null;
+      const carryoverDashboard = data ? getNightCarryoverDashboard(lastDashboardRef.current, data) : null;
+      const nextDashboard = carryoverDashboard ?? data;
 
-      if (data) {
+      if (nextDashboard) {
         setDashboardData((prev) => {
-          if (deepEqual(prev, data)) return prev;
-          return data;
+          if (deepEqual(prev, nextDashboard)) return prev;
+          lastDashboardRef.current = nextDashboard;
+          return nextDashboard;
         });
+        if (!carryoverDashboard) saveLastNonZeroDashboard(nextDashboard);
         setIsOffline(false);
       } else {
         setIsOffline(true);
@@ -102,14 +158,14 @@ function App() {
 
       // Защита от лишних ререндеров: сравниваем tasks через deepEqual
       // При ошибке (tasks === null) сохраняем предыдущие данные (Last Known Good Data)
-      if (tasks !== null) {
+      if (tasks !== null && !carryoverDashboard) {
         if (!deepEqual(prevTasksRef.current, tasks)) {
           prevTasksRef.current = tasks;
           setAllTasks(tasks);
         }
       }
 
-      return data;
+      return nextDashboard;
     } catch (e) {
       setIsOffline(true);
       return null;
@@ -168,25 +224,25 @@ function App() {
   }, [refreshDashboard, location.pathname, isTV2, isTV, user]);
 
   const handleTaskActionRequest = (task: Task, actionType: 'start' | 'finish') => {
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<TaskActionResult>((resolve, reject) => {
       setCurrentAction({
         id: task.id,
         type: actionType,
         sealPhotoUrl: actionType === 'finish' ? task.photo_seal : undefined,
-        onResolve: resolve,
+        onResolve: (result: TaskActionResult = 'completed') => resolve(result),
         onReject: reject,
       });
     });
   };
 
-  const handleActionSuccess = () => {
-    if (currentAction?.onResolve) currentAction.onResolve();
+  const handleActionSuccess = (result: TaskActionResult = 'completed') => {
+    if (currentAction?.onResolve) currentAction.onResolve(result);
     setCurrentAction(null);
     refreshDashboard();
   };
 
   const handleActionClose = () => {
-    if (currentAction?.onReject) currentAction.onReject();
+    if (currentAction?.onReject) currentAction.onReject(new Error('USER_CANCELLED'));
     setCurrentAction(null);
   };
 

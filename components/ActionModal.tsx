@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertCircle, Camera, CheckCircle, Clock, Image as ImageIcon, Loader2, Lock, Truck, Upload } from 'lucide-react';
+import { AlertCircle, Camera, CheckCircle, Clock, Image as ImageIcon, Loader2, Lock, Truck, Upload, WifiOff } from 'lucide-react';
 import { api } from '../services/api';
-import { TaskAction, TranslationSet, User } from '../types';
+import { offlineQueue } from '../services/offlineQueue';
+import { TaskAction, TaskActionResult, TranslationSet, User } from '../types';
 import { useAppContext } from './AppContext';
 import { vibrate } from '../utils/haptics';
 import { AVAILABLE_ZONES } from '../utils/zones';
@@ -12,13 +13,14 @@ interface ActionModalProps {
   user: User;
   t: TranslationSet;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (result?: TaskActionResult) => void;
 }
 
 type UploadStatus =
   | { state: 'idle' }
   | { state: 'uploading'; step: string; progress: number }
   | { state: 'success' }
+  | { state: 'queued' }
   | { state: 'error'; message: string };
 
 type PhotoData = { data: string; mime: string; name: string };
@@ -36,6 +38,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   );
   const [showPhotoMenu, setShowPhotoMenu] = useState<{ target: 1 | 2 } | null>(null);
   const [processingPhoto, setProcessingPhoto] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   const fileInputRef   = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +49,17 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
     workerRef.current = new Worker(new URL('../utils/ImageWorker.ts', import.meta.url), { type: 'module' });
     return () => {
       workerRef.current?.terminate();
+    };
+  }, []);
+
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
     };
   }, []);
 
@@ -108,8 +122,25 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   const handleSubmit = async () => {
     if (!isFormValid()) return;
+
+    if (!isOnline) {
+      if (!isLocalManual) {
+        const message = 'Фото-режим требует сеть. Действие не сохранено: дождитесь Wi-Fi или включите режим без фото.';
+        setUploadStatus({ state: 'error', message });
+        addToast('Фото-режим требует сеть. Действие не сохранено.', 'info');
+        return;
+      }
+
+      const actionType = isLocalManual ? `${action.type}_manual_${manualTime}` : action.type;
+      const selectedZone = zone || '';
+      await offlineQueue.enqueueTaskAction({ id: action.id, act: actionType, op: user.name, zone: selectedZone });
+      setUploadStatus({ state: 'queued' });
+      vibrate([100, 50, 100]);
+      setTimeout(() => onSuccess('queued'), 1500);
+      return;
+    }
+
     try {
-      if (!navigator.onLine) throw new Error('NETWORK_OFFLINE');
       setUploadStatus({ state: 'uploading', step: 'Отправка фото...', progress: 10 });
       let urlGen = '', urlSeal = '', urlEmpty = '';
 
@@ -135,7 +166,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         setUploadStatus({ state: 'success' });
         vibrate([100, 50, 100]);
         addToast('Задача успешно выполнена', 'success');
-        setTimeout(() => onSuccess(), 700);
+        setTimeout(() => onSuccess('completed'), 700);
       }, 400);
     } catch (error: unknown) {
       vibrate([200, 100, 200]);
@@ -147,7 +178,9 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   const isSubmitting = uploadStatus.state === 'uploading';
   const isSuccess    = uploadStatus.state === 'success';
+  const isQueued     = uploadStatus.state === 'queued';
   const isError      = uploadStatus.state === 'error';
+  const isOfflinePhotoBlocked = !isOnline && !isLocalManual;
 
   const PhotoPreview: React.FC<{ src: string | null; label: string; onTap: () => void; icon: React.ReactNode }> = ({ src, label, onTap, icon }) => (
     <div
@@ -182,7 +215,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
       <div className="bg-[#0F0F12] border border-white/10 p-6 rounded-3xl w-full max-w-[480px] flex flex-col gap-5 relative max-h-[95vh] overflow-y-auto shadow-2xl">
         
-        {(isSubmitting || isSuccess) && (
+        {(isSubmitting || isSuccess || isQueued) && (
           <div className="absolute inset-0 bg-black/85 backdrop-blur-sm rounded-3xl z-10 flex flex-col items-center justify-center gap-4 p-8">
             {isSubmitting && uploadStatus.state === 'uploading' && (
               <>
@@ -211,6 +244,15 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
                 <div className="text-3xl font-black text-white uppercase">Успешно!</div>
               </div>
             )}
+            {isQueued && (
+              <div className="flex flex-col items-center gap-4 animate-in zoom-in duration-300">
+                <div className="w-24 h-24 rounded-full bg-orange-500/20 flex items-center justify-center">
+                  <WifiOff className="w-16 h-16 text-orange-400" />
+                </div>
+                <div className="text-2xl font-black text-white uppercase text-center">В очереди</div>
+                <div className="text-xs text-white/50 text-center">Отправится автоматически при появлении сети</div>
+              </div>
+            )}
           </div>
         )}
 
@@ -229,6 +271,21 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
             <Truck size={14} /> <span className="text-[9px] font-black uppercase tracking-wider">{isLocalManual ? 'Локальный режим: ВКЛ' : 'Режим без фото'}</span>
           </button>
         </div>
+
+        {!isOnline && (
+          <div className={`rounded-2xl border px-4 py-3 flex items-start gap-3 text-xs font-bold leading-snug ${
+            isLocalManual
+              ? 'bg-amber-500/10 border-amber-500/30 text-amber-100'
+              : 'bg-red-500/10 border-red-500/30 text-red-100'
+          }`}>
+            <WifiOff className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              {isLocalManual
+                ? 'Действие без фото сохранится локально и отправится при появлении сети.'
+                : 'Фото-режим требует сеть. Дождитесь Wi-Fi или включите режим без фото.'}
+            </span>
+          </div>
+        )}
 
         {isStart && (
           <div>
@@ -252,7 +309,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         )}
 
         <div className="flex flex-col gap-2">
-          <button onClick={handleSubmit} disabled={isSubmitting || processingPhoto || !isFormValid()} className={`w-full py-5 font-black text-sm rounded-2xl uppercase ${isLocalManual ? 'bg-orange-600' : 'bg-[#1E7D7D]'} text-white disabled:opacity-20`}>
+          <button onClick={handleSubmit} disabled={isSubmitting || processingPhoto || isOfflinePhotoBlocked || !isFormValid()} className={`w-full py-5 font-black text-sm rounded-2xl uppercase ${isLocalManual ? 'bg-orange-600' : 'bg-[#1E7D7D]'} text-white disabled:opacity-20`}>
             {isSubmitting ? 'Загрузка...' : 'Подтвердить'}
           </button>
           <button onClick={onClose} className="text-white/30 py-2 text-[9px] font-black uppercase">Отмена</button>

@@ -200,13 +200,15 @@ export interface TranslationSet {
   shift_on_track: string;
 }
 
+export type TaskActionResult = 'completed' | 'queued';
+
 export interface TaskAction {
   id: string;
   type: 'start' | 'finish';
   zone?: string | null;
   sealPhotoUrl?: string; // Передаётся при финише для превью
-  onResolve?: () => void;
-  onReject?: () => void;
+  onResolve?: (result?: TaskActionResult) => void;
+  onReject?: (reason?: unknown) => void;
 }
 
 export interface LotContainer {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { api } from '../services/api';
-import { Task, TranslationSet } from '../types';
+import { Task, TaskActionResult, TranslationSet } from '../types';
 import { Phone, Check, Play, Layers, Search, X, ChevronUp, Undo2, Timer, WifiOff, Wifi, MapPin } from 'lucide-react';
 import { offlineQueue } from '../services/offlineQueue';
 import { parseHHMM, elapsedMin } from '../utils/time';
@@ -10,7 +10,7 @@ import { vibrate } from '../utils/haptics';
 
 interface OperatorTerminalProps {
   onClose: () => void;
-  onTaskAction: (task: Task, action: 'start' | 'finish') => Promise<void>;
+  onTaskAction: (task: Task, action: 'start' | 'finish') => Promise<TaskActionResult>;
   t: TranslationSet;
 }
 
@@ -100,20 +100,20 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   const handleTaskActionLocal = async (task: Task, action: 'start' | 'finish') => {
     if (processingIds.includes(task.id)) return;
     
-    if (!isOnline) {
-      addToast('Нет подключения к интернету! Дождитесь появления сети для передачи фотографий.', 'error');
-      return;
-    }
-
     vibrate(30);
     stopPolling();
     setProcessingIds(prev => [...prev, task.id]);
     
     try {
-      await onTaskAction(task, action);
+      const result = await onTaskAction(task, action);
       await fetchQueue();
-      addToast('Действие успешно выполнено!', 'success');
+      if (result === 'queued') {
+        addToast('Действие сохранено локально. Отправится при появлении сети.', 'info');
+      } else {
+        addToast('Действие успешно выполнено!', 'success');
+      }
     } catch (e: unknown) {
+      if (e instanceof Error && e.message === 'USER_CANCELLED') return;
       console.error('Task action error:', e);
       addToast('Ошибка выполнения действия. Попробуйте снова.', 'error');
       vibrate([50, 100, 50, 100, 50]);

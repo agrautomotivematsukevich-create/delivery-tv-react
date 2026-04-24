@@ -276,6 +276,11 @@ function parseTimeToMin(timeStr) {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
+function getActionTime(act, fallbackTime) {
+  var m = (act || "").match(/_manual_(\d{1,2}:\d{2})$/);
+  return m ? m[1] : fallbackTime;
+}
+
 function getTodaySheetName() {
   return Utilities.formatDate(new Date(), TIMEZONE, "dd.MM");
 }
@@ -967,13 +972,14 @@ function applyTaskAction(sheet, id, act, time, params) {
   var lr = sheet.getLastRow();
   if (lr < 5) return null;
   var data = sheet.getRange(5, 5, lr - 4, 1).getValues();
+  var actionTime = getActionTime(act, time);
 
   for (var i = 0; i < data.length; i++) {
     if (data[i][0] && data[i][0].toString() === id) {
       var r = i + 5;
       if (act === "start" || act.indexOf("start_manual") === 0) {
         var vals = sheet.getRange(r, 8, 1, 7).getValues()[0]; 
-        vals[0] = time;                           
+        vals[0] = actionTime;
         vals[3] = params.zone || vals[3];         
         vals[4] = params.op   || vals[4];         
         vals[5] = params.pGen  || vals[5];        
@@ -988,7 +994,7 @@ function applyTaskAction(sheet, id, act, time, params) {
         if (params.pEmpty) pVals[2] = params.pEmpty;
         sheet.getRange(r, 13, 1, 3).setValues([pVals]);
       } else {
-        sheet.getRange(r, 9).setValue(time);
+        sheet.getRange(r, 9).setValue(actionTime);
         if (params.pEmpty) sheet.getRange(r, 15).setValue(params.pEmpty);
       }
       return textOut("UPDATED");
