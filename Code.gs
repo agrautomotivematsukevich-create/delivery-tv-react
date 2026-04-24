@@ -27,8 +27,10 @@ var AUTH_SHEET_NAME   = 'USERS'; // Имя листа в секретной та
 
 // Layout for the Secret DB (row 2+):
 // A(1)=Login  B(2)=Hash  C(3)=Name  D(4)=Role  E(5)=Status  F(6)=Token
+// G:P store two active session slots. F is kept as a legacy/fallback mirror.
 var USER_COL_START = 1;
-var USER_COL_COUNT = 6;   // A through F
+var USER_COL_COUNT = 6;   // A through F (legacy/base fields)
+var USER_AUTH_COL_COUNT = 16; // A through P
 var COL_LOGIN  = 0;
 var COL_HASH   = 1;
 var COL_NAME   = 2;
@@ -36,11 +38,45 @@ var COL_ROLE   = 3;
 var COL_STATUS = 4;
 var COL_TOKEN  = 5;
 
+var COL_TOKEN_1            = 6;
+var COL_TOKEN_1_CREATED_AT = 7;
+var COL_TOKEN_1_LAST_SEEN  = 8;
+var COL_TOKEN_1_DEVICE     = 9;
+var COL_TOKEN_1_EXPIRES_AT = 10;
+var COL_TOKEN_2            = 11;
+var COL_TOKEN_2_CREATED_AT = 12;
+var COL_TOKEN_2_LAST_SEEN  = 13;
+var COL_TOKEN_2_DEVICE     = 14;
+var COL_TOKEN_2_EXPIRES_AT = 15;
+
+var USER_SESSION_HEADERS = [
+  "Token_1",
+  "Token_1_CreatedAt",
+  "Token_1_LastSeenAt",
+  "Token_1_Device",
+  "Token_1_ExpiresAt",
+  "Token_2",
+  "Token_2_CreatedAt",
+  "Token_2_LastSeenAt",
+  "Token_2_Device",
+  "Token_2_ExpiresAt"
+];
+
+var SESSION_SLOTS = [
+  { token: COL_TOKEN_1, createdAt: COL_TOKEN_1_CREATED_AT, lastSeen: COL_TOKEN_1_LAST_SEEN, device: COL_TOKEN_1_DEVICE, expiresAt: COL_TOKEN_1_EXPIRES_AT },
+  { token: COL_TOKEN_2, createdAt: COL_TOKEN_2_CREATED_AT, lastSeen: COL_TOKEN_2_LAST_SEEN, device: COL_TOKEN_2_DEVICE, expiresAt: COL_TOKEN_2_EXPIRES_AT }
+];
+
+var SESSION_TTL_DAYS = 14;
+var SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
+var SESSION_LAST_SEEN_TOUCH_SECONDS = 15 * 60;
+var SESSION_LAST_SEEN_TOUCH_MS = SESSION_LAST_SEEN_TOUCH_SECONDS * 1000;
+
 // ── ROUTE TABLE ──────────────────────────────────────────────────────────────
 
 var ROUTES = {
   // ── Public (no auth at all) ──
-  "login":                 { handler: handleLogin,              auth: false, lock: false },
+  "login":                 { handler: handleLogin,              auth: false, lock: true  },
   "register":              { handler: handleRegister,           auth: false, lock: true  },
 
   // ── TV display endpoints (static API key, anonymized data) ──
@@ -180,6 +216,196 @@ function invalidateTokenCache(token) {
   try { CacheService.getScriptCache().remove(tokenCacheKey(token)); } catch (e) {}
 }
 
+function normalizeUserRow(row) {
+  row = row || [];
+  for (var i = 0; i < USER_AUTH_COL_COUNT; i++) {
+    if (row[i] === null || row[i] === undefined) row[i] = "";
+  }
+  return row;
+}
+
+function getUserAuthReadWidth(sheet) {
+  var maxColumns = sheet.getMaxColumns();
+  if (!maxColumns || maxColumns < 1) return USER_COL_COUNT;
+  return Math.min(maxColumns, USER_AUTH_COL_COUNT);
+}
+
+function readUserAuthRows(sheet, rowCount) {
+  var width = getUserAuthReadWidth(sheet);
+  var rows = sheet.getRange(2, USER_COL_START, rowCount, width).getValues();
+  for (var i = 0; i < rows.length; i++) normalizeUserRow(rows[i]);
+  return rows;
+}
+
+function ensureUserSessionColumns(sheet) {
+  var maxColumns = sheet.getMaxColumns();
+  if (maxColumns < USER_AUTH_COL_COUNT) {
+    sheet.insertColumnsAfter(maxColumns, USER_AUTH_COL_COUNT - maxColumns);
+  }
+
+  var startCol = USER_COL_START + COL_TOKEN_1;
+  var headerRange = sheet.getRange(1, startCol, 1, USER_SESSION_HEADERS.length);
+  var current = headerRange.getValues()[0];
+  var next = [];
+  var changed = false;
+
+  for (var i = 0; i < USER_SESSION_HEADERS.length; i++) {
+    var header = current[i];
+    if (header === null || header === undefined || header.toString().trim() === "") {
+      next[i] = USER_SESSION_HEADERS[i];
+      changed = true;
+    } else {
+      next[i] = header;
+    }
+  }
+
+  if (changed) headerRange.setValues([next]);
+}
+
+function getSessionToken(row, slot) {
+  return (row[slot.token] || "").toString().trim();
+}
+
+function parseSessionTime(value) {
+  if (!value) return null;
+  if (Object.prototype.toString.call(value) === "[object Date]" && !isNaN(value.getTime())) {
+    return value.getTime();
+  }
+
+  var text = value.toString().trim();
+  if (!text) return null;
+
+  var ms = Date.parse(text);
+  return isNaN(ms) ? null : ms;
+}
+
+function isSessionExpired(row, slot, nowMs) {
+  if (!getSessionToken(row, slot)) return false;
+  var expiresAt = parseSessionTime(row[slot.expiresAt]);
+  return expiresAt !== null && expiresAt <= nowMs;
+}
+
+function normalizeDeviceType(device) {
+  device = (device || "").toString().toLowerCase().trim();
+  return ["mobile", "desktop", "tablet", "unknown"].indexOf(device) === -1 ? "unknown" : device;
+}
+
+function buildSessionValues(token, device, now) {
+  var createdAt = now.toISOString();
+  var expiresAt = new Date(now.getTime() + SESSION_TTL_MS).toISOString();
+  return [token, createdAt, createdAt, normalizeDeviceType(device), expiresAt];
+}
+
+function chooseSessionSlot(row, now) {
+  var nowMs = now.getTime();
+
+  for (var i = 0; i < SESSION_SLOTS.length; i++) {
+    var slot = SESSION_SLOTS[i];
+    if (!getSessionToken(row, slot) || isSessionExpired(row, slot, nowMs)) return slot;
+  }
+
+  var oldestSlot = SESSION_SLOTS[0];
+  var oldestMs = Number.MAX_VALUE;
+
+  for (var j = 0; j < SESSION_SLOTS.length; j++) {
+    var candidate = SESSION_SLOTS[j];
+    var activityMs = parseSessionTime(row[candidate.lastSeen]);
+    if (activityMs === null) activityMs = parseSessionTime(row[candidate.createdAt]);
+    if (activityMs === null) activityMs = 0;
+
+    if (activityMs < oldestMs) {
+      oldestMs = activityMs;
+      oldestSlot = candidate;
+    }
+  }
+
+  return oldestSlot;
+}
+
+function writeSessionSlot(sheet, rowNumber, row, slot, token, device, now) {
+  var oldToken = getSessionToken(row, slot);
+  var values = buildSessionValues(token, device, now);
+
+  sheet.getRange(rowNumber, USER_COL_START + slot.token, 1, values.length).setValues([values]);
+
+  row[slot.token] = values[0];
+  row[slot.createdAt] = values[1];
+  row[slot.lastSeen] = values[2];
+  row[slot.device] = values[3];
+  row[slot.expiresAt] = values[4];
+
+  if (oldToken && oldToken !== token) invalidateTokenCache(oldToken);
+}
+
+function legacyTokenHasActiveSession(row, legacyToken, nowMs) {
+  if (!legacyToken) return false;
+  for (var i = 0; i < SESSION_SLOTS.length; i++) {
+    var slot = SESSION_SLOTS[i];
+    if (getSessionToken(row, slot) === legacyToken && !isSessionExpired(row, slot, nowMs)) return true;
+  }
+  return false;
+}
+
+function migrateLegacyTokenToSessionSlot(sheet, rowNumber, row, now) {
+  var legacyToken = (row[COL_TOKEN] || "").toString().trim();
+  if (!legacyToken) return;
+  if (legacyTokenHasActiveSession(row, legacyToken, now.getTime())) return;
+
+  for (var i = 0; i < SESSION_SLOTS.length; i++) {
+    var slot = SESSION_SLOTS[i];
+    if (!getSessionToken(row, slot) || isSessionExpired(row, slot, now.getTime())) {
+      writeSessionSlot(sheet, rowNumber, row, slot, legacyToken, "unknown", now);
+      return;
+    }
+  }
+}
+
+function mirrorLegacyToken(sheet, rowNumber, row, token) {
+  var oldToken = (row[COL_TOKEN] || "").toString().trim();
+  if (oldToken === token) return;
+
+  sheet.getRange(rowNumber, USER_COL_START + COL_TOKEN).setValue(token);
+  row[COL_TOKEN] = token;
+  if (oldToken) invalidateTokenCache(oldToken);
+}
+
+function invalidateUserRowTokenCaches(row) {
+  normalizeUserRow(row);
+  invalidateTokenCache(row[COL_TOKEN]);
+  for (var i = 0; i < SESSION_SLOTS.length; i++) {
+    invalidateTokenCache(getSessionToken(row, SESSION_SLOTS[i]));
+  }
+}
+
+function callerFromUserRow(row) {
+  return {
+    login: (row[COL_LOGIN] || "").toString(),
+    name:  (row[COL_NAME] || "").toString(),
+    role:  (row[COL_ROLE] || "").toString()
+  };
+}
+
+function maybeTouchSessionLastSeen(sheet, rowNumber, row, slot, now, cache) {
+  var token = getSessionToken(row, slot);
+  if (!token) return;
+
+  var nowMs = now.getTime();
+  var lastSeenMs = parseSessionTime(row[slot.lastSeen]);
+  if (lastSeenMs !== null && nowMs - lastSeenMs < SESSION_LAST_SEEN_TOUCH_MS) return;
+
+  var touchKey = "touch_" + tokenCacheKey(token);
+  try {
+    if (cache.get(touchKey)) return;
+  } catch (e) {}
+
+  var nowIso = now.toISOString();
+  try {
+    sheet.getRange(rowNumber, USER_COL_START + slot.lastSeen).setValue(nowIso);
+    row[slot.lastSeen] = nowIso;
+    cache.put(touchKey, "1", SESSION_LAST_SEEN_TOUCH_SECONDS);
+  } catch (e) {}
+}
+
 function verifyToken(token) {
   if (!token || typeof token !== "string" || token.length < 20) return null;
 
@@ -195,18 +421,40 @@ function verifyToken(token) {
   var lr = sheet.getLastRow();
   if (lr < 2) return null;
 
-  var data = sheet.getRange(2, USER_COL_START, lr - 1, USER_COL_COUNT).getDisplayValues();
+  var data = readUserAuthRows(sheet, lr - 1);
+  var now = new Date();
+  var nowMs = now.getTime();
+  var legacyCaller = null;
+
   for (var i = 0; i < data.length; i++) {
-    if (data[i][COL_TOKEN] === token && data[i][COL_STATUS] === "APPROVED") {
-      var caller = {
-        login: data[i][COL_LOGIN],
-        name:  data[i][COL_NAME],
-        role:  data[i][COL_ROLE]
-      };
-      try { cache.put(ck, JSON.stringify(caller), TOKEN_CACHE_TTL_OK); } catch (e) {}
-      return caller;
+    var row = data[i];
+    if ((row[COL_STATUS] || "").toString().trim().toUpperCase() !== "APPROVED") continue;
+
+    for (var s = 0; s < SESSION_SLOTS.length; s++) {
+      var slot = SESSION_SLOTS[s];
+      if (getSessionToken(row, slot) === token) {
+        if (isSessionExpired(row, slot, nowMs)) {
+          try { cache.put(ck, "NEG", TOKEN_CACHE_TTL_NEG); } catch (e) {}
+          return null;
+        }
+
+        var caller = callerFromUserRow(row);
+        maybeTouchSessionLastSeen(sheet, i + 2, row, slot, now, cache);
+        try { cache.put(ck, JSON.stringify(caller), TOKEN_CACHE_TTL_OK); } catch (e) {}
+        return caller;
+      }
+    }
+
+    if ((row[COL_TOKEN] || "").toString().trim() === token) {
+      legacyCaller = callerFromUserRow(row);
     }
   }
+
+  if (legacyCaller) {
+    try { cache.put(ck, JSON.stringify(legacyCaller), TOKEN_CACHE_TTL_OK); } catch (e) {}
+    return legacyCaller;
+  }
+
   try { cache.put(ck, "NEG", TOKEN_CACHE_TTL_NEG); } catch (e) {}
   return null;
 }
@@ -441,6 +689,7 @@ function handleTvLotTracker(params, ss) {
 function handleLogin(params, ss) {
   var user = (params.user || "").toLowerCase().trim();
   var hash = (params.hash || "").trim();
+  var device = normalizeDeviceType(params.device);
 
   if (!user || !hash) {
     Utilities.sleep(LOGIN_FAIL_DELAY_MS);
@@ -467,21 +716,26 @@ function handleLogin(params, ss) {
     return textOut("WRONG");
   }
 
-  var data = authSheet.getRange(2, USER_COL_START, lr - 1, USER_COL_COUNT).getDisplayValues();
+  ensureUserSessionColumns(authSheet);
+
+  var data = readUserAuthRows(authSheet, lr - 1);
   for (var i = 0; i < data.length; i++) {
     // 🚀 Сначала проверяем только логин и пароль
-    if (data[i][COL_LOGIN].toLowerCase() === user && data[i][COL_HASH] === hash) {
+    if ((data[i][COL_LOGIN] || "").toString().toLowerCase() === user && (data[i][COL_HASH] || "").toString() === hash) {
       
-      var status = (data[i][COL_STATUS] || "").toUpperCase().trim();
+      var status = (data[i][COL_STATUS] || "").toString().toUpperCase().trim();
 
       // Пароль верный, теперь смотрим статус
       if (status === "APPROVED") {
         cache.remove(cacheKey);
-        var prevToken = data[i][COL_TOKEN];
-        invalidateTokenCache(prevToken);
+        var row = data[i];
+        var rowNumber = i + 2;
+        var now = new Date();
         var token = generateToken();
-        authSheet.getRange(i + 2, USER_COL_START + COL_TOKEN).setValue(token);
-        return textOut("CORRECT|" + data[i][COL_NAME] + "|" + data[i][COL_ROLE] + "|" + token);
+        migrateLegacyTokenToSessionSlot(authSheet, rowNumber, row, now);
+        writeSessionSlot(authSheet, rowNumber, row, chooseSessionSlot(row, now), token, device, now);
+        mirrorLegacyToken(authSheet, rowNumber, row, token);
+        return textOut("CORRECT|" + row[COL_NAME] + "|" + row[COL_ROLE] + "|" + token);
       }
       else if (status === "PENDING") {
         return jsonOut({ error: "PENDING" });
@@ -521,8 +775,11 @@ function handleRegister(params, ss) {
     // If sheet doesn't exist, create it in the secret DB
     var authDb = SpreadsheetApp.openById(SECRET_AUTH_DB_ID);
     authSheet = authDb.insertSheet(AUTH_SHEET_NAME);
-    authSheet.getRange("A1:F1").setValues([["Login", "Hash", "Name", "Role", "Status", "Token"]]);
+    authSheet.getRange(1, USER_COL_START, 1, USER_AUTH_COL_COUNT)
+      .setValues([["Login", "Hash", "Name", "Role", "Status", "Token"].concat(USER_SESSION_HEADERS)]);
   }
+
+  ensureUserSessionColumns(authSheet);
 
   var lr = authSheet.getLastRow();
   if (lr >= 2) {
@@ -1170,7 +1427,7 @@ function handleGetPending(params, ss) {
   var lr = authSheet.getLastRow();
   if (lr < 2) return jsonOut([]);
 
-  var data = authSheet.getRange(2, USER_COL_START, lr - 1, USER_COL_COUNT).getDisplayValues();
+  var data = readUserAuthRows(authSheet, lr - 1);
   var pending = [];
 
   for (var i = 0; i < data.length; i++) {
@@ -1203,12 +1460,12 @@ function handleApproveUser(params, ss) {
   if (lr < 2) return textOut("NOT_FOUND");
 
   // Row-level read so we can also grab the stored token for cache invalidation.
-  var data = authSheet.getRange(2, USER_COL_START, lr - 1, USER_COL_COUNT).getDisplayValues();
+  var data = readUserAuthRows(authSheet, lr - 1);
   for (var i = 0; i < data.length; i++) {
-    if (data[i][COL_LOGIN].toLowerCase().trim() === login) {
+    if ((data[i][COL_LOGIN] || "").toString().toLowerCase().trim() === login) {
       authSheet.getRange(i + 2, USER_COL_START + COL_ROLE).setValue(role);
       authSheet.getRange(i + 2, USER_COL_START + COL_STATUS).setValue("APPROVED");
-      invalidateTokenCache(data[i][COL_TOKEN]);
+      invalidateUserRowTokenCaches(data[i]);
       return textOut("APPROVED");
     }
   }
@@ -1226,12 +1483,12 @@ function handleRejectUser(params, ss) {
   if (lr < 2) return textOut("NOT_FOUND");
 
   // Row-level read so we can invalidate the cached token for the rejected user.
-  var data = authSheet.getRange(2, USER_COL_START, lr - 1, USER_COL_COUNT).getDisplayValues();
+  var data = readUserAuthRows(authSheet, lr - 1);
   for (var i = 0; i < data.length; i++) {
-    if (data[i][COL_LOGIN].toLowerCase().trim() === login) {
+    if ((data[i][COL_LOGIN] || "").toString().toLowerCase().trim() === login) {
       // 🚀 Вместо удаления строки, просто меняем её статус на REJECTED
       authSheet.getRange(i + 2, USER_COL_START + COL_STATUS).setValue("REJECTED");
-      invalidateTokenCache(data[i][COL_TOKEN]);
+      invalidateUserRowTokenCaches(data[i]);
       return textOut("REJECTED");
     }
   }

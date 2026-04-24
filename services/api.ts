@@ -21,6 +21,25 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+type DeviceType = "mobile" | "desktop" | "tablet" | "unknown";
+
+function getClientDeviceType(): DeviceType {
+  if (typeof navigator === "undefined") return "unknown";
+
+  const ua = navigator.userAgent || "";
+  if (!ua) return "unknown";
+
+  if (/ipad|tablet|kindle|playbook|silk/i.test(ua) || (/android/i.test(ua) && !/mobile/i.test(ua))) {
+    return "tablet";
+  }
+
+  if (/mobi|iphone|ipod|android.*mobile|windows phone/i.test(ua)) {
+    return "mobile";
+  }
+
+  return "desktop";
+}
+
 // ── Session-expiry callback ──
 let _onSessionExpired: (() => void) | null = null;
 
@@ -351,7 +370,7 @@ export const api = {
       const res = await fetchWithTimeout(SCRIPT_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ mode: "login", user, hash }),
+        body: JSON.stringify({ mode: "login", user, hash, device: getClientDeviceType() }),
       });
       const txt = await res.text();
 
