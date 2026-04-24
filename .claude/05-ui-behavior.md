@@ -70,7 +70,7 @@ ActionModal handles zone selection, photo capture/upload, then calls `api.taskAc
 On online success → `handleActionSuccess('completed')` → `onResolve('completed')` + `refreshDashboard()`.
 On offline no-photo queue → `handleActionSuccess('queued')` → terminal shows a local-save toast.
 Photo uploads are intentionally not queued offline until ordering/idempotency is verified.
-Success-state may include a tiny non-blocking compliment easter egg for `user.user === 'u001185'` (`OPERATOR`) and preview user `barromz` (`ADMIN`) only. It is localStorage-limited to 2 online successes per 16:40-01:30 Moscow shift, with a 2h interval, and is never shown on cancel/error/queued flows.
+Success-state may include a non-blocking compliment easter egg for `user.user === 'u001185'` (`OPERATOR`) and preview user `barromz` (`ADMIN`) only. The flow is `Успешно!` (~1.4s) then a fullscreen compliment stage (~3.2s). It is localStorage-limited to 2 online successes per 16:40-01:30 Moscow shift, with a 2h interval, and is never shown on cancel/error/queued flows.
 
 ## i18n
 

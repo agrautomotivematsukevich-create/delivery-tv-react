@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Camera, CheckCircle, Clock, Image as ImageIcon, Loader2, Lock, Truck, Upload, WifiOff } from 'lucide-react';
 import { api } from '../services/api';
 import { offlineQueue } from '../services/offlineQueue';
@@ -20,6 +20,7 @@ type UploadStatus =
   | { state: 'idle' }
   | { state: 'uploading'; step: string; progress: number }
   | { state: 'success' }
+  | { state: 'compliment' }
   | { state: 'queued' }
   | { state: 'error'; message: string };
 
@@ -30,12 +31,14 @@ const COMPLIMENT_TARGET_LOGIN = 'u001185';
 const COMPLIMENT_PREVIEW_LOGIN = 'barromz';
 const COMPLIMENT_MAX_PER_SHIFT = 2;
 const COMPLIMENT_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000;
+const COMPLIMENT_SUCCESS_MS = 1400;
+const COMPLIMENT_DISPLAY_MS = 3200;
 const COMPLIMENT_SHIFT_START_MIN = 16 * 60 + 40;
 const COMPLIMENT_SHIFT_END_MIN = 1 * 60 + 30;
 const COMPLIMENT_STORAGE_PREFIX = 'warehouse_terminal_compliment_v1';
 const COMPLIMENT_PHRASES = [
   'Ты сегодня очень красивая',
-  'Тебе очень идет сегодняшний вайб',
+  'Тебе очень идет эта улыбка',
 ];
 
 function getMoscowNow(): Date {
@@ -110,7 +113,6 @@ function takeComplimentForSuccess(user: User): string | null {
 }
 
 const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onSuccess }) => {
-  useEscape(onClose);
   const { addToast } = useAppContext();
   const [zone, setZone]     = useState<string | null>(null);
   const [photo1, setPhoto1] = useState<PhotoData | null>(null);
@@ -124,6 +126,12 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   const [processingPhoto, setProcessingPhoto] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [successCompliment, setSuccessCompliment] = useState<string | null>(null);
+
+  const handleEscape = useCallback(() => {
+    if (uploadStatus.state === 'idle' || uploadStatus.state === 'error') onClose();
+  }, [onClose, uploadStatus.state]);
+
+  useEscape(handleEscape);
 
   const fileInputRef   = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -254,7 +262,14 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         setUploadStatus({ state: 'success' });
         vibrate([100, 50, 100]);
         addToast('Задача успешно выполнена', 'success');
-        setTimeout(() => onSuccess('completed'), compliment ? 1600 : 700);
+        if (!compliment) {
+          setTimeout(() => onSuccess('completed'), COMPLIMENT_SUCCESS_MS);
+          return;
+        }
+        setTimeout(() => {
+          setUploadStatus({ state: 'compliment' });
+          setTimeout(() => onSuccess('completed'), COMPLIMENT_DISPLAY_MS);
+        }, COMPLIMENT_SUCCESS_MS);
       }, 400);
     } catch (error: unknown) {
       vibrate([200, 100, 200]);
@@ -266,6 +281,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   const isSubmitting = uploadStatus.state === 'uploading';
   const isSuccess    = uploadStatus.state === 'success';
+  const isCompliment = uploadStatus.state === 'compliment';
   const isQueued     = uploadStatus.state === 'queued';
   const isError      = uploadStatus.state === 'error';
   const isOfflinePhotoBlocked = !isOnline && !isLocalManual;
@@ -301,6 +317,15 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+      {isCompliment && successCompliment && (
+        <div className="fixed inset-0 z-[95] flex flex-col items-center justify-center bg-[#0F0F12]/95 px-8 text-center animate-in fade-in zoom-in-95 duration-500">
+          <div className="mb-7 h-px w-24 bg-rose-200/25" />
+          <div className="max-w-[760px] text-[clamp(2.25rem,9vw,5rem)] font-black leading-[1.05] tracking-normal text-rose-50 drop-shadow-[0_0_22px_rgba(255,228,230,0.16)]">
+            {successCompliment}
+          </div>
+          <div className="mt-7 h-px w-24 bg-rose-200/25" />
+        </div>
+      )}
       <div className="bg-[#0F0F12] border border-white/10 p-6 rounded-3xl w-full max-w-[480px] flex flex-col gap-5 relative max-h-[95vh] overflow-y-auto shadow-2xl">
         
         {(isSubmitting || isSuccess || isQueued) && (
@@ -329,11 +354,6 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
                 <div className="w-24 h-24 rounded-full bg-emerald-500/20 flex items-center justify-center">
                   <CheckCircle className="w-16 h-16 text-emerald-500" />
                 </div>
-                {successCompliment && (
-                  <div className="order-2 max-w-[260px] text-center text-sm font-medium leading-snug text-rose-100/75">
-                    {successCompliment}
-                  </div>
-                )}
                 <div className="text-3xl font-black text-white uppercase">Успешно!</div>
               </div>
             )}

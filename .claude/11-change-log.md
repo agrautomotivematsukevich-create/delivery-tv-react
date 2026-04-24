@@ -141,3 +141,21 @@
 - Not shown on cancel, error, queued/offline state, or for other users.
 
 **Memory files updated**: `05-ui-behavior.md`, `11-change-log.md`.
+
+---
+
+## 2026-04-24 — Terminal success easter egg visibility update
+
+**Type**: Frontend-only UX adjustment. No backend/API changes. No push/deploy.
+
+**Source files modified**:
+- `components/ActionModal.tsx` — changed the compliment from a small success subtitle to a separate fullscreen stage after the existing `Успешно!` state.
+
+**Behavior**:
+- Online success first shows `Успешно!` for ~1.4s.
+- If the local per-shift compliment limit allows it, a fullscreen compliment stage follows for ~3.2s and then auto-closes.
+- No buttons or confirmation required; no toast/modal/backend changes.
+- Existing target/preview users, 2-per-shift limit, 2h interval, localStorage failure fallback, and cancel/error/queued exclusions remain unchanged.
+- Escape is ignored during upload/success/compliment/queued states so a completed action cannot accidentally fall into the cancel path.
+
+**Memory files updated**: `05-ui-behavior.md`, `11-change-log.md`.
