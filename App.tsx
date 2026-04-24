@@ -272,6 +272,7 @@ function App() {
   return (
     <>
       <PageMeta />
+      <span hidden data-pwa-update-validation="2026-04-24-runtime-marker" />
 
       {isOffline && (
         <div className="fixed top-0 left-0 w-full bg-red-500 text-white text-center py-1 text-xs font-bold z-[100]">
@@ -353,5 +354,3 @@ function App() {
 }
 
 export default App;
-
-// pwa update banner test
