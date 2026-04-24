@@ -1,0 +1,81 @@
+# UI Behavior
+
+## Routing / mode gates
+
+`App.tsx` reads `?tv=1` and `?tv=2` once on mount via `useMemo` (not recalculated on re-render).
+
+```
+?tv=1 (isTV=true)   → TV dashboard mode (fixed inset-0, no header, solid bg)
+?tv=2 (isTV2=true)  → TV lot tracker mode (fixed inset-0, LotTrackerTV)
+neither             → desktop/phone mode (header, footer, full nav)
+```
+
+**TV login gate**: If `(isTV || isTV2) && !user` → shows `TVLoginScreen`. After login, loads dashboard.
+**TV2 gate**: After login on TV2, renders `LotTrackerTV` with `?lot=` param or sheet-read priority lot.
+
+**Do not alter**: `isTV` and `isTV2` are real production routes, checked as `?tv=1` / `?tv=2`. They live as constants derived from URL — no URL navigation changes them after load.
+
+## TV-specific rendering rules
+
+- **No `backdrop-blur`** — GPU-intensive, breaks on weak Android TV boxes
+- **No heavy box-shadow layers** — ok to use single `shadow-lg`, avoid multiple layered shadows
+- **No framer-motion** animations or CSS `animation` on fast-cycling elements
+- **Solid `rgba(...)` or `bg-[rgba(25,27,37,0.95)]` backgrounds** instead of glass blur
+- Dashboard TV glass class: `"bg-[rgba(25,27,37,0.95)] border border-white/10..."` (vs desktop: `backdrop-blur-xl`)
+- Clock updates every 30s (not 1s) — sufficient for HH:MM display
+
+## Main screens
+
+| Route | Component | Polling | Notes |
+|---|---|---|---|
+| `/` | Dashboard | via App.tsx (prop-driven) | TV mode different layout: 3-column grid |
+| `/history` | HistoryView | on demand | Date picker + load button |
+| `/logistics` | LogisticsView | on demand | Plan editor (LOGISTIC role) |
+| `/downtime` | ZoneDowntimeView | 60s when today | Has a 1s `currentTime` ticker |
+| `/arrival` | ArrivalAnalyticsView | on demand | Analytics off fetched history |
+| `/lotTracker` | LotTrackerView | on demand | Desktop lot search |
+| `/accounting` | AccountingView | once on mount | SAP/LES status toggle |
+| `?tv=2` | LotTrackerTV | 45s + 300s | Full-screen TV lot tracker |
+
+## Dashboard layout
+
+**TV mode** (`tvMode=true`): CSS grid `360px 1fr 320px`, fixed columns. Three panels: progress/shifts | queue/active | zones/clock.
+**Desktop mode**: `grid-cols-1 lg:grid-cols-[380px_1fr]`. Left: progress circle + shifts. Right: next + territory + active list + zones.
+
+## Key visual behaviors
+
+- **Offline banner**: `fixed top-0 w-full bg-red-500` when `isOffline=true` (App.tsx). Never clears until a successful response.
+- **Splash screen**: `SplashScreen` shown until `isLoading=false`. Fades out.
+- **LKG preservation**: `dashboardData` in AppContext never set to null after first successful fetch. `allTasks` likewise (null response = keep prev).
+- **Night zero-plan guard**: before 07:00 Moscow time, `App.tsx` does not replace the last non-zero dashboard snapshot with a valid but empty (`total=0`, no active/territory) response. It keeps in-memory LKG, with a 12h localStorage fallback for TV reloads.
+- **deepEqual guard**: `setDashboardData` and `setAllTasks` only called if data actually changed. Prevents ripple re-renders.
+- **UnloadTimer** (Dashboard): updates every 30s; shows countdown to `UNLOAD_TARGET=30min`; pulses red when over.
+- **DockZonesGrid**: idle time shown for zones that had at least one completed task today.
+- **ShiftNormWidget**: shows current shift progress bar with "expected by now" marker line.
+
+## Operator Terminal modal
+
+- Triggered from Header → `setShowTerminal(true)` → mounts `OperatorTerminal`
+- Starts/stops its own 45s polling (also pauses on hidden)
+- Task actions: `start` → opens `ActionModal` (photo capture flow) → `handleActionSuccess` → `refreshDashboard()`
+- Offline MVP: the terminal still opens `ActionModal` while offline. Photo-mode is blocked with an explanatory message; "no photo" mode queues only `task_action` locally.
+- Cancel/dismiss/close rejects the action promise with `USER_CANCELLED`; `OperatorTerminal` ignores that sentinel and does not show an error toast.
+- Undo: calls `task_action` with act=`undo_start` directly via `api.taskAction`
+- Shows offline/pending badge in header when `!isOnline || pendingCount > 0`
+
+## ActionModal flow (photo capture)
+
+`handleTaskActionRequest(task, 'start'|'finish')` → returns Promise → `setCurrentAction` → mounts `ActionModal` with `onResolve/onReject`.
+ActionModal handles zone selection, photo capture/upload, then calls `api.taskAction`.
+On online success → `handleActionSuccess('completed')` → `onResolve('completed')` + `refreshDashboard()`.
+On offline no-photo queue → `handleActionSuccess('queued')` → terminal shows a local-save toast.
+Photo uploads are intentionally not queued offline until ordering/idempotency is verified.
+Success-state may include a tiny non-blocking compliment easter egg for `user.user === 'u001185'` (`OPERATOR`) and preview user `barromz` (`ADMIN`) only. It is localStorage-limited to 2 online successes per 16:40-01:30 Moscow shift, with a 2h interval, and is never shown on cancel/error/queued flows.
+
+## i18n
+
+Two languages: `'RU'` (default) and `'EN_CN'` (bilingual RU/CN labels). Toggled via Header button. All UI text goes through `t: TranslationSet` prop passed down from `App.tsx`. `TRANSLATIONS` object is in `constants.ts`.
+
+## Modals lifecycle
+
+All modals are conditional renders (`{showX && <Modal />}`). They unmount when closed — no hidden modal polling. Exception: `OperatorTerminal` polling cleanup happens inside the modal itself on unmount.

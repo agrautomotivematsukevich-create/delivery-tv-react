@@ -24,6 +24,90 @@ type UploadStatus =
   | { state: 'error'; message: string };
 
 type PhotoData = { data: string; mime: string; name: string };
+type ComplimentState = { count: number; lastShownAt: number; lastPhrase: string };
+
+const COMPLIMENT_TARGET_LOGIN = 'u001185';
+const COMPLIMENT_PREVIEW_LOGIN = 'barromz';
+const COMPLIMENT_MAX_PER_SHIFT = 2;
+const COMPLIMENT_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000;
+const COMPLIMENT_SHIFT_START_MIN = 16 * 60 + 40;
+const COMPLIMENT_SHIFT_END_MIN = 1 * 60 + 30;
+const COMPLIMENT_STORAGE_PREFIX = 'warehouse_terminal_compliment_v1';
+const COMPLIMENT_PHRASES = [
+  'Ты сегодня очень красивая',
+  'Тебе очень идет сегодняшний вайб',
+];
+
+function getMoscowNow(): Date {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+}
+
+function formatDateKey(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function getShiftIdentifier(now = getMoscowNow()): string {
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const shiftStartDate = new Date(now);
+  if (minutes < COMPLIMENT_SHIFT_END_MIN) shiftStartDate.setDate(shiftStartDate.getDate() - 1);
+  return `${formatDateKey(shiftStartDate)}_1640_0130`;
+}
+
+function isWithinComplimentShift(now = getMoscowNow()): boolean {
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  return minutes >= COMPLIMENT_SHIFT_START_MIN || minutes < COMPLIMENT_SHIFT_END_MIN;
+}
+
+function getComplimentMode(user: User): 'target' | 'preview' | null {
+  if (user.user === COMPLIMENT_TARGET_LOGIN && user.role === 'OPERATOR') return 'target';
+  if (user.user === COMPLIMENT_PREVIEW_LOGIN && user.role === 'ADMIN') return 'preview';
+  return null;
+}
+
+function readComplimentState(key: string): ComplimentState {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return { count: 0, lastShownAt: 0, lastPhrase: '' };
+    const parsed = JSON.parse(raw) as Partial<ComplimentState>;
+    return {
+      count: typeof parsed.count === 'number' ? parsed.count : 0,
+      lastShownAt: typeof parsed.lastShownAt === 'number' ? parsed.lastShownAt : 0,
+      lastPhrase: typeof parsed.lastPhrase === 'string' ? parsed.lastPhrase : '',
+    };
+  } catch {
+    return { count: 0, lastShownAt: 0, lastPhrase: '' };
+  }
+}
+
+function takeComplimentForSuccess(user: User): string | null {
+  const mode = getComplimentMode(user);
+  if (!mode) return null;
+  if (mode === 'target' && !isWithinComplimentShift()) return null;
+
+  const key = `${COMPLIMENT_STORAGE_PREFIX}:${mode}:${user.user}:${getShiftIdentifier()}`;
+  const state = readComplimentState(key);
+  const now = Date.now();
+  if (state.count >= COMPLIMENT_MAX_PER_SHIFT) return null;
+  if (state.lastShownAt && now - state.lastShownAt < COMPLIMENT_MIN_INTERVAL_MS) return null;
+
+  const candidates = COMPLIMENT_PHRASES.filter(phrase => phrase !== state.lastPhrase);
+  const phrase = candidates[Math.floor(Math.random() * candidates.length)] || COMPLIMENT_PHRASES[0];
+
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      count: state.count + 1,
+      lastShownAt: now,
+      lastPhrase: phrase,
+    }));
+  } catch {
+    return null;
+  }
+
+  return phrase;
+}
 
 const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onSuccess }) => {
   useEscape(onClose);
@@ -39,6 +123,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   const [showPhotoMenu, setShowPhotoMenu] = useState<{ target: 1 | 2 } | null>(null);
   const [processingPhoto, setProcessingPhoto] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [successCompliment, setSuccessCompliment] = useState<string | null>(null);
 
   const fileInputRef   = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -122,6 +207,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   const handleSubmit = async () => {
     if (!isFormValid()) return;
+    setSuccessCompliment(null);
 
     if (!isOnline) {
       if (!isLocalManual) {
@@ -163,10 +249,12 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       await api.taskAction(action.id, actionType, user.name, selectedZone, urlGen, urlSeal, urlEmpty);
       setUploadStatus({ state: 'uploading', step: 'Готово!', progress: 100 });
       setTimeout(() => {
+        const compliment = takeComplimentForSuccess(user);
+        setSuccessCompliment(compliment);
         setUploadStatus({ state: 'success' });
         vibrate([100, 50, 100]);
         addToast('Задача успешно выполнена', 'success');
-        setTimeout(() => onSuccess('completed'), 700);
+        setTimeout(() => onSuccess('completed'), compliment ? 1600 : 700);
       }, 400);
     } catch (error: unknown) {
       vibrate([200, 100, 200]);
@@ -241,6 +329,11 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
                 <div className="w-24 h-24 rounded-full bg-emerald-500/20 flex items-center justify-center">
                   <CheckCircle className="w-16 h-16 text-emerald-500" />
                 </div>
+                {successCompliment && (
+                  <div className="order-2 max-w-[260px] text-center text-sm font-medium leading-snug text-rose-100/75">
+                    {successCompliment}
+                  </div>
+                )}
                 <div className="text-3xl font-black text-white uppercase">Успешно!</div>
               </div>
             )}
