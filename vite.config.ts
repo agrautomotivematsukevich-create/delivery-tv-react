@@ -16,11 +16,10 @@ export default defineConfig(({ mode }) => {
       plugins: [
         react(),
         VitePWA({
-          registerType: 'autoUpdate',
+          injectRegister: false,
+          registerType: 'prompt',
           workbox: {
             cleanupOutdatedCaches: true,
-            clientsClaim: true,
-            skipWaiting: true,
             runtimeCaching: [
               {
                 urlPattern: /^https:\/\/script\.google\.com\/.*/i,

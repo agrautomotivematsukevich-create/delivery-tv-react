@@ -12,6 +12,7 @@ import AdminPanel from './components/AdminPanel';
 import SplashScreen from './components/SplashScreen';
 import PageMeta from './components/PageMeta';
 import TVLoginScreen from './components/TVLoginScreen';
+import PwaUpdateBanner from './components/PwaUpdateBanner';
 import { api } from './services/api';
 import { TRANSLATIONS } from './constants';
 import { DashboardData, Task, TaskAction, TaskActionResult } from './types';
@@ -251,6 +252,8 @@ function App() {
     navigate(view === 'dashboard' ? '/' : `/${view}`);
   };
 
+  const isUpdateBannerBlocked = showAuth || showTerminal || showStats || showIssue || showIssueHistory || showAdmin || Boolean(currentAction);
+
   const lazyRoutes = (
     <Suspense fallback={<ViewFallback />}>
       <Routes>
@@ -275,6 +278,11 @@ function App() {
           ⚠️ ПОТЕРЯНО СОЕДИНЕНИЕ С СЕРВЕРОМ (ОФФЛАЙН РЕЖИМ)
         </div>
       )}
+      <PwaUpdateBanner
+        isBlocked={isUpdateBannerBlocked || !isAppReady || isLoading}
+        isTVMode={isTV || isTV2}
+        allowTVAutoReload={(isTV || isTV2) && Boolean(user) && isAppReady}
+      />
       <SplashScreen isLoaded={!isLoading} />
 
       {/* 🚀 ЛОГИКА ОТОБРАЖЕНИЯ ТВ ЭКРАНОВ */}

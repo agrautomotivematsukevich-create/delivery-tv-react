@@ -144,6 +144,26 @@
 
 ---
 
+## 2026-04-24 вЂ” PWA update banner
+
+**Type**: Frontend-only release UX improvement. No backend/API changes. No push/deploy.
+
+**Source files modified**:
+- `vite.config.ts` вЂ” switched `vite-plugin-pwa` from auto-update injection to explicit prompt registration.
+- `components/PwaUpdateBanner.tsx` вЂ” added service worker update detection, gentle update banner, 30-minute remind-later cooldown, and TV quiet auto-reload path.
+- `App.tsx` вЂ” mounted the update banner at root and blocked it during splash/modals/terminal/action flows.
+- `vite-env.d.ts` вЂ” added Vite/PWA virtual module type references.
+
+**Behavior**:
+- Desktop/mobile users see `Приложение обновлено` / `Доступна новая версия интерфейса` only when a new service worker is waiting.
+- `Обновить` activates the waiting service worker and reloads safely; `Позже` hides the banner for 30 minutes in the current session.
+- TV modes do not show the banner. After login/app-ready, a waiting update auto-applies after 60 seconds because TV has no click target and no data-entry flow.
+- Update checks run every 30 minutes only on visible tabs with an overlap guard.
+
+**Memory files updated**: `05-ui-behavior.md`, `06-performance-hotspots.md`, `11-change-log.md`.
+
+---
+
 ## 2026-04-24 — Terminal success easter egg visibility update
 
 **Type**: Frontend-only UX adjustment. No backend/API changes. No push/deploy.

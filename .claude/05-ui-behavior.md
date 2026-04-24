@@ -45,6 +45,7 @@ neither             → desktop/phone mode (header, footer, full nav)
 ## Key visual behaviors
 
 - **Offline banner**: `fixed top-0 w-full bg-red-500` when `isOffline=true` (App.tsx). Never clears until a successful response.
+- **PWA update banner**: `PwaUpdateBanner` is mounted from `App.tsx` and uses `vite-plugin-pwa` prompt lifecycle. Desktop/mobile users see a small bottom-corner banner only after an update is waiting, never during splash, terminal, action modal, auth/admin/stats/issue modals, or other blocked flows. `Обновить` activates the waiting service worker and reloads; `Позже` hides it for 30 minutes in the current session. In TV modes the banner is not rendered; after TV login/app-ready, an available update auto-applies after a 60s quiet delay because there is no operator click target.
 - **Splash screen**: `SplashScreen` shown until `isLoading=false`. Fades out.
 - **LKG preservation**: `dashboardData` in AppContext never set to null after first successful fetch. `allTasks` likewise (null response = keep prev).
 - **Night zero-plan guard**: before 07:00 Moscow time, `App.tsx` does not replace the last non-zero dashboard snapshot with a valid but empty (`total=0`, no active/territory) response. It keeps in-memory LKG, with a 12h localStorage fallback for TV reloads.
