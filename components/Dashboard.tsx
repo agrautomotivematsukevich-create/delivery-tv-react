@@ -344,7 +344,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
 
   return (
     <div className="w-full">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
          <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px]">Зоны выгрузки</div>
          <div className="text-[10px] font-bold text-white/60 tracking-wider">
             <span className="text-emerald-400">{busyCount}</span>
@@ -352,29 +352,29 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
             <span>{AVAILABLE_ZONES.length}</span>
           </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 w-full">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 w-full">
         {zones.map(z => {
           const isOver = z.isOver ?? false;
           const isWarn = z.active && !isOver && (z.elapsed ?? 0) >= UNLOAD_TARGET - 5;
 
-          let borderCls = 'border-white/[0.07] bg-white/[0.025]';
+          let borderCls = 'border-white/6 bg-white/2';
           let dotCls    = 'bg-white/15';
           let labelCls  = 'text-white/50';
           let nameCls   = 'text-white/50';
 
           if (z.active) {
             if (isOver) {
-              borderCls = 'border-red-500/45 bg-red-500/[0.08] shadow-[0_0_18px_rgba(248,113,113,0.14)]';
+              borderCls = 'border-red-500/40 bg-red-500/6 shadow-[0_0_12px_rgba(248,113,113,0.12)]';
               dotCls    = 'bg-red-400 animate-pulse';
               labelCls  = 'text-red-300/80';
               nameCls   = 'text-red-300';
             } else if (isWarn) {
-              borderCls = 'border-yellow-500/45 bg-yellow-500/[0.08]';
+              borderCls = 'border-yellow-500/40 bg-yellow-500/6';
               dotCls    = 'bg-yellow-400 animate-pulse';
               labelCls  = 'text-yellow-300/80';
               nameCls   = 'text-yellow-300';
             } else {
-              borderCls = 'border-emerald-500/40 bg-emerald-500/[0.07] shadow-[0_0_14px_rgba(0,230,118,0.1)]';
+              borderCls = 'border-emerald-500/40 bg-emerald-500/6 shadow-[0_0_10px_rgba(0,230,118,0.08)]';
               dotCls    = 'bg-emerald-400';
               labelCls  = 'text-emerald-300/80';
               nameCls   = 'text-emerald-300';
@@ -382,17 +382,17 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
           }
 
           return (
-            <div key={z.name} className={`min-h-[92px] rounded-2xl border transition-all duration-500 overflow-hidden ${borderCls} p-3 flex flex-col justify-between`}>
-              <div className="flex items-center gap-2 mb-2">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} />
-                <span className={`font-black text-sm tracking-wider uppercase ${nameCls}`}>{z.name}</span>
+            <div key={z.name} className={`rounded-xl border transition-all duration-500 overflow-hidden ${borderCls} p-2.5`}>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotCls}`} />
+                <span className={`font-black text-xs tracking-wider uppercase ${nameCls}`}>{z.name}</span>
               </div>
               {z.active ? (
                 <>
-                  <div className={`font-mono text-[11px] font-bold truncate ${labelCls}`} title={z.containerId}>
+                  <div className={`font-mono text-[10px] font-bold truncate ${labelCls}`} title={z.containerId}>
                     {z.containerId}
                   </div>
-                  <div className={`font-mono text-lg font-black mt-1 leading-none ${isOver ? 'text-red-400' : isWarn ? 'text-yellow-400' : 'text-emerald-400'}`}>
+                  <div className={`font-mono text-xs font-black mt-1 ${isOver ? 'text-red-400' : isWarn ? 'text-yellow-400' : 'text-emerald-400'}`}>
                     {isOver ? `+${(z.elapsed ?? 0) - UNLOAD_TARGET} мин` : `${Math.max(0, UNLOAD_TARGET - (z.elapsed ?? 0))} мин`}
                   </div>
                 </>
@@ -529,10 +529,6 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
       (!tk.start_time || tk.start_time.trim() === '') &&
       (!tk.end_time   || tk.end_time.trim()   === '')
   );
-  const activeCount = data.activeList.length;
-  const arrivedCount = arrivedTasks.length;
-  const busyZoneCount = new Set(data.activeList.map(item => item.zone).filter(Boolean)).size;
-  const freeZoneCount = Math.max(0, AVAILABLE_ZONES.length - busyZoneCount);
 
   const getStatusClass = (s: string) => {
     if (s === 'ACTIVE') return 'text-accent-green border-accent-green bg-accent-green/10 shadow-[0_0_20px_rgba(0,230,118,0.4)]';
@@ -543,7 +539,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
   // На TV убираем backdrop-blur — тяжёлый GPU-эффект для слабых устройств
   const glass = tvMode
     ? "bg-[rgba(25,27,37,0.95)] border border-white/10 border-t-white/15 rounded-3xl shadow-lg"
-    : "bg-[rgba(24,27,38,0.72)] backdrop-blur-xl border border-white/10 border-t-white/15 rounded-[2rem] shadow-[0_24px_80px_rgba(0,0,0,0.38)] ring-1 ring-white/[0.03]";
+    : "bg-card-bg backdrop-blur-xl border border-white/10 border-t-white/15 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.4)]";
 
   if (tvMode) {
     return (
@@ -653,26 +649,17 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
   }
 
   return (
-    <div className="dashboard-root grid w-full max-w-[1720px] mx-auto grid-cols-1 lg:grid-cols-[38%_1fr] gap-4 md:gap-5 xl:gap-6 flex-1 min-h-0">
+    <div className="dashboard-root grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] gap-4 md:gap-6 lg:gap-8 flex-1 min-h-0">
       
       {/* ── ЛЕВАЯ КОЛОНКА (Общий прогресс + Смены) ── */}
-      <div className={`${glass} relative flex flex-col p-4 sm:p-5 xl:p-6 overflow-hidden h-full min-w-0`}>
-        <div className="absolute -top-20 -left-16 hidden sm:block w-[280px] h-[280px] bg-accent-green blur-[140px] opacity-[0.05] pointer-events-none" />
-        <div className="absolute -bottom-24 right-0 hidden sm:block w-[220px] h-[220px] bg-accent-blue blur-[120px] opacity-[0.08] pointer-events-none" />
+      <div className={`${glass} relative flex flex-col p-4 sm:p-6 lg:p-8 overflow-hidden h-full min-w-0`}>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[250px] h-[250px] bg-accent-green blur-[130px] opacity-[0.03] pointer-events-none" />
         
-        <div className="flex items-center justify-between gap-3 w-full mb-4">
-          <div>
-            <div className="text-xs font-black text-white/55 uppercase tracking-[0.22em]">{t.progress}</div>
-            <div className="mt-1 text-[10px] text-white/35 font-bold uppercase tracking-widest">AGR control overview</div>
-          </div>
-          <div className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusClass(data.status)}`}>
-            {data.status === 'ACTIVE' ? t.status_active : data.status === 'PAUSE' ? t.status_pause : t.status_wait}
-          </div>
-        </div>
+        <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] w-full text-left mb-4 sm:mb-6">{t.progress}</div>
         
         {/* Круговой график */}
-        <div className="flex flex-col items-center justify-center w-full min-h-[190px] sm:min-h-[220px] xl:min-h-[240px] my-1">
-          <div className="relative w-full max-w-[238px] sm:max-w-[260px] xl:max-w-[280px] aspect-square">
+        <div className="flex-1 flex flex-col items-center justify-center w-full min-h-[210px] sm:min-h-[250px] my-1 sm:my-2">
+          <div className="relative w-full max-w-[280px] aspect-square">
             <svg className="absolute top-0 left-0 w-full h-full -rotate-90 drop-shadow-[0_0_15px_rgba(0,230,118,0.2)]" viewBox="0 0 350 350">
               <circle cx="175" cy="175" r="150" fill="none" strokeWidth="12" className="stroke-white/5" />
               <circle cx="175" cy="175" r="150" fill="none" strokeWidth="12" strokeLinecap="round"
@@ -680,26 +667,15 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
                 strokeDasharray={circumference} strokeDashoffset={strokeOffset} />
             </svg>
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10">
-              <div className="text-6xl sm:text-7xl xl:text-8xl font-black tracking-tighter text-white drop-shadow-md">{percent}%</div>
+              <div className="text-6xl sm:text-7xl lg:text-8xl font-black tracking-tighter text-white drop-shadow-md">{percent}%</div>
               <div className="font-mono text-xl sm:text-2xl text-white/50 font-bold mt-2">{data.done} <span className="text-white/30">/</span> {data.total}</div>
             </div>
           </div>
         </div>
 
         {/* Статус Дашборда */}
-        <div className="grid grid-cols-3 gap-2 w-full mt-4">
-          <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] px-3 py-3">
-            <div className="text-[9px] font-black uppercase tracking-widest text-white/35">ACTIVE</div>
-            <div className="mt-1 font-mono text-2xl font-black text-accent-green tabular-nums">{activeCount}</div>
-          </div>
-          <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] px-3 py-3">
-            <div className="text-[9px] font-black uppercase tracking-widest text-white/35">WAITING</div>
-            <div className="mt-1 font-mono text-2xl font-black text-accent-blue tabular-nums">{arrivedCount}</div>
-          </div>
-          <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] px-3 py-3">
-            <div className="text-[9px] font-black uppercase tracking-widest text-white/35">FREE</div>
-            <div className="mt-1 font-mono text-2xl font-black text-white/75 tabular-nums">{freeZoneCount}</div>
-          </div>
+        <div className={`w-full py-3 sm:py-4 mt-4 sm:mt-6 rounded-2xl text-sm sm:text-base font-extrabold uppercase tracking-widest border text-center transition-colors duration-500 ${getStatusClass(data.status)}`}>
+          {data.status === 'ACTIVE' ? t.status_active : data.status === 'PAUSE' ? t.status_pause : t.status_wait}
         </div>
         
         {/* Блок Нормы */}
@@ -718,31 +694,27 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
       </div>
 
       {/* ── ПРАВАЯ КОЛОНКА (Очередь + Территория + Зоны) ── */}
-      <div className="flex flex-col gap-4 md:gap-5 xl:gap-6 h-full min-h-0 min-w-0">
+      <div className="flex flex-col gap-4 md:gap-6 lg:gap-8 h-full min-h-0 min-w-0">
         
         {/* Верхний ряд: Следующий + На территории */}
         {!isVictory && !isEmpty && (
-          <div className="grid grid-cols-1 lg:grid-cols-[60%_1fr] gap-4 md:gap-5 xl:gap-6 shrink-0">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 lg:gap-8 shrink-0">
             {/* Карточка "Следующий" */}
-            <div className={`${glass} relative overflow-hidden p-4 sm:p-5 xl:p-6 min-h-[170px] flex flex-col justify-center`}>
-              <div className="absolute -right-12 -top-16 hidden sm:block h-40 w-40 rounded-full bg-accent-blue/20 blur-3xl pointer-events-none" />
-              <div className="relative text-xs font-black text-white/55 uppercase tracking-[0.22em] mb-3">{t.next}</div>
-              <div className="relative font-mono text-5xl sm:text-6xl xl:text-7xl font-black tracking-tighter my-1 bg-gradient-to-br from-white via-white to-gray-500 bg-clip-text text-transparent truncate" title={data.nextId}>
+            <div className={`${glass} p-4 sm:p-6 lg:p-8 flex flex-col justify-center`}>
+              <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] mb-3">{t.next}</div>
+              <div className="font-mono text-4xl sm:text-5xl xl:text-6xl font-black tracking-tighter my-1 bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">
                 {data.nextId}
               </div>
-              <div className="relative text-base sm:text-xl lg:text-2xl text-accent-blue font-black flex items-center gap-3 mt-3 bg-accent-blue/10 w-fit max-w-full px-3 sm:px-4 py-2 rounded-2xl border border-accent-blue/20">
+              <div className="text-base sm:text-xl lg:text-2xl text-accent-blue font-bold flex items-center gap-3 mt-2 bg-accent-blue/10 w-fit px-3 sm:px-4 py-2 rounded-xl border border-accent-blue/20">
                 <Clock className="w-5 h-5 animate-pulse" />
                 {calculateTimeDiff(data.nextTime, t)}
               </div>
             </div>
 
             {/* Карточка "На территории" */}
-            <div className={`${glass} p-4 sm:p-5 xl:p-6 flex flex-col min-h-[170px]`}>
-               <div className="flex items-center justify-between gap-3 mb-3">
-                 <div className="text-xs font-black text-white/55 uppercase tracking-[0.22em]">Ожидают выгрузки</div>
-                 <div className="rounded-full border border-accent-blue/20 bg-accent-blue/10 px-2.5 py-1 text-[10px] font-black text-accent-blue tabular-nums">{arrivedCount}</div>
-               </div>
-               <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+            <div className={`${glass} p-4 sm:p-6 lg:p-8 flex flex-col`}>
+               <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] mb-3">Ожидают выгрузки</div>
+               <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
                  <OnTerritoryBlock arrivedTasks={arrivedTasks} />
                </div>
             </div>
@@ -752,17 +724,14 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
         {/* Средний ряд: Активные задачи */}
         {!isVictory && !isEmpty && (
           <div className={`${glass} flex-1 min-h-0 flex flex-col overflow-hidden`}>
-            <div className="flex items-center justify-between gap-3 p-4 sm:p-5 xl:p-6 pb-0">
-              <div>
-                <div className="text-xs font-black text-white/55 uppercase tracking-[0.22em]">{t.list}</div>
-                <div className="mt-1 text-[10px] text-white/35 font-bold uppercase tracking-widest">live operations</div>
-              </div>
-              <div className="text-xs font-black bg-white/[0.04] border border-white/10 px-3 py-1.5 rounded-full text-white/60">
-                <span className="text-accent-green">{activeCount}</span> в работе
+            <div className="flex items-center justify-between p-4 sm:p-6 lg:p-8 pb-0">
+              <div className="text-xs font-bold text-white/50 uppercase tracking-[2px]">{t.list}</div>
+              <div className="text-xs font-bold bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg text-white/60">
+                <span className="text-accent-green">{data.activeList.length}</span> в работе
               </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 xl:p-6 pt-4 space-y-2.5 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pt-4 space-y-3 custom-scrollbar">
               {data.activeList.length === 0 ? (
                  <div className="flex flex-col items-center justify-center h-full text-white/30 gap-4 opacity-50">
                     <Truck size={48} strokeWidth={1} />
@@ -777,22 +746,19 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
                   : isWarn ? 'border-yellow-500/40 bg-yellow-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10';
                 
                 return (
-                  <div key={item.id} className={`grid grid-cols-[auto_1fr] sm:grid-cols-[auto_1fr_auto] gap-3 sm:gap-4 items-center p-3 sm:p-4 rounded-2xl border transition-all duration-300 ${glowCls}`}>
-                    <UnloadTimer startTime={item.start} sz={52} />
-                    <div className="min-w-0 overflow-hidden">
-                      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                        <span className="font-mono text-xl sm:text-2xl xl:text-3xl font-black text-white truncate drop-shadow-md">{item.id}</span>
+                  <div key={item.id} className={`flex items-center p-3 sm:p-4 lg:p-5 rounded-2xl border transition-all duration-300 ${glowCls}`}>
+                    <UnloadTimer startTime={item.start} sz={56} />
+                    <div className="flex-1 flex items-center gap-2 sm:gap-4 ml-3 sm:ml-5 lg:ml-6 overflow-hidden">
+                      <span className="font-mono text-xl sm:text-2xl lg:text-3xl font-black text-white truncate drop-shadow-md">{item.id}</span>
                       {item.zone && (
-                        <span className="px-2.5 py-1 rounded-lg bg-white/10 border border-white/20 text-xs font-black text-white/80 uppercase shrink-0 shadow-sm">
+                        <span className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-xs font-black text-white/80 uppercase shrink-0 shadow-sm">
                           {item.zone}
                         </span>
                       )}
-                      </div>
-                      <div className="mt-1 text-[10px] font-bold uppercase tracking-widest text-white/35">{isOver ? 'SLA control' : isWarn ? 'SLA watch' : 'on schedule'}</div>
                     </div>
-                    <div className="col-span-2 sm:col-span-1 sm:ml-auto flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 shrink-0 bg-black/20 px-3 py-2 rounded-xl border border-white/5">
+                    <div className="ml-auto flex flex-col items-end shrink-0 bg-black/20 p-2 rounded-xl border border-white/5">
                       <span className="text-[9px] uppercase text-white/40 font-bold tracking-widest mb-1">{t.lbl_start}</span>
-                      <span className="font-mono text-lg xl:text-xl font-black text-accent-green leading-none">{item.start}</span>
+                      <span className="font-mono text-xl lg:text-2xl font-black text-accent-green leading-none">{item.start}</span>
                     </div>
                   </div>
                 );
@@ -802,7 +768,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
         )}
 
         {/* Нижний ряд: Зоны (DockZonesGrid) */}
-        <div className={`${glass} p-4 sm:p-5 xl:p-6 shrink-0`}>
+        <div className={`${glass} p-4 sm:p-6 lg:p-8 shrink-0`}>
           <DockZonesGrid activeList={data.activeList} allTasks={allTasks} />
         </div>
 
