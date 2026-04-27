@@ -137,12 +137,12 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
-      <div className="bg-[#0F0F12] border border-white/10 p-8 rounded-3xl w-full max-w-[550px] flex flex-col gap-6 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm mobile-modal-frame animate-in fade-in zoom-in duration-200">
+      <div className="bg-[#0F0F12] border border-white/10 p-5 sm:p-8 rounded-t-3xl sm:rounded-3xl w-full max-w-[550px] flex flex-col gap-5 sm:gap-6 shadow-2xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[90vh] overflow-y-auto custom-scrollbar">
         
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-extrabold text-white uppercase tracking-wider">{t.issue_title}</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
+          <h2 className="text-xl sm:text-2xl font-extrabold text-white uppercase tracking-wider">{t.issue_title}</h2>
+          <button onClick={onClose} className="min-h-10 min-w-10 rounded-xl bg-white/5 text-white/40 hover:text-white transition-colors flex items-center justify-center">
             <X size={24} />
           </button>
         </div>
@@ -177,7 +177,7 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
         {/* Photos */}
         <div>
            <label className="text-xs font-bold text-white/40 mb-2 block uppercase tracking-wider">Photos (Max 3)</label>
-           <div className="grid grid-cols-3 gap-3">
+           <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {photos.map((p, idx) => (
                 <div 
                   key={idx}

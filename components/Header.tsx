@@ -34,13 +34,13 @@ const Header: React.FC<HeaderProps> = ({
   const formattedDate = time.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 h-auto z-50 gap-4 relative pt-2">
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-3 md:mb-6 h-auto z-50 gap-3 md:gap-4 relative pt-1 md:pt-2">
       
       {/* Title + Mobile Time Block */}
-      <div className="flex justify-between items-center w-full md:w-auto">
+      <div className="flex justify-between items-center w-full md:w-auto min-w-0">
         <div 
           onClick={onStatsClick}
-          className="flex items-center gap-3 cursor-pointer group"
+          className="flex items-center gap-3 cursor-pointer group min-w-0"
         >
           <img src="/agr-logo-white.svg" alt="AGR" className="h-7 md:h-8 opacity-80 group-hover:opacity-100 transition-opacity" />
           <div className="h-5 w-px bg-white/15 hidden md:block"></div>
@@ -55,20 +55,20 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+      <div className="flex flex-wrap items-center gap-2 md:gap-3 w-full md:w-auto">
         {/* Navigation Bar */}
         {user && (
-          <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/5 overflow-x-auto no-scrollbar max-w-full">
+          <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/5 overflow-x-auto no-scrollbar max-w-full w-full md:w-auto">
              <button 
                onClick={() => setView('dashboard')}
-               className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'dashboard' ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
+               className={`flex min-h-10 items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'dashboard' ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
              >
                <LayoutDashboard size={14} />
                <span className="hidden sm:inline lg:inline">{t.nav_dashboard}</span>
              </button>
              <button 
                onClick={() => setView('history')}
-               className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'history' ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
+               className={`flex min-h-10 items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'history' ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
              >
                <Archive size={14} />
                <span className="hidden sm:inline lg:inline">{t.nav_history}</span>
@@ -77,7 +77,7 @@ const Header: React.FC<HeaderProps> = ({
              {(user.role === 'LOGISTIC' || user.role === 'ADMIN') && (
                <button 
                  onClick={() => setView('downtime')}
-                 className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'downtime' ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
+                 className={`flex min-h-10 items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'downtime' ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
                >
                  <TrendingDown size={14} />
                  <span className="hidden sm:inline lg:inline">{t.nav_downtime}</span>
@@ -86,7 +86,7 @@ const Header: React.FC<HeaderProps> = ({
              {(user.role === 'LOGISTIC' || user.role === 'ADMIN') && (
                <button 
                  onClick={() => setView('arrival')}
-                 className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'arrival' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/20' : 'text-white/60 hover:text-white'}`}
+                 className={`flex min-h-10 items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'arrival' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/20' : 'text-white/60 hover:text-white'}`}
                >
                  <Timer size={14} />
                  <span className="hidden sm:inline lg:inline">{t.nav_arrival}</span>
@@ -96,7 +96,7 @@ const Header: React.FC<HeaderProps> = ({
              {(user.role === 'LOGISTIC' || user.role === 'ADMIN') && (
                <button 
                  onClick={() => setView('logistics')}
-                 className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'logistics' ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
+                 className={`flex min-h-10 items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'logistics' ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
                >
                  <Truck size={14} />
                  <span className="hidden sm:inline lg:inline">{t.nav_plan}</span>
@@ -109,7 +109,7 @@ const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-2 ml-auto md:ml-0">
            <button 
              onClick={onToggleLang}
-             className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white/60 hover:text-white bg-white/5 md:bg-transparent"
+             className="flex min-h-10 items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white/60 hover:text-white bg-white/5 md:bg-transparent"
            >
              <Globe size={16} />
              <span>{lang === 'RU' ? 'RU' : 'EN'}</span>
@@ -119,15 +119,15 @@ const Header: React.FC<HeaderProps> = ({
              <>
                <button 
                   onClick={onTerminalClick}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider text-accent-blue bg-accent-blue/10 border border-accent-blue/20"
+                  className="flex min-h-10 items-center gap-2 px-4 py-2 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider text-accent-blue bg-accent-blue/10 border border-accent-blue/20"
                >
                  <ScanBarcode size={16} />
-                 <span className="hidden xs:inline">{t.drv_title}</span>
+                 <span className="hidden sm:inline">{t.drv_title}</span>
                </button>
 
                <button 
                   onClick={onIssueClick}
-                  className="p-2 rounded-xl text-accent-red bg-accent-red/10 md:bg-transparent border border-accent-red/20 md:border-transparent"
+                  className="min-h-10 min-w-10 p-2 rounded-xl text-accent-red bg-accent-red/10 md:bg-transparent border border-accent-red/20 md:border-transparent"
                >
                  <AlertTriangle size={18} />
                </button>
@@ -140,7 +140,7 @@ const Header: React.FC<HeaderProps> = ({
           {user ? (
              <button 
                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-               className="flex items-center gap-2 pl-1 pr-3 py-1.5 rounded-xl border border-white/10 bg-white/5"
+               className="flex min-h-10 items-center gap-2 pl-1 pr-3 py-1.5 rounded-xl border border-white/10 bg-white/5"
              >
                <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center text-white">
                  <UserIcon size={12} />
@@ -151,7 +151,7 @@ const Header: React.FC<HeaderProps> = ({
           ) : (
             <button 
               onClick={onLoginClick} 
-              className="px-4 py-2 rounded-xl bg-white text-black font-bold text-[10px] md:text-xs uppercase tracking-widest"
+              className="min-h-10 px-4 py-2 rounded-xl bg-white text-black font-bold text-[10px] md:text-xs uppercase tracking-widest"
             >
                {t.btn_login}
             </button>

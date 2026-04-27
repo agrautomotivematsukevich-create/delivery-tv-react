@@ -216,11 +216,11 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   );
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-      <div className="bg-[#0F0F12] border border-white/10 p-6 rounded-3xl w-full max-w-[480px] flex flex-col gap-5 relative max-h-[95vh] overflow-y-auto shadow-2xl">
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm mobile-modal-frame">
+      <div className="bg-[#0F0F12] border border-white/10 p-4 sm:p-6 rounded-t-3xl sm:rounded-3xl w-full max-w-[480px] flex flex-col gap-4 sm:gap-5 relative max-h-[calc(100dvh-1.5rem)] sm:max-h-[95vh] overflow-y-auto shadow-2xl">
         
         {(isSubmitting || isSuccess || isQueued) && (
-          <div className="absolute inset-0 bg-black/85 backdrop-blur-sm rounded-3xl z-10 flex flex-col items-center justify-center gap-4 p-8">
+          <div className="absolute inset-0 bg-black/85 backdrop-blur-sm rounded-t-3xl sm:rounded-3xl z-10 flex flex-col items-center justify-center gap-4 p-6 sm:p-8">
             {isSubmitting && uploadStatus.state === 'uploading' && (
               <>
                 <div className="relative w-28 h-28">
@@ -261,7 +261,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         )}
 
         {isError && (
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-md rounded-3xl z-10 flex flex-col items-center justify-center gap-5 p-8 border-2 border-red-500/30">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-md rounded-t-3xl sm:rounded-3xl z-10 flex flex-col items-center justify-center gap-5 p-6 sm:p-8 border-2 border-red-500/30">
             <AlertCircle className="w-16 h-16 text-red-500" />
             <div className="text-xl font-black text-white uppercase text-center">{uploadStatus.state === 'error' && uploadStatus.message}</div>
             <button onClick={() => setUploadStatus({ state: 'idle' })} className="w-full py-4 bg-red-600 text-white font-black uppercase rounded-2xl">Попробовать снова</button>
@@ -295,15 +295,15 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           <div>
             <div className="grid grid-cols-3 gap-2">
               {AVAILABLE_ZONES.map(z => (
-                <button key={z} onClick={() => setZone(z)} className={`py-3 rounded-xl font-black text-xs border transition-all ${zone === z ? 'bg-[#1E7D7D] text-white' : 'bg-white/5 text-white/40 border-transparent'}`}>{z}</button>
+                <button key={z} onClick={() => setZone(z)} className={`min-h-11 py-3 rounded-xl font-black text-xs border transition-all ${zone === z ? 'bg-[#1E7D7D] text-white' : 'bg-white/5 text-white/40 border-transparent'}`}>{z}</button>
               ))}
             </div>
           </div>
         )}
 
         {isLocalManual ? (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col items-center">
-            <input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)} className="bg-transparent text-white text-5xl font-mono text-center outline-none" />
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-6 flex flex-col items-center">
+            <input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)} className="bg-transparent text-white text-4xl sm:text-5xl font-mono text-center outline-none" />
           </div>
         ) : (
           <div className={`grid gap-3 ${isStart ? 'grid-cols-2' : 'grid-cols-1'}`}>
@@ -316,7 +316,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           <button onClick={handleSubmit} disabled={isSubmitting || processingPhoto || isOfflinePhotoBlocked || !isFormValid()} className={`w-full py-5 font-black text-sm rounded-2xl uppercase ${isLocalManual ? 'bg-orange-600' : 'bg-[#1E7D7D]'} text-white disabled:opacity-20`}>
             {isSubmitting ? 'Загрузка...' : 'Подтвердить'}
           </button>
-          <button onClick={onClose} className="text-white/30 py-2 text-[9px] font-black uppercase">Отмена</button>
+          <button onClick={onClose} className="text-white/30 py-3 text-[9px] font-black uppercase">Отмена</button>
         </div>
 
         <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileChange} />
@@ -324,7 +324,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       </div>
 
       {showPhotoMenu && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 p-4" onClick={() => setShowPhotoMenu(null)}>
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 mobile-modal-frame" onClick={() => setShowPhotoMenu(null)}>
           <div className="w-full max-w-sm bg-[#1A1A1F] rounded-t-3xl overflow-hidden p-4 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
              <button onClick={triggerCamera} className="w-full flex items-center gap-4 p-5 text-white bg-white/5 rounded-2xl"><Camera className="w-5 h-5" /> <span className="font-bold">Камера</span></button>
              <button onClick={triggerGallery} className="w-full flex items-center gap-4 p-5 text-white bg-white/5 rounded-2xl"><Upload className="w-5 h-5" /> <span className="font-bold">Галерея</span></button>

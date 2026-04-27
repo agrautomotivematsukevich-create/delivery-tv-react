@@ -153,11 +153,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
     : 'text-accent-red bg-red-500/10 border border-red-500/20';
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-[#0F0F12] border border-white/10 p-10 rounded-[2rem] w-full max-w-md shadow-2xl relative">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-md mobile-modal-frame animate-in fade-in duration-200">
+      <div className="bg-[#0F0F12] border border-white/10 p-6 sm:p-10 rounded-t-[2rem] sm:rounded-[2rem] w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto shadow-2xl relative">
 
         {/* ── Header ── */}
-        <h2 className="text-3xl font-extrabold text-center mb-8 text-white">
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-center mb-6 sm:mb-8 text-white">
           {mode === 'login' ? 'Вход' : 'Регистрация'}
         </h2>
 
@@ -244,7 +244,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
         </form>
 
         {/* ── Footer: Switch mode & Cancel ── */}
-        <div className="mt-6 flex justify-between text-sm">
+        <div className="mt-6 flex justify-between gap-4 text-sm">
           <button
             type="button"
             onClick={switchMode}

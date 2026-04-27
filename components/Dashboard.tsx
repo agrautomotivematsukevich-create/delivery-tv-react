@@ -649,16 +649,16 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
   }
 
   return (
-    <div className="dashboard-root grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] gap-6 lg:gap-8 flex-1 min-h-0">
+    <div className="dashboard-root grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] gap-4 md:gap-6 lg:gap-8 flex-1 min-h-0">
       
       {/* ── ЛЕВАЯ КОЛОНКА (Общий прогресс + Смены) ── */}
-      <div className={`${glass} relative flex flex-col p-6 lg:p-8 overflow-hidden h-full min-w-0`}>
+      <div className={`${glass} relative flex flex-col p-4 sm:p-6 lg:p-8 overflow-hidden h-full min-w-0`}>
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[250px] h-[250px] bg-accent-green blur-[130px] opacity-[0.03] pointer-events-none" />
         
-        <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] w-full text-left mb-6">{t.progress}</div>
+        <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] w-full text-left mb-4 sm:mb-6">{t.progress}</div>
         
         {/* Круговой график */}
-        <div className="flex-1 flex flex-col items-center justify-center w-full min-h-[250px] my-2">
+        <div className="flex-1 flex flex-col items-center justify-center w-full min-h-[210px] sm:min-h-[250px] my-1 sm:my-2">
           <div className="relative w-full max-w-[280px] aspect-square">
             <svg className="absolute top-0 left-0 w-full h-full -rotate-90 drop-shadow-[0_0_15px_rgba(0,230,118,0.2)]" viewBox="0 0 350 350">
               <circle cx="175" cy="175" r="150" fill="none" strokeWidth="12" className="stroke-white/5" />
@@ -667,14 +667,14 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
                 strokeDasharray={circumference} strokeDashoffset={strokeOffset} />
             </svg>
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10">
-              <div className="text-7xl lg:text-8xl font-black tracking-tighter text-white drop-shadow-md">{percent}%</div>
-              <div className="font-mono text-2xl text-white/50 font-bold mt-2">{data.done} <span className="text-white/30">/</span> {data.total}</div>
+              <div className="text-6xl sm:text-7xl lg:text-8xl font-black tracking-tighter text-white drop-shadow-md">{percent}%</div>
+              <div className="font-mono text-xl sm:text-2xl text-white/50 font-bold mt-2">{data.done} <span className="text-white/30">/</span> {data.total}</div>
             </div>
           </div>
         </div>
 
         {/* Статус Дашборда */}
-        <div className={`w-full py-4 mt-6 rounded-2xl text-base font-extrabold uppercase tracking-widest border text-center transition-colors duration-500 ${getStatusClass(data.status)}`}>
+        <div className={`w-full py-3 sm:py-4 mt-4 sm:mt-6 rounded-2xl text-sm sm:text-base font-extrabold uppercase tracking-widest border text-center transition-colors duration-500 ${getStatusClass(data.status)}`}>
           {data.status === 'ACTIVE' ? t.status_active : data.status === 'PAUSE' ? t.status_pause : t.status_wait}
         </div>
         
@@ -684,7 +684,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
         </div>
 
         {/* Блок Смен */}
-        <div className="w-full mt-6">
+        <div className="w-full mt-4 sm:mt-6">
           <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-3 flex items-center justify-between">
             <span>По сменам</span>
             {isTasksLoading && <span className="text-white/30 text-[9px] animate-pulse flex items-center gap-1"><Clock size={10}/> Загрузка</span>}
@@ -694,25 +694,25 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
       </div>
 
       {/* ── ПРАВАЯ КОЛОНКА (Очередь + Территория + Зоны) ── */}
-      <div className="flex flex-col gap-6 lg:gap-8 h-full min-h-0 min-w-0">
+      <div className="flex flex-col gap-4 md:gap-6 lg:gap-8 h-full min-h-0 min-w-0">
         
         {/* Верхний ряд: Следующий + На территории */}
         {!isVictory && !isEmpty && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8 shrink-0">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 lg:gap-8 shrink-0">
             {/* Карточка "Следующий" */}
-            <div className={`${glass} p-6 lg:p-8 flex flex-col justify-center`}>
+            <div className={`${glass} p-4 sm:p-6 lg:p-8 flex flex-col justify-center`}>
               <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] mb-3">{t.next}</div>
-              <div className="font-mono text-5xl xl:text-6xl font-black tracking-tighter my-1 bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">
+              <div className="font-mono text-4xl sm:text-5xl xl:text-6xl font-black tracking-tighter my-1 bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">
                 {data.nextId}
               </div>
-              <div className="text-xl lg:text-2xl text-accent-blue font-bold flex items-center gap-3 mt-2 bg-accent-blue/10 w-fit px-4 py-2 rounded-xl border border-accent-blue/20">
+              <div className="text-base sm:text-xl lg:text-2xl text-accent-blue font-bold flex items-center gap-3 mt-2 bg-accent-blue/10 w-fit px-3 sm:px-4 py-2 rounded-xl border border-accent-blue/20">
                 <Clock className="w-5 h-5 animate-pulse" />
                 {calculateTimeDiff(data.nextTime, t)}
               </div>
             </div>
 
             {/* Карточка "На территории" */}
-            <div className={`${glass} p-6 lg:p-8 flex flex-col`}>
+            <div className={`${glass} p-4 sm:p-6 lg:p-8 flex flex-col`}>
                <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] mb-3">Ожидают выгрузки</div>
                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
                  <OnTerritoryBlock arrivedTasks={arrivedTasks} />
@@ -724,14 +724,14 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
         {/* Средний ряд: Активные задачи */}
         {!isVictory && !isEmpty && (
           <div className={`${glass} flex-1 min-h-0 flex flex-col overflow-hidden`}>
-            <div className="flex items-center justify-between p-6 lg:p-8 pb-0">
+            <div className="flex items-center justify-between p-4 sm:p-6 lg:p-8 pb-0">
               <div className="text-xs font-bold text-white/50 uppercase tracking-[2px]">{t.list}</div>
               <div className="text-xs font-bold bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg text-white/60">
                 <span className="text-accent-green">{data.activeList.length}</span> в работе
               </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-6 lg:p-8 pt-4 space-y-3 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pt-4 space-y-3 custom-scrollbar">
               {data.activeList.length === 0 ? (
                  <div className="flex flex-col items-center justify-center h-full text-white/30 gap-4 opacity-50">
                     <Truck size={48} strokeWidth={1} />
@@ -746,10 +746,10 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
                   : isWarn ? 'border-yellow-500/40 bg-yellow-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10';
                 
                 return (
-                  <div key={item.id} className={`flex items-center p-4 lg:p-5 rounded-2xl border transition-all duration-300 ${glowCls}`}>
+                  <div key={item.id} className={`flex items-center p-3 sm:p-4 lg:p-5 rounded-2xl border transition-all duration-300 ${glowCls}`}>
                     <UnloadTimer startTime={item.start} sz={56} />
-                    <div className="flex-1 flex items-center gap-4 ml-5 lg:ml-6 overflow-hidden">
-                      <span className="font-mono text-2xl lg:text-3xl font-black text-white truncate drop-shadow-md">{item.id}</span>
+                    <div className="flex-1 flex items-center gap-2 sm:gap-4 ml-3 sm:ml-5 lg:ml-6 overflow-hidden">
+                      <span className="font-mono text-xl sm:text-2xl lg:text-3xl font-black text-white truncate drop-shadow-md">{item.id}</span>
                       {item.zone && (
                         <span className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-xs font-black text-white/80 uppercase shrink-0 shadow-sm">
                           {item.zone}
@@ -768,7 +768,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
         )}
 
         {/* Нижний ряд: Зоны (DockZonesGrid) */}
-        <div className={`${glass} p-6 lg:p-8 shrink-0`}>
+        <div className={`${glass} p-4 sm:p-6 lg:p-8 shrink-0`}>
           <DockZonesGrid activeList={data.activeList} allTasks={allTasks} />
         </div>
 

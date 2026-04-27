@@ -178,14 +178,14 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     <div className="terminal-root fixed top-0 left-0 w-full h-[100dvh] z-[60] flex flex-col justify-end md:justify-center items-center bg-black/80 backdrop-blur-xl md:p-8 animate-in fade-in duration-200">
       
       <div 
-        className="bg-[#191B25] w-full md:w-[95%] max-w-[800px] h-[92dvh] md:h-[90dvh] rounded-t-3xl md:rounded-[2.5rem] border border-white/10 flex flex-col shadow-2xl overflow-hidden relative"
+        className="bg-[#191B25] w-full md:w-[95%] max-w-[800px] h-[94dvh] md:h-[90dvh] rounded-t-3xl md:rounded-[2.5rem] border border-white/10 flex flex-col shadow-2xl overflow-hidden relative"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-white/5 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="text-xl font-extrabold uppercase tracking-widest text-white">{t.drv_title}</div>
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-white/10 bg-white/5 shrink-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+            <div className="text-lg sm:text-xl font-extrabold uppercase tracking-widest text-white truncate">{t.drv_title}</div>
             {(!isOnline || pendingCount > 0) && (
               <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
                 !isOnline ? 'bg-red-500/15 border border-red-500/30 text-red-400' : 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
@@ -198,19 +198,19 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
           <div className="flex items-center gap-2">
             {hasActive && (
               <button onClick={scrollToActive} title="Перейти к активному"
-                className="w-9 h-9 rounded-full bg-accent-green/15 border border-accent-green/30 hover:bg-accent-green/25 flex items-center justify-center transition-colors">
+                className="w-10 h-10 rounded-full bg-accent-green/15 border border-accent-green/30 hover:bg-accent-green/25 flex items-center justify-center transition-colors">
                 <ChevronUp size={16} className="text-accent-green" />
               </button>
             )}
             <button onClick={onClose}
-              className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/20 flex items-center justify-center transition-colors">
+              className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/20 flex items-center justify-center transition-colors">
               <X size={18} className="text-white/60" />
             </button>
           </div>
         </div>
 
         {/* Search */}
-        <div className="px-6 py-3 border-b border-white/5 shrink-0">
+        <div className="px-4 sm:px-6 py-3 border-b border-white/5 shrink-0">
           <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-2.5 focus-within:border-accent-blue/50 transition-colors">
             <Search size={16} className="text-white/50 shrink-0" />
             <input type="text" value={search} onChange={e => setSearch(e.target.value)}
@@ -225,7 +225,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 pb-6 space-y-2 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 pb-6 space-y-2 custom-scrollbar">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-white/60 animate-pulse text-sm">Загрузка...</div>
@@ -265,7 +265,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
                   {/* Main row */}
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className={`w-1.5 h-10 rounded-full shrink-0 ${
                         isActive ? (isOvertime ? 'bg-red-400 animate-pulse' : 'bg-accent-green') : 'bg-white/15'
                       }`} />
@@ -298,7 +298,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 ml-auto shrink-0">
+                    <div className="flex w-full sm:w-auto items-center gap-2 ml-auto shrink-0">
                       {isActive && task.start_time && (
                         <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-mono text-sm font-black tabular-nums ${
                           isOvertime ? 'bg-red-500/10 border-red-500/30 text-red-400'
@@ -311,7 +311,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
                       {task.phone && (
                         <a href={`tel:${task.phone}`}
-                          className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors">
+                          className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors">
                           <Phone size={16} className="text-accent-green" />
                         </a>
                       )}
@@ -319,7 +319,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                       <button
                         disabled={isProcessing}
                         onClick={() => handleTaskActionLocal(task, isWait ? 'start' : 'finish')}
-                        className={`h-10 px-5 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 min-w-[120px] ${
+                        className={`h-11 flex-1 sm:flex-none px-5 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 min-w-[120px] ${
                           isWait ? 'bg-accent-blue text-white active:bg-accent-blue/80 md:hover:bg-accent-blue/80' 
                                  : 'bg-accent-green text-black active:bg-accent-green/80 md:hover:bg-accent-green/80'
                         }`}>
@@ -336,7 +336,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
                   {/* Undo row for active */}
                   {isActive && (
-                    <div className="flex items-center justify-between pl-5 pt-1 border-t border-white/5 mt-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pl-0 sm:pl-5 pt-2 border-t border-white/5 mt-1">
                       <span className="text-[10px] text-white/50 font-mono">
                         {/* Зону отсюда мы убрали, так как она теперь крупно сверху */}
                         {task.operator && <span>Оператор: {task.operator}</span>}
@@ -369,7 +369,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
         {/* Footer */}
         {!loading && sorted.length > 0 && (
-          <div className="px-6 py-3 border-t border-white/5 shrink-0 flex items-center justify-between">
+          <div className="px-4 sm:px-6 py-3 border-t border-white/5 shrink-0 flex items-center justify-between">
             <span className="text-xs text-white/50 font-mono">
               {activeCount} активных · {waitCount} в очереди
             </span>
