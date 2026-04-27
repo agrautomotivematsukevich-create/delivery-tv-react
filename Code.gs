@@ -10,6 +10,8 @@ var ALERT_EMAIL  = "MHReceiving@agr.auto";  // TODO: move to sheet config cell
 
 var ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
 var MAX_PHOTO_BASE64_LEN = 7000000;  // ~5 MB decoded
+var AUDIT_LOG_SHEET_NAME = "AUDIT_LOG";
+var AUDIT_LOG_HEADERS = ["Timestamp", "Login", "Name", "Role", "Action", "EntityType", "EntityId", "Details", "Device", "Result"];
 
 // TV displays use a static API key instead of user tokens.
 // Value stored in Apps Script Project Settings → Script Properties → TV_API_KEY
@@ -498,6 +500,68 @@ function textOut(str) {
     .setMimeType(ContentService.MimeType.TEXT);
 }
 
+function normalizeAuditCell(value, maxLen) {
+  var text = value === null || value === undefined ? "" : String(value);
+  text = text.replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
+  if (maxLen && text.length > maxLen) text = text.substring(0, maxLen);
+  if (text && /^[=+\-@]/.test(text)) text = "'" + text;
+  return text;
+}
+
+function buildAuditDetails(parts) {
+  var clean = [];
+  for (var i = 0; i < parts.length; i++) {
+    var part = normalizeAuditCell(parts[i], 120);
+    if (part) clean.push(part);
+  }
+  return clean.join(";");
+}
+
+function getOrCreateAuditLogSheet(ss) {
+  var sheet = ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
+  if (!sheet) {
+    try {
+      sheet = ss.insertSheet(AUDIT_LOG_SHEET_NAME);
+    } catch (e) {
+      sheet = ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
+      if (!sheet) throw e;
+    }
+  }
+
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, AUDIT_LOG_HEADERS.length)
+      .setValues([AUDIT_LOG_HEADERS])
+      .setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  }
+
+  return sheet;
+}
+
+function appendAuditLog(ss, entry) {
+  try {
+    if (!ss || !entry) return;
+
+    var caller = entry.caller || {};
+    var row = [
+      Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd HH:mm:ss"),
+      normalizeAuditCell(entry.login || caller.login || "", 80),
+      normalizeAuditCell(entry.name || caller.name || "", 120),
+      normalizeAuditCell(entry.role || caller.role || "", 40),
+      normalizeAuditCell(entry.action || "", 80),
+      normalizeAuditCell(entry.entityType || "", 40),
+      normalizeAuditCell(entry.entityId || "", 120),
+      normalizeAuditCell(entry.details || "", 300),
+      normalizeDeviceType(entry.device || "unknown"),
+      normalizeAuditCell(entry.result || "", 20)
+    ];
+
+    getOrCreateAuditLogSheet(ss).appendRow(row);
+  } catch (e) {
+    try { Logger.log("AUDIT_LOG_APPEND_FAILED: " + e); } catch (_err) {}
+  }
+}
+
 function escapeHtml(str) {
   if (!str) return "";
   return String(str)
@@ -630,7 +694,7 @@ function handleTvDashboard(params, ss) {
 
 var LOT_TRACKER_MAX_RESULTS = 100;
 var LOT_TRACKER_MAX_SHEETS  = 30;
-var SYSTEM_SHEETS = { "DASHBOARD": 1, "PROBLEMS": 1, "SUBSCRIPTIONS": 1 };
+var SYSTEM_SHEETS = { "DASHBOARD": 1, "PROBLEMS": 1, "SUBSCRIPTIONS": 1, "AUDIT_LOG": 1 };
 
 function handleTvLotTracker(params, ss) {
   var lotQuery = (params.lot || "").toString().trim().toUpperCase();
@@ -690,9 +754,23 @@ function handleLogin(params, ss) {
   var user = (params.user || "").toLowerCase().trim();
   var hash = (params.hash || "").trim();
   var device = normalizeDeviceType(params.device);
+  var logLogin = function(action, result, details, name, role) {
+    appendAuditLog(ss, {
+      login: user,
+      name: name || "",
+      role: role || "",
+      action: action,
+      entityType: "auth",
+      entityId: user,
+      details: details || "",
+      device: device,
+      result: result
+    });
+  };
 
   if (!user || !hash) {
     Utilities.sleep(LOGIN_FAIL_DELAY_MS);
+    logLogin("login_failed", "failed", "reason=INVALID_INPUT");
     return textOut("WRONG");
   }
 
@@ -701,18 +779,21 @@ function handleLogin(params, ss) {
   var attempts = parseInt(cache.get(cacheKey) || "0", 10);
   if (attempts >= LOGIN_MAX_ATTEMPTS) {
     Utilities.sleep(3000);
+    logLogin("login_failed", "failed", "reason=RATE_LIMITED");
     return jsonOut({ error: "RATE_LIMITED", retry_after_seconds: LOGIN_WINDOW_SECONDS });
   }
 
   var authSheet = getAuthSheet();
   if (!authSheet) {
     Utilities.sleep(LOGIN_FAIL_DELAY_MS);
+    logLogin("login_failed", "failed", "reason=AUTH_SHEET_UNAVAILABLE");
     return textOut("WRONG");
   }
 
   var lr = authSheet.getLastRow();
   if (lr < 2) {
     Utilities.sleep(LOGIN_FAIL_DELAY_MS);
+    logLogin("login_failed", "failed", "reason=EMPTY_AUTH_DB");
     return textOut("WRONG");
   }
 
@@ -735,15 +816,19 @@ function handleLogin(params, ss) {
         migrateLegacyTokenToSessionSlot(authSheet, rowNumber, row, now);
         writeSessionSlot(authSheet, rowNumber, row, chooseSessionSlot(row, now), token, device, now);
         mirrorLegacyToken(authSheet, rowNumber, row, token);
+        logLogin("login_success", "success", "", row[COL_NAME], row[COL_ROLE]);
         return textOut("CORRECT|" + row[COL_NAME] + "|" + row[COL_ROLE] + "|" + token);
       }
       else if (status === "PENDING") {
+        logLogin("login_failed", "failed", "reason=PENDING", data[i][COL_NAME], data[i][COL_ROLE]);
         return jsonOut({ error: "PENDING" });
       } 
       else if (status === "REJECTED") {
+        logLogin("login_failed", "failed", "reason=REJECTED", data[i][COL_NAME], data[i][COL_ROLE]);
         return jsonOut({ error: "REJECTED" });
       } 
       else {
+        logLogin("login_failed", "failed", "reason=NOT_APPROVED", data[i][COL_NAME], data[i][COL_ROLE]);
         return jsonOut({ error: "NOT_APPROVED" });
       }
     }
@@ -755,8 +840,10 @@ function handleLogin(params, ss) {
   Utilities.sleep(LOGIN_FAIL_DELAY_MS);
 
   if (attempts >= LOGIN_MAX_ATTEMPTS) {
+    logLogin("login_failed", "failed", "reason=RATE_LIMITED");
     return jsonOut({ error: "RATE_LIMITED", retry_after_seconds: LOGIN_WINDOW_SECONDS });
   }
+  logLogin("login_failed", "failed", "reason=WRONG_PASSWORD");
   return textOut("WRONG");
 }
 
@@ -1204,25 +1291,106 @@ function handleGetIssues(params, ss) {
 function handleTaskAction(params, ss) {
   var id  = (params.id || "").trim();
   var act = (params.act || "").trim();
-  if (!id || !act) return textOut("INVALID_INPUT");
+  var caller = params._caller || null;
+  var successAuditAction = null;
+  var failedAuditAction = null;
+
+  if (act === "start" || act.indexOf("start_manual_") === 0) {
+    successAuditAction = "container_start_success";
+    failedAuditAction = "container_start_failed";
+  } else if (act === "finish" || act.indexOf("finish_manual_") === 0) {
+    successAuditAction = "container_finish_success";
+    failedAuditAction = "container_finish_failed";
+  }
+
+  if (!id || !act) {
+    if (failedAuditAction) {
+      appendAuditLog(ss, {
+        caller: caller,
+        action: failedAuditAction,
+        entityType: "container",
+        entityId: id,
+        details: "reason=INVALID_INPUT",
+        device: "unknown",
+        result: "failed"
+      });
+    }
+    return textOut("INVALID_INPUT");
+  }
 
   var time = Utilities.formatDate(new Date(), TIMEZONE, "HH:mm");
   var todayName = getTodaySheetName();
-  var sheet = ss.getSheetByName(todayName);
-  if (sheet) {
-    var result = applyTaskAction(sheet, id, act, time, params);
-    if (result) { invalidateTodayReadCache(); return result; }
-  }
-
-  if (isNightCarryover()) {
-    var yName = getYesterdaySheetName();
-    var ySheet = ss.getSheetByName(yName);
-    if (ySheet) {
-      var yResult = applyTaskAction(ySheet, id, act, time, params);
-      if (yResult) { invalidateTodayReadCache(); invalidateDateReadCache(yName); return yResult; }
+  try {
+    var sheet = ss.getSheetByName(todayName);
+    if (sheet) {
+      var result = applyTaskAction(sheet, id, act, time, params);
+      if (result) {
+        invalidateTodayReadCache();
+        if (successAuditAction) {
+          appendAuditLog(ss, {
+            caller: caller,
+            action: successAuditAction,
+            entityType: "container",
+            entityId: id,
+            details: buildAuditDetails(["act=" + act, "sheet=" + todayName]),
+            device: "unknown",
+            result: "success"
+          });
+        }
+        return result;
+      }
     }
+
+    if (isNightCarryover()) {
+      var yName = getYesterdaySheetName();
+      var ySheet = ss.getSheetByName(yName);
+      if (ySheet) {
+        var yResult = applyTaskAction(ySheet, id, act, time, params);
+        if (yResult) {
+          invalidateTodayReadCache();
+          invalidateDateReadCache(yName);
+          if (successAuditAction) {
+            appendAuditLog(ss, {
+              caller: caller,
+              action: successAuditAction,
+              entityType: "container",
+              entityId: id,
+              details: buildAuditDetails(["act=" + act, "sheet=" + yName]),
+              device: "unknown",
+              result: "success"
+            });
+          }
+          return yResult;
+        }
+      }
+    }
+
+    if (failedAuditAction) {
+      appendAuditLog(ss, {
+        caller: caller,
+        action: failedAuditAction,
+        entityType: "container",
+        entityId: id,
+        details: buildAuditDetails(["act=" + act, "reason=ID_NOT_FOUND"]),
+        device: "unknown",
+        result: "failed"
+      });
+    }
+    return textOut("ID_NOT_FOUND");
+  } catch (e) {
+    if (failedAuditAction) {
+      appendAuditLog(ss, {
+        caller: caller,
+        action: failedAuditAction,
+        entityType: "container",
+        entityId: id,
+        details: buildAuditDetails(["act=" + act, "error=" + e]),
+        device: "unknown",
+        result: "failed"
+      });
+    }
+    throw e;
   }
-  return textOut("ID_NOT_FOUND");
 }
 
 function applyTaskAction(sheet, id, act, time, params) {
@@ -1315,21 +1483,47 @@ function handleUploadPhoto(params, ss) {
   var imageData = (params.image || "");
   var mimeType  = (params.mimeType || "");
   var filename  = (params.filename || "upload.jpg");
+  var caller = params._caller || null;
+  var logPhoto = function(action, result, entityId, details) {
+    appendAuditLog(ss, {
+      caller: caller,
+      action: action,
+      entityType: "photo",
+      entityId: entityId || "",
+      details: details || "",
+      device: "unknown",
+      result: result
+    });
+  };
 
-  if (ALLOWED_MIME.indexOf(mimeType) === -1) return jsonOut({ status: "ERROR", message: "INVALID_MIME_TYPE" });
-  if (imageData.length > MAX_PHOTO_BASE64_LEN) return jsonOut({ status: "ERROR", message: "FILE_TOO_LARGE" });
-  if (imageData.indexOf(",") === -1) return jsonOut({ status: "ERROR", message: "INVALID_IMAGE_DATA" });
+  if (ALLOWED_MIME.indexOf(mimeType) === -1) {
+    logPhoto("photo_upload_failed", "failed", "", buildAuditDetails(["filename=" + filename, "reason=INVALID_MIME_TYPE", "mime=" + mimeType]));
+    return jsonOut({ status: "ERROR", message: "INVALID_MIME_TYPE" });
+  }
+  if (imageData.length > MAX_PHOTO_BASE64_LEN) {
+    logPhoto("photo_upload_failed", "failed", "", buildAuditDetails(["filename=" + filename, "reason=FILE_TOO_LARGE"]));
+    return jsonOut({ status: "ERROR", message: "FILE_TOO_LARGE" });
+  }
+  if (imageData.indexOf(",") === -1) {
+    logPhoto("photo_upload_failed", "failed", "", buildAuditDetails(["filename=" + filename, "reason=INVALID_IMAGE_DATA"]));
+    return jsonOut({ status: "ERROR", message: "INVALID_IMAGE_DATA" });
+  }
 
   try {
     var base64Part = imageData.split(",")[1];
-    if (!base64Part) return jsonOut({ status: "ERROR", message: "EMPTY_IMAGE_DATA" });
+    if (!base64Part) {
+      logPhoto("photo_upload_failed", "failed", "", buildAuditDetails(["filename=" + filename, "reason=EMPTY_IMAGE_DATA"]));
+      return jsonOut({ status: "ERROR", message: "EMPTY_IMAGE_DATA" });
+    }
 
     var blob = Utilities.newBlob(Utilities.base64Decode(base64Part), mimeType, filename);
     var file = DriveApp.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    logPhoto("photo_upload_success", "success", file.getId(), buildAuditDetails(["filename=" + filename, "mime=" + mimeType]));
 
     return jsonOut({ status: "SUCCESS", url: file.getUrl() });
   } catch (e) {
+    logPhoto("photo_upload_failed", "failed", "", buildAuditDetails(["filename=" + filename, "error=" + e]));
     return jsonOut({ status: "ERROR", message: "UPLOAD_FAILED: " + e.toString() });
   }
 }
