@@ -518,12 +518,16 @@ function buildAuditDetails(parts) {
 }
 
 function getOrCreateAuditLogSheet(ss) {
-  var sheet = ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
+  var authSheet = getAuthSheet();
+  var auditSs = authSheet ? authSheet.getParent() : null;
+  if (!auditSs) throw new Error("AUDIT_LOG_AUTH_DB_UNAVAILABLE");
+
+  var sheet = auditSs.getSheetByName(AUDIT_LOG_SHEET_NAME);
   if (!sheet) {
     try {
-      sheet = ss.insertSheet(AUDIT_LOG_SHEET_NAME);
+      sheet = auditSs.insertSheet(AUDIT_LOG_SHEET_NAME);
     } catch (e) {
-      sheet = ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
+      sheet = auditSs.getSheetByName(AUDIT_LOG_SHEET_NAME);
       if (!sheet) throw e;
     }
   }
