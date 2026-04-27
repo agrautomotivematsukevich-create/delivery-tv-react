@@ -10,6 +10,8 @@ var ALERT_EMAIL  = "MHReceiving@agr.auto";  // TODO: move to sheet config cell
 
 var ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
 var MAX_PHOTO_BASE64_LEN = 7000000;  // ~5 MB decoded
+var UPLOAD_PHOTO_MAX_ATTEMPTS = 3;
+var UPLOAD_PHOTO_RETRY_DELAYS_MS = [400, 1000];
 var AUDIT_LOG_SHEET_NAME = "AUDIT_LOG";
 var AUDIT_LOG_HEADERS = ["Timestamp", "Login", "Name", "Role", "Action", "EntityType", "EntityId", "Details", "Device", "Result"];
 
@@ -515,6 +517,29 @@ function buildAuditDetails(parts) {
     if (part) clean.push(part);
   }
   return clean.join(";");
+}
+
+function isRetryableUploadPhotoError(err) {
+  var text = String(err || "").toLowerCase();
+  return text.indexOf("\u043e\u0448\u0438\u0431\u043a\u0430 \u0441\u043b\u0443\u0436\u0431\u044b: \u0434\u0438\u0441\u043a") !== -1 ||
+    text.indexOf("service error: drive") !== -1 ||
+    text.indexOf("service unavailable: drive") !== -1;
+}
+
+function createSharedUploadFileWithRetry(blob) {
+  var file = null;
+  for (var attempt = 1; attempt <= UPLOAD_PHOTO_MAX_ATTEMPTS; attempt++) {
+    try {
+      if (!file) file = DriveApp.createFile(blob);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      return { file: file, attempts: attempt };
+    } catch (e) {
+      if (e && typeof e === "object") e.uploadAttempts = attempt;
+      if (!isRetryableUploadPhotoError(e) || attempt >= UPLOAD_PHOTO_MAX_ATTEMPTS) throw e;
+      Utilities.sleep(UPLOAD_PHOTO_RETRY_DELAYS_MS[attempt - 1] || 0);
+    }
+  }
+  throw new Error("UPLOAD_PHOTO_RETRY_EXHAUSTED");
 }
 
 function getOrCreateAuditLogSheet(ss) {
@@ -1521,13 +1546,17 @@ function handleUploadPhoto(params, ss) {
     }
 
     var blob = Utilities.newBlob(Utilities.base64Decode(base64Part), mimeType, filename);
-    var file = DriveApp.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    logPhoto("photo_upload_success", "success", file.getId(), buildAuditDetails(["filename=" + filename, "mime=" + mimeType]));
+    var uploadResult = createSharedUploadFileWithRetry(blob);
+    var file = uploadResult.file;
+    var details = ["filename=" + filename, "mime=" + mimeType];
+    if (uploadResult.attempts > 1) details.push("attempts=" + uploadResult.attempts);
+    logPhoto("photo_upload_success", "success", file.getId(), buildAuditDetails(details));
 
     return jsonOut({ status: "SUCCESS", url: file.getUrl() });
   } catch (e) {
-    logPhoto("photo_upload_failed", "failed", "", buildAuditDetails(["filename=" + filename, "error=" + e]));
+    var failedDetails = ["filename=" + filename, "error=" + e];
+    if (e && e.uploadAttempts) failedDetails.push("attempts=" + e.uploadAttempts);
+    logPhoto("photo_upload_failed", "failed", "", buildAuditDetails(failedDetails));
     return jsonOut({ status: "ERROR", message: "UPLOAD_FAILED: " + e.toString() });
   }
 }
