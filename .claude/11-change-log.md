@@ -1,5 +1,28 @@
 # Change Log
 
+## 2026-04-27 — Mobile UI polish
+
+**Type**: Frontend-only presentation polish. No backend/API/auth/offline/PWA/polling/TV logic changes. No push/deploy.
+
+**Source files modified**:
+- `App.tsx`: non-TV shell now uses mobile-safe `app-shell`.
+- `index.css`: added `app-shell`, `mobile-modal-frame`, `no-scrollbar`, and safe-area/mobile helpers.
+- `components/Header.tsx`: improved mobile nav, tap targets, and responsive labels.
+- `components/Dashboard.tsx`: reduced mobile density and adjusted spacing/type scale without changing desktop/TV structure.
+- `components/ActionModal.tsx`, `components/AuthModal.tsx`, `components/IssueModal.tsx`: mobile bottom-sheet behavior with `100dvh`, safe padding, and scroll.
+- `components/OperatorTerminal.tsx`: improved mobile header/task cards/action controls.
+
+**Preserved**:
+- Backend, API contracts, auth, offline queue, PWA, polling, and TV branches were not changed.
+- Existing screen structure and business flows were preserved.
+
+**Regression note**:
+- Mobile modals intentionally become bottom sheets below `sm`; desktop/tablet centered modal behavior remains.
+
+**Memory files updated**: `05-ui-behavior.md`, `11-change-log.md`.
+
+---
+
 ## 2026-04-23 — Initial audit session
 
 **Type**: Read-only audit + memory file creation. No source code modified.
@@ -141,6 +164,34 @@
 - Not shown on cancel, error, queued/offline state, or for other users.
 
 **Memory files updated**: `05-ui-behavior.md`, `11-change-log.md`.
+
+---
+
+## 2026-04-27 — Backend audit log
+
+**Type**: Backend-only operational audit addition. No frontend/API contract change. No push/deploy.
+
+**Source files modified**:
+- `Code.gs` — added best-effort `AUDIT_LOG` sheet helper and targeted audit writes for login, photo upload, and terminal start/finish task actions.
+
+**Behavior**:
+- `AUDIT_LOG` is created lazily in the auth spreadsheet (`Secret_AGR_Auth`, same spreadsheet as `USERS`) with fixed headers if it does not exist.
+- Only key action outcomes are logged: `login_success|failed`, `photo_upload_success|failed`, `container_start_success|failed`, `container_finish_success|failed`.
+- No audit writes were added to polling/read routes, bundle reads, or `verifyToken`.
+- Audit append failures are swallowed and logged only via `Logger.log`, so the primary user action still returns its original success/error result.
+- `AUDIT_LOG` is marked as a system sheet so lot-tracker all-sheet scans skip it.
+
+**Memory files updated**: `04-api-and-data-contracts.md`, `11-change-log.md`.
+
+---
+
+## 2026-04-27 — Terminal compliment removal
+
+**Type**: Frontend-only targeted removal. No backend/API changes. No push/deploy.
+
+- `components/ActionModal.tsx` — removed the compliment/easter-egg stage, target-user gating, related localStorage helpers/keys, and compliment-only success timing.
+- `components/ActionModal.tsx` — online success now returns to the normal success overlay and auto-closes without any user-specific branch.
+- `.claude/05-ui-behavior.md` — removed the note that described the compliment as active behavior.
 
 ---
 

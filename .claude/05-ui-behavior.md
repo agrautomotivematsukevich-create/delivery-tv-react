@@ -42,6 +42,17 @@ neither             → desktop/phone mode (header, footer, full nav)
 **TV mode** (`tvMode=true`): CSS grid `360px 1fr 320px`, fixed columns. Three panels: progress/shifts | queue/active | zones/clock.
 **Desktop mode**: `grid-cols-1 lg:grid-cols-[380px_1fr]`. Left: progress circle + shifts. Right: next + territory + active list + zones.
 
+## Mobile polish (2026-04-27)
+
+- Non-TV shell uses `app-shell` for mobile-safe height and safe-area padding; TV branches keep their existing fullscreen behavior.
+- `index.css` owns lightweight helpers: `app-shell`, `mobile-modal-frame`, `no-scrollbar`, and safe-area/mobile utilities.
+- `Header.tsx` has improved mobile nav, tap targets, and responsive labels.
+- `Dashboard.tsx` keeps the same structure, with lower mobile density and cleaner spacing/type scale.
+- `ActionModal.tsx`, `AuthModal.tsx`, and `IssueModal.tsx` behave as mobile bottom sheets below `sm`, using `100dvh`, safe padding, and internal scroll.
+- `OperatorTerminal.tsx` keeps the same terminal flow, with improved mobile header/task cards/action controls.
+- Backend, API contracts, auth, offline queue, PWA, polling, desktop layout, and TV branches were not changed by this polish.
+- Regression note: mobile modals are intentionally bottom sheets below `sm`; desktop/tablet modal behavior remains centered.
+
 ## Key visual behaviors
 
 - **Offline banner**: `fixed top-0 w-full bg-red-500` when `isOffline=true` (App.tsx). Never clears until a successful response.
@@ -71,7 +82,6 @@ ActionModal handles zone selection, photo capture/upload, then calls `api.taskAc
 On online success → `handleActionSuccess('completed')` → `onResolve('completed')` + `refreshDashboard()`.
 On offline no-photo queue → `handleActionSuccess('queued')` → terminal shows a local-save toast.
 Photo uploads are intentionally not queued offline until ordering/idempotency is verified.
-Success-state may include a non-blocking compliment easter egg for `user.user === 'u001185'` (`OPERATOR`) and preview user `barromz` (`ADMIN`) only. The flow is `Успешно!` (~1.4s) then a fullscreen compliment stage (~3.2s). It is localStorage-limited to 2 online successes per 16:40-01:30 Moscow shift, with a 2h interval, and is never shown on cancel/error/queued flows.
 
 ## i18n
 
