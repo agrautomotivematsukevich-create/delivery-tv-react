@@ -29,19 +29,30 @@ neither             → desktop/phone mode (header, footer, full nav)
 | Route | Component | Polling | Notes |
 |---|---|---|---|
 | `/` | Dashboard | via App.tsx (prop-driven) | TV mode different layout: 3-column grid |
-| `/history` | HistoryView | on demand | Date picker + load button |
+| `/history` | HistoryView | on demand | Default date = current operational day |
 | `/logistics` | LogisticsView | on demand | Plan editor (LOGISTIC role) |
-| `/downtime` | ZoneDowntimeView | 60s when today | Has a 1s `currentTime` ticker |
-| `/arrival` | ArrivalAnalyticsView | on demand | Analytics off fetched history |
+| `/downtime` | ZoneDowntimeView | 60s when operational today | Default date = operational day |
+| `/arrival` | ArrivalAnalyticsView | on demand | Default date = operational day |
 | `/lotTracker` | LotTrackerView | on demand | Desktop lot search |
-| `/accounting` | AccountingView | once on mount | Current SAP/LES status + explicit next-click action labels |
+| `/accounting` | AccountingView | mount + 06:00 boundary refresh | Current SAP/LES status + explicit next-click action labels |
 | `?tv=2` | LotTrackerTV | 45s + 300s | Full-screen TV lot tracker |
+
+## Operational day UI rule
+
+- Frontend “today” for operational screens is the Moscow operational day, not calendar midnight.
+- Cutoff: `06:00 Europe/Moscow`.
+- `App.tsx` dashboard bundle requests use the operational sheet name and schedule a boundary refresh at the next 06:00.
+- `AccountingView` loads the operational sheet on mount and reloads itself on the next 06:00 boundary if the screen stays open.
+- `HistoryView`, `ArrivalAnalyticsView`, and `ZoneDowntimeView` default their date pickers to the operational ISO date.
+- `ZoneDowntimeView` and `ArrivalAnalyticsView` treat “today/live” as the operational date, so pre-06:00 still points to the previous sheet.
+- `todayDDMM()` in `utils/time.ts` now means the operational `DD.MM` date.
 
 ## Accounting view
 
 - `AccountingView` is a phone/desktop-only route. TV branches (`?tv=1`, `?tv=2`, `LotTrackerTV`) do not render it.
 - Each SAP/LES control shows the current status in the top badge and the exact result of the next click on the button below (`Принять`, `Не принять`, `Ожидает`).
 - The list has a client-side quick filter with counters: `Все` and `Непринятые`; `Непринятые` means `sap_status !== 'ACCEPTED' || les_status !== 'ACCEPTED'` on already loaded rows only.
+- Accounting writes send the current row/source sheet date back to `update_accounting`, so a screen left open across 06:00 does not start writing into the wrong sheet.
 - On mobile, task metadata stays compact and SAP/LES controls use one column at `360/375px`, then split into two columns from `390px` upward to avoid horizontal overflow.
 - When the `Непринятые` filter is active and no rows match, the empty state says `Непринятых контейнеров нет`.
 
@@ -69,7 +80,7 @@ neither             → desktop/phone mode (header, footer, full nav)
 - **PWA update banner**: `PwaUpdateBanner` is mounted from `App.tsx` and uses `vite-plugin-pwa` prompt lifecycle. Desktop/mobile users see a small bottom-corner banner only after an update is waiting, never during splash, terminal, action modal, auth/admin/stats/issue modals, or other blocked flows. `Обновить` activates the waiting service worker and reloads; `Позже` hides it for 30 minutes in the current session. In TV modes the banner is not rendered; after TV login/app-ready, an available update auto-applies after a 60s quiet delay because there is no operator click target.
 - **Splash screen**: `SplashScreen` shown until `isLoading=false`. Fades out.
 - **LKG preservation**: `dashboardData` in AppContext never set to null after first successful fetch. `allTasks` likewise (null response = keep prev).
-- **Night zero-plan guard**: before 07:00 Moscow time, `App.tsx` does not replace the last non-zero dashboard snapshot with a valid but empty (`total=0`, no active/territory) response. It keeps in-memory LKG, with a 12h localStorage fallback for TV reloads.
+- **Night zero-plan guard**: before 06:00 Moscow time, `App.tsx` does not replace the last non-zero dashboard snapshot with a valid but empty (`total=0`, no active/territory) response. It keeps in-memory LKG, with a 12h localStorage fallback for TV reloads.
 - **deepEqual guard**: `setDashboardData` and `setAllTasks` only called if data actually changed. Prevents ripple re-renders.
 - **UnloadTimer** (Dashboard): updates every 30s; shows countdown to `UNLOAD_TARGET=30min`; pulses red when over.
 - **DockZonesGrid**: idle time shown for zones that had at least one completed task today.
@@ -79,10 +90,11 @@ neither             → desktop/phone mode (header, footer, full nav)
 
 - Triggered from Header → `setShowTerminal(true)` → mounts `OperatorTerminal`
 - Starts/stops its own 45s polling (also pauses on hidden)
+- Schedules an additional one-shot refresh at the next 06:00 operational-day boundary so the queue switches sheets without waiting for the next 45s poll.
 - Task actions: `start` → opens `ActionModal` (photo capture flow) → `handleActionSuccess` → `refreshDashboard()`
 - Offline MVP: the terminal still opens `ActionModal` while offline. Photo-mode is blocked with an explanatory message; "no photo" mode queues only `task_action` locally.
 - Cancel/dismiss/close rejects the action promise with `USER_CANCELLED`; `OperatorTerminal` ignores that sentinel and does not show an error toast.
-- Undo: calls `task_action` with act=`undo_start` directly via `api.taskAction`
+- Undo: calls `task_action` with act=`undo_start` and the row `sheet_date`, so undo still hits the original sheet after 06:00 if the modal stayed open.
 - Shows offline/pending badge in header when `!isOnline || pendingCount > 0`
 
 ## ActionModal flow (photo capture)
@@ -91,6 +103,7 @@ neither             → desktop/phone mode (header, footer, full nav)
 ActionModal handles zone selection, photo capture/upload, then calls `api.taskAction`.
 On online success → `handleActionSuccess('completed')` → `onResolve('completed')` + `refreshDashboard()`.
 On offline no-photo queue → `handleActionSuccess('queued')` → terminal shows a local-save toast.
+Queued task actions keep the original sheet date, so a flush after 06:00 still updates the correct source sheet.
 Photo uploads are intentionally not queued offline until ordering/idempotency is verified.
 
 ## i18n

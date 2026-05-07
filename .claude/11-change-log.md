@@ -1,5 +1,29 @@
 # Change Log
 
+## 2026-05-07 — Operational day unified to 06:00 Moscow
+
+**Type**: Full-stack date-logic fix. Backend and frontend now share one operational-day rule: from `00:00` through `05:59` Moscow the app continues to use the previous sheet; from `06:00` it switches to the new sheet.
+
+**Source files modified**:
+- `Code.gs` — added `getOperationalDateInfo()` / operational-sheet helpers; removed old dual-sheet night carryover from dashboard/operator/TV reads; allowed explicit `date=DD.MM` on `task_action` and `update_accounting`; added `sheet_date` to task/history payloads.
+- `utils/time.ts` — added frontend operational-date helpers (`getOperationalDateInfo`, `getOperationalIsoDate`, `getOperationalSheetName`, `getMillisecondsUntilNextOperationalBoundary`); `todayDDMM()` now means operational `DD.MM`.
+- `services/api.ts` — keyed operator-task cache by operational sheet date and added optional `dateStr` for `taskAction` / `updateAccountingStatus`.
+- `App.tsx` — dashboard bundle now uses the operational sheet date; LKG night guard now aligns to the 06:00 cutoff; schedules a boundary refresh.
+- `components/AccountingView.tsx` — accounting reads/exports/writes now use the operational sheet; reloads itself on the 06:00 boundary.
+- `components/OperatorTerminal.tsx` — queue refreshes at the 06:00 boundary; undo writes carry the task `sheet_date`.
+- `components/ActionModal.tsx`, `services/offlineQueue.ts`, `types.ts` — queued/online terminal writes now preserve sheet date through the whole action path.
+- `components/HistoryView.tsx`, `components/ArrivalAnalyticsView.tsx`, `components/ZoneDowntimeView.tsx` — default “today” date now means the operational date.
+
+**Preserved**:
+- `parseDashboardData` format, backend route names, sheet layout, polling cadences, TV route gates, offline-photo limitation, and the accounting UI filter/status UX added earlier in this session.
+- `LogisticsView` default “tomorrow” behavior was not changed.
+
+**Regression note**:
+- Client/runtime validation was limited to static errors because `node`/`npm` are unavailable in this environment.
+- `.claude` memory should still be committed separately from code changes.
+
+**Memory files updated**: `04-api-and-data-contracts.md`, `05-ui-behavior.md`, `11-change-log.md`.
+
 ## 2026-05-07 — SAP/LES accounting button clarity
 
 **Type**: Frontend-only presentation clarification for the SAP/LES accounting screen. No backend/API/auth/polling/offline/PWA/TV/operator-terminal changes.
