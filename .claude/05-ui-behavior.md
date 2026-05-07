@@ -34,13 +34,21 @@ neither             → desktop/phone mode (header, footer, full nav)
 | `/downtime` | ZoneDowntimeView | 60s when today | Has a 1s `currentTime` ticker |
 | `/arrival` | ArrivalAnalyticsView | on demand | Analytics off fetched history |
 | `/lotTracker` | LotTrackerView | on demand | Desktop lot search |
-| `/accounting` | AccountingView | once on mount | SAP/LES status toggle |
+| `/accounting` | AccountingView | once on mount | Current SAP/LES status + explicit next-click action labels |
 | `?tv=2` | LotTrackerTV | 45s + 300s | Full-screen TV lot tracker |
+
+## Accounting view
+
+- `AccountingView` is a phone/desktop-only route. TV branches (`?tv=1`, `?tv=2`, `LotTrackerTV`) do not render it.
+- Each SAP/LES control shows the current status in the top badge and the exact result of the next click on the button below (`Принять`, `Не принять`, `Ожидает`).
+- On mobile, task metadata stays compact and SAP/LES controls use one column at `360/375px`, then split into two columns from `390px` upward to avoid horizontal overflow.
 
 ## Dashboard layout
 
 **TV mode** (`tvMode=true`): CSS grid `360px 1fr 320px`, fixed columns. Three panels: progress/shifts | queue/active | zones/clock.
-**Desktop mode**: `grid-cols-1 lg:grid-cols-[380px_1fr]`. Left: progress circle + shifts. Right: next + territory + active list + zones.
+**Desktop mode**: non-TV dashboard uses a centered max-width shell with golden-ratio layout (`lg:grid-cols-[38%_1fr]`). Left: compact overview panel with progress, status chip, KPI counters, shift norm, and shifts. Right: operational workspace with stronger next-container card, waiting-unload card, compact active list, and dock-zone matrix.
+**Mobile mode**: remains single-column inside `app-shell`; active cards use a two-column mobile-safe grid and the dock matrix stays `2 -> 3 -> 6` columns by breakpoint.
+**Do not alter**: TV dashboard remains the separate `tvMode` branch above and keeps `360px 1fr 320px`.
 
 ## Mobile polish (2026-04-27)
 

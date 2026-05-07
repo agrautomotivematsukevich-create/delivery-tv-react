@@ -1,5 +1,43 @@
 # Change Log
 
+## 2026-05-07 — SAP/LES accounting button clarity
+
+**Type**: Frontend-only presentation clarification for the SAP/LES accounting screen. No backend/API/auth/polling/offline/PWA/TV/operator-terminal changes.
+
+**Source files modified**:
+- `components/AccountingView.tsx` — replaced the ambiguous single status pill with a current-status badge plus an explicit next-click action button; tightened the mobile row layout and wrapped header actions safely.
+
+**Preserved**:
+- Existing `onClick` handlers, status values (`WAIT`, `ACCEPTED`, `REJECTED`), accounting save flow, backend/API contracts, and data structure.
+- `OperatorTerminal.tsx`, `LotTrackerTV`, `?tv=1`, `?tv=2`, backend code, auth, polling, offline queue, and PWA behavior were not touched by this change.
+
+**Regression note**:
+- Mobile accounting controls stay one-column at `360/375px` and switch to two columns from `390px` upward; desktop keeps the existing table layout.
+- `.claude` memory should be committed separately from the code commit.
+
+**Memory files updated**: `05-ui-behavior.md`, `11-change-log.md`.
+
+---
+
+## 2026-04-27 — Desktop dashboard premium redesign
+
+**Type**: Frontend-only presentation change for the ordinary non-TV dashboard. No backend/API/auth/offline/PWA/polling/terminal/TV logic changes. No push/deploy.
+
+**Source files modified**:
+- `components/Dashboard.tsx`: redesigned only the non-TV dashboard layout into a centered 38/62 desktop composition with stronger overview, next-container, waiting-unload, active-list, and dock-zone presentation.
+
+**Preserved**:
+- `tvMode` branch, `?tv=1`, `?tv=2`, `LotTrackerTV`, polling, data contracts, auth, offline queue, terminal flow, and all backend code.
+- Existing dashboard data sources and KPI calculations; changes are presentation-only derived from existing props.
+
+**Regression note**:
+- Mobile remains single-column; active cards use mobile-safe grid wrapping and dock zones keep 2-column layout on narrow screens.
+- `.claude` memory should be committed separately from the code commit.
+
+**Memory files updated**: `05-ui-behavior.md`, `11-change-log.md`.
+
+---
+
 ## 2026-04-27 — Mobile UI polish
 
 **Type**: Frontend-only presentation polish. No backend/API/auth/offline/PWA/polling/TV logic changes. No push/deploy.
