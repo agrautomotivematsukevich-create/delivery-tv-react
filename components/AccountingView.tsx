@@ -11,6 +11,18 @@ type AccountingStatus = 'WAIT' | 'ACCEPTED' | 'REJECTED';
 
 const STATUS_CYCLE: AccountingStatus[] = ['WAIT', 'ACCEPTED', 'REJECTED'];
 
+const STATUS_CONFIG: Record<AccountingStatus, { icon: React.ReactNode; label: string; bg: string; text: string; border: string }> = {
+  WAIT: { icon: <Clock size={14} />, label: 'Ожидает', bg: 'bg-white/10', text: 'text-white/70', border: 'border-white/10' },
+  ACCEPTED: { icon: <CheckCircle2 size={14} />, label: 'Принят', bg: 'bg-emerald-500/15', text: 'text-emerald-400', border: 'border-emerald-500/20' },
+  REJECTED: { icon: <XCircle size={14} />, label: 'Не принят', bg: 'bg-red-500/15', text: 'text-red-400', border: 'border-red-500/20' },
+};
+
+const NEXT_ACTION_CONFIG: Record<AccountingStatus, { label: string; bg: string; text: string; border: string }> = {
+  WAIT: { label: 'Принять', bg: 'bg-emerald-500/10', text: 'text-emerald-300', border: 'border-emerald-500/20' },
+  ACCEPTED: { label: 'Не принять', bg: 'bg-red-500/10', text: 'text-red-300', border: 'border-red-500/20' },
+  REJECTED: { label: 'Ожидает', bg: 'bg-white/5', text: 'text-white/75', border: 'border-white/10' },
+};
+
 function nextStatus(current: AccountingStatus): AccountingStatus {
   const idx = STATUS_CYCLE.indexOf(current);
   return STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
@@ -24,21 +36,37 @@ function getTodayFormatted(): string {
   return `${dd}.${mm}`;
 }
 
-const StatusBadge: React.FC<{ status: AccountingStatus; onClick: () => void }> = ({ status, onClick }) => {
-  const config = {
-    WAIT: { icon: <Clock size={14} />, label: 'Ожидает', bg: 'bg-white/10', text: 'text-white/60', border: 'border-white/10' },
-    ACCEPTED: { icon: <CheckCircle2 size={14} />, label: 'Принят', bg: 'bg-emerald-500/15', text: 'text-emerald-400', border: 'border-emerald-500/20' },
-    REJECTED: { icon: <XCircle size={14} />, label: 'Не принят', bg: 'bg-red-500/15', text: 'text-red-400', border: 'border-red-500/20' },
-  }[status];
+const StatusBadge: React.FC<{
+  status: AccountingStatus;
+  onClick: () => void;
+  system?: 'SAP' | 'LES';
+  showSystemLabel?: boolean;
+}> = ({ status, onClick, system, showSystemLabel = false }) => {
+  const currentConfig = STATUS_CONFIG[status];
+  const nextActionConfig = NEXT_ACTION_CONFIG[status];
 
   return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all hover:scale-105 active:scale-95 ${config.bg} ${config.text} ${config.border}`}
-    >
-      {config.icon}
-      {config.label}
-    </button>
+    <div className="w-full min-w-0">
+      {showSystemLabel && system && (
+        <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-white/35">{system}</div>
+      )}
+
+      <div className={`flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-bold ${currentConfig.bg} ${currentConfig.text} ${currentConfig.border}`}>
+        {currentConfig.icon}
+        <span className="truncate">{currentConfig.label}</span>
+      </div>
+
+      <div className="mt-2 mb-1 text-center text-[9px] font-bold uppercase tracking-[0.18em] text-white/30">
+        Следующее нажатие
+      </div>
+
+      <button
+        onClick={onClick}
+        className={`w-full min-h-[42px] rounded-xl border px-3 py-2 text-[11px] font-black leading-tight transition-all hover:bg-white/10 active:scale-[0.98] ${nextActionConfig.bg} ${nextActionConfig.text} ${nextActionConfig.border}`}
+      >
+        {nextActionConfig.label}
+      </button>
+    </div>
   );
 };
 
@@ -129,14 +157,14 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
         {/* Sticky Header */}
         <div className="sticky top-0 z-50 bg-[#191B25] pt-2 pb-4 shadow-xl border-b border-white/5">
           {/* Title + Actions */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <h2 className="text-lg md:text-xl font-extrabold text-white tracking-tight uppercase">
               Учет SAP / LES
             </h2>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={loadData}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white/60 hover:text-white bg-white/5 border border-white/5 transition-all"
+                className="flex min-h-[42px] items-center gap-2 rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-xs font-bold text-white/60 transition-all hover:text-white"
               >
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                 Обновить
@@ -144,7 +172,7 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
               <button
                 onClick={exportCSV}
                 disabled={doneTasks.length === 0}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex min-h-[42px] items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-400 transition-all hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Download size={14} />
                 Выгрузить отчет (CSV)
@@ -203,17 +231,17 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
                 className="grid grid-cols-1 md:grid-cols-[50px_1fr_1fr_1fr_1fr_140px_140px] gap-2 px-4 py-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all items-center"
               >
                 <div className="text-white/30 text-xs font-mono hidden md:block">{index + 1}</div>
-                <div className="text-white font-bold text-sm tracking-wide">{task.id}</div>
-                <div className="text-white/60 text-sm">{task.zone || '—'}</div>
-                <div className="text-white/60 text-sm font-mono">{task.end_time || '—'}</div>
-                <div className="text-white/60 text-sm">{task.operator || '—'}</div>
-                <div className="flex justify-center">
+                <div className="text-white font-bold text-sm tracking-wide md:pr-2">{task.id}</div>
+                <div className="hidden text-white/60 text-sm md:block">{task.zone || '—'}</div>
+                <div className="hidden text-white/60 text-sm font-mono md:block">{task.end_time || '—'}</div>
+                <div className="hidden text-white/60 text-sm md:block">{task.operator || '—'}</div>
+                <div className="hidden md:flex md:justify-center">
                   <StatusBadge
                     status={(task.sap_status || 'WAIT') as AccountingStatus}
                     onClick={() => handleStatusClick(task.id, 'SAP')}
                   />
                 </div>
-                <div className="flex justify-center">
+                <div className="hidden md:flex md:justify-center">
                   <StatusBadge
                     status={(task.les_status || 'WAIT') as AccountingStatus}
                     onClick={() => handleStatusClick(task.id, 'LES')}
@@ -226,6 +254,20 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
                   <span>Зона: {task.zone || '—'}</span>
                   <span>Оконч.: {task.end_time || '—'}</span>
                   <span>Оператор: {task.operator || '—'}</span>
+                </div>
+                <div className="md:hidden col-span-1 grid grid-cols-1 min-[390px]:grid-cols-2 gap-2 mt-1">
+                  <StatusBadge
+                    system="SAP"
+                    showSystemLabel
+                    status={(task.sap_status || 'WAIT') as AccountingStatus}
+                    onClick={() => handleStatusClick(task.id, 'SAP')}
+                  />
+                  <StatusBadge
+                    system="LES"
+                    showSystemLabel
+                    status={(task.les_status || 'WAIT') as AccountingStatus}
+                    onClick={() => handleStatusClick(task.id, 'LES')}
+                  />
                 </div>
               </div>
             ))}
