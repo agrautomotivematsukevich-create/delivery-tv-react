@@ -19,12 +19,6 @@ const STATUS_CONFIG: Record<AccountingStatus, { icon: React.ReactNode; label: st
   REJECTED: { icon: <XCircle size={14} />, label: 'Не принят', bg: 'bg-red-500/15', text: 'text-red-400', border: 'border-red-500/20' },
 };
 
-const NEXT_ACTION_CONFIG: Record<AccountingStatus, { label: string; bg: string; text: string; border: string }> = {
-  WAIT: { label: 'Принять', bg: 'bg-emerald-500/10', text: 'text-emerald-300', border: 'border-emerald-500/20' },
-  ACCEPTED: { label: 'Не принять', bg: 'bg-red-500/10', text: 'text-red-300', border: 'border-red-500/20' },
-  REJECTED: { label: 'Ожидает', bg: 'bg-white/5', text: 'text-white/75', border: 'border-white/10' },
-};
-
 function nextStatus(current: AccountingStatus): AccountingStatus {
   const idx = STATUS_CYCLE.indexOf(current);
   return STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
@@ -41,7 +35,6 @@ const StatusBadge: React.FC<{
   showSystemLabel?: boolean;
 }> = ({ status, onClick, system, showSystemLabel = false }) => {
   const currentConfig = STATUS_CONFIG[status];
-  const nextActionConfig = NEXT_ACTION_CONFIG[status];
 
   return (
     <div className="w-full min-w-0">
@@ -49,20 +42,13 @@ const StatusBadge: React.FC<{
         <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-white/35">{system}</div>
       )}
 
-      <div className={`flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-bold ${currentConfig.bg} ${currentConfig.text} ${currentConfig.border}`}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={`flex min-h-[42px] w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-[11px] font-bold transition-all hover:opacity-90 active:scale-[0.98] ${currentConfig.bg} ${currentConfig.text} ${currentConfig.border}`}
+      >
         {currentConfig.icon}
         <span className="truncate">{currentConfig.label}</span>
-      </div>
-
-      <div className="mt-2 mb-1 text-center text-[9px] font-bold uppercase tracking-[0.18em] text-white/30">
-        Следующее нажатие
-      </div>
-
-      <button
-        onClick={onClick}
-        className={`w-full min-h-[42px] rounded-xl border px-3 py-2 text-[11px] font-black leading-tight transition-all hover:bg-white/10 active:scale-[0.98] ${nextActionConfig.bg} ${nextActionConfig.text} ${nextActionConfig.border}`}
-      >
-        {nextActionConfig.label}
       </button>
     </div>
   );
