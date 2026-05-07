@@ -18,6 +18,7 @@ import { TRANSLATIONS } from './constants';
 import { DashboardData, Task, TaskAction, TaskActionResult } from './types';
 import { useAppContext } from './components/AppContext';
 import { deepEqual } from './utils/deepEqual';
+import { getMillisecondsUntilNextOperationalBoundary, getOperationalDateInfo } from './utils/time';
 
 // Lazy-loaded heavy views
 const HistoryView          = React.lazy(() => import('./components/HistoryView'));
@@ -29,18 +30,9 @@ const LotTrackerView       = React.lazy(() => import('./components/LotTrackerVie
 const AccountingView       = React.lazy(() => import('./components/AccountingView'));
 
 const DASHBOARD_LKG_KEY = 'warehouse_dashboard_last_nonzero';
-const NIGHT_PLAN_CARRYOVER_END_MIN = 7 * 60;
-
-function getMoscowMinutes(): number {
-  const [hh, mm] = new Date()
-    .toLocaleTimeString('en-GB', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', hour12: false })
-    .split(':')
-    .map(Number);
-  return (hh || 0) * 60 + (mm || 0);
-}
 
 function isNightPlanCarryoverWindow(): boolean {
-  return getMoscowMinutes() < NIGHT_PLAN_CARRYOVER_END_MIN;
+  return getOperationalDateInfo().isBeforeOperationalCutoff;
 }
 
 function isEmptyDashboardSnapshot(data: DashboardData): boolean {
@@ -129,13 +121,7 @@ function App() {
     isFetchingRef.current = true;
 
     try {
-      const todayStr = (() => {
-        const moscowTime = new Date().toLocaleString("en-US", {timeZone: "Europe/Moscow"});
-        const now = new Date(moscowTime);
-        const dd = String(now.getDate()).padStart(2, '0');
-        const mm = String(now.getMonth() + 1).padStart(2, '0');
-        return `${dd}.${mm}`;
-      })();
+      const todayStr = getOperationalDateInfo().operationalSheetName;
 
       // Single HTTP call: bundle auto-falls back to 2 parallel calls if backend
       // route is not deployed yet (api.fetchDashboardBundle handles that).
@@ -224,11 +210,31 @@ function App() {
     };
   }, [refreshDashboard, location.pathname, isTV2, isTV, user]);
 
+  useEffect(() => {
+    if (isTV2) return;
+    if (isTV && !user) return;
+
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const scheduleBoundaryRefresh = () => {
+      timeoutId = setTimeout(() => {
+        refreshDashboard();
+        scheduleBoundaryRefresh();
+      }, getMillisecondsUntilNextOperationalBoundary());
+    };
+
+    scheduleBoundaryRefresh();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [refreshDashboard, isTV2, isTV, user]);
+
   const handleTaskActionRequest = (task: Task, actionType: 'start' | 'finish') => {
     return new Promise<TaskActionResult>((resolve, reject) => {
       setCurrentAction({
         id: task.id,
         type: actionType,
+        sheetDate: task.sheet_date,
         sealPhotoUrl: actionType === 'finish' ? task.photo_seal : undefined,
         onResolve: (result: TaskActionResult = 'completed') => resolve(result),
         onReject: reject,

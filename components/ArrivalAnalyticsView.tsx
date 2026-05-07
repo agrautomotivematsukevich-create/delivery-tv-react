@@ -6,7 +6,7 @@ import {
   Clock, Package, ChevronDown, ChevronUp, ChevronsUpDown, Truck
 } from 'lucide-react';
 
-import { parseHHMM, formatWait } from '../utils/time';
+import { formatWait, getOperationalIsoDate, parseHHMM } from '../utils/time';
 
 interface ArrivalAnalyticsViewProps {
   t: TranslationSet;
@@ -33,7 +33,7 @@ type SortDir = 'asc' | 'desc';
 // --- Компонент ---
 
 const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState<string>(getOperationalIsoDate());
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('waitMinutes');
@@ -41,7 +41,7 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
   const [wsFilter, setWsFilter] = useState<string>('ALL');
 
   const isToday = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getOperationalIsoDate();
     return date === today;
   }, [date]);
 

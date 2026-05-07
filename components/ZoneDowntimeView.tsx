@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { TranslationSet } from '../types';
 import { Clock, TrendingDown, BarChart3, Calendar, Download, AlertTriangle, Activity, CheckCircle, Phone } from 'lucide-react';
+import { getOperationalIsoDate } from '../utils/time';
 
 interface ZoneDowntimeViewProps {
   t: TranslationSet;
@@ -34,7 +35,7 @@ interface ActiveIdleZone {
 }
 
 const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState<string>(getOperationalIsoDate());
   const [zoneStats, setZoneStats] = useState<ZoneStats[]>([]);
   const [activeIdles, setActiveIdles] = useState<ActiveIdleZone[]>([]);
   const [loading, setLoading] = useState(false);
@@ -67,7 +68,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
   }, [date]);
 
   const isToday = (dateStr: string): boolean => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getOperationalIsoDate();
     return dateStr === today;
   };
 

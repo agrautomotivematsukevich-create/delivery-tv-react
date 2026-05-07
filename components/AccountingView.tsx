@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '../services/api';
 import { Task, TranslationSet } from '../types';
 import { Download, RefreshCw, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { getMillisecondsUntilNextOperationalBoundary, getOperationalDateInfo } from '../utils/time';
 
 interface AccountingViewProps {
   t: TranslationSet;
@@ -27,14 +28,6 @@ const NEXT_ACTION_CONFIG: Record<AccountingStatus, { label: string; bg: string; 
 function nextStatus(current: AccountingStatus): AccountingStatus {
   const idx = STATUS_CYCLE.indexOf(current);
   return STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
-}
-
-function getTodayFormatted(): string {
-  const moscowTime = new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' });
-  const now = new Date(moscowTime);
-  const dd = String(now.getDate()).padStart(2, '0');
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  return `${dd}.${mm}`;
 }
 
 function isUnacceptedTask(task: Task): boolean {
@@ -79,11 +72,13 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [accountingFilter, setAccountingFilter] = useState<AccountingFilter>('ALL');
+  const [activeSheetDate, setActiveSheetDate] = useState(() => getOperationalDateInfo().operationalSheetName);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (sheetDate: string = getOperationalDateInfo().operationalSheetName) => {
     setLoading(true);
     try {
-      const data = await api.fetchHistory(getTodayFormatted());
+      const data = await api.fetchHistory(sheetDate);
+      setActiveSheetDate(sheetDate);
       setTasks(data);
     } catch {
       // ignore
@@ -94,6 +89,22 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
 
   useEffect(() => {
     loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const scheduleBoundaryRefresh = () => {
+      timeoutId = setTimeout(() => {
+        loadData(getOperationalDateInfo().operationalSheetName);
+        scheduleBoundaryRefresh();
+      }, getMillisecondsUntilNextOperationalBoundary());
+    };
+
+    scheduleBoundaryRefresh();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [loadData]);
 
   const doneTasks = useMemo(() => tasks.filter((t) => t.status === 'DONE'), [tasks]);
@@ -127,13 +138,14 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
     const current = (task[field] || 'WAIT') as AccountingStatus;
     const newStatus = nextStatus(current);
 
-    const ok = await api.updateAccountingStatus(taskId, system, newStatus);
+    const targetSheetDate = task.sheet_date || activeSheetDate;
+    const ok = await api.updateAccountingStatus(taskId, system, newStatus, targetSheetDate);
     if (!ok) {
       setTasks((prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, [field]: current } : t))
       );
     }
-  }, [tasks]);
+  }, [activeSheetDate, tasks]);
 
   const exportCSV = useCallback(() => {
     const BOM = '\uFEFF';
@@ -157,10 +169,10 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `accounting_${getTodayFormatted().replace('.', '-')}.csv`;
+    a.download = `accounting_${activeSheetDate.replace('.', '-')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [doneTasks]);
+  }, [activeSheetDate, doneTasks]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0 w-full">
@@ -174,7 +186,7 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
             </h2>
             <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={loadData}
+                onClick={() => loadData()}
                 className="flex min-h-[42px] items-center gap-2 rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-xs font-bold text-white/60 transition-all hover:text-white"
               >
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />

@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { Task, TranslationSet } from '../types'; 
 import { Calendar, Package, X } from 'lucide-react';
-import { calcDuration } from '../utils/time';
+import { calcDuration, getOperationalIsoDate } from '../utils/time';
 
 interface HistoryViewProps {
   t: TranslationSet;
 }
 
 const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState<string>(getOperationalIsoDate());
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);

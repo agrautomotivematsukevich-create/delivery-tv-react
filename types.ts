@@ -34,6 +34,7 @@ export interface Task {
   photo_seal?: string;
   photo_empty?: string;
   arrival_time?: string; // Col P: Время прибытия на территорию
+  sheet_date?: string;
   sap_status?: 'WAIT' | 'ACCEPTED' | 'REJECTED';
   les_status?: 'WAIT' | 'ACCEPTED' | 'REJECTED';
 }
@@ -206,6 +207,7 @@ export interface TaskAction {
   id: string;
   type: 'start' | 'finish';
   zone?: string | null;
+  sheetDate?: string;
   sealPhotoUrl?: string; // Передаётся при финише для превью
   onResolve?: (result?: TaskActionResult) => void;
   onReject?: (reason?: unknown) => void;

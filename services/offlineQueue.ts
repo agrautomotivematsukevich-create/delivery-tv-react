@@ -30,6 +30,7 @@ export interface TaskActionPayload {
   id: string;
   act: string;
   op: string;
+  date?: string;
   zone?: string;
   pGen?: string;
   pSeal?: string;

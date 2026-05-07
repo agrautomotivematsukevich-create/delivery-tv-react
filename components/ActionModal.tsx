@@ -137,7 +137,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
       const actionType = isLocalManual ? `${action.type}_manual_${manualTime}` : action.type;
       const selectedZone = zone || '';
-      await offlineQueue.enqueueTaskAction({ id: action.id, act: actionType, op: user.name, zone: selectedZone });
+      await offlineQueue.enqueueTaskAction({ id: action.id, act: actionType, op: user.name, zone: selectedZone, date: action.sheetDate });
       setUploadStatus({ state: 'queued' });
       vibrate([100, 50, 100]);
       setTimeout(() => onSuccess('queued'), 1500);
@@ -164,7 +164,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       }
 
       setUploadStatus({ state: 'uploading', step: 'Сохранение...', progress: 85 });
-      await api.taskAction(action.id, actionType, user.name, selectedZone, urlGen, urlSeal, urlEmpty);
+      await api.taskAction(action.id, actionType, user.name, selectedZone, urlGen, urlSeal, urlEmpty, action.sheetDate || '');
       setUploadStatus({ state: 'uploading', step: 'Готово!', progress: 100 });
       setTimeout(() => {
         setUploadStatus({ state: 'success' });

@@ -6,6 +6,121 @@ export function parseHHMM(s: string | undefined): number | null {
   return parseInt(m[1]) * 60 + parseInt(m[2]);
 }
 
+export const MOSCOW_TIME_ZONE = 'Europe/Moscow';
+export const OPERATIONAL_DAY_START_HOUR = 6;
+
+export interface OperationalDateInfo {
+  calendarDate: string;
+  operationalDate: string;
+  calendarSheetName: string;
+  operationalSheetName: string;
+  previousSheetName: string;
+  hour: number;
+  minute: number;
+  second: number;
+  cutoffHour: number;
+  isBeforeOperationalCutoff: boolean;
+}
+
+type MoscowDateParts = {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+};
+
+function getMoscowDateParts(now: Date = new Date()): MoscowDateParts {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: MOSCOW_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(now);
+
+  const readPart = (type: Intl.DateTimeFormatPartTypes): number => {
+    const value = parts.find((part) => part.type === type)?.value ?? '0';
+    return parseInt(value, 10) || 0;
+  };
+
+  return {
+    year: readPart('year'),
+    month: readPart('month'),
+    day: readPart('day'),
+    hour: readPart('hour'),
+    minute: readPart('minute'),
+    second: readPart('second'),
+  };
+}
+
+function buildUtcDateFromMoscowParts(parts: MoscowDateParts): Date {
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second));
+}
+
+function formatUtcIsoDate(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatUtcSheetName(date: Date): string {
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${day}.${month}`;
+}
+
+export function getOperationalDateInfo(now: Date = new Date()): OperationalDateInfo {
+  const moscowParts = getMoscowDateParts(now);
+  const calendarUtc = buildUtcDateFromMoscowParts(moscowParts);
+  const operationalUtc = new Date(calendarUtc.getTime());
+
+  if (moscowParts.hour < OPERATIONAL_DAY_START_HOUR) {
+    operationalUtc.setUTCDate(operationalUtc.getUTCDate() - 1);
+  }
+
+  const previousUtc = new Date(operationalUtc.getTime());
+  previousUtc.setUTCDate(previousUtc.getUTCDate() - 1);
+
+  return {
+    calendarDate: formatUtcIsoDate(calendarUtc),
+    operationalDate: formatUtcIsoDate(operationalUtc),
+    calendarSheetName: formatUtcSheetName(calendarUtc),
+    operationalSheetName: formatUtcSheetName(operationalUtc),
+    previousSheetName: formatUtcSheetName(previousUtc),
+    hour: moscowParts.hour,
+    minute: moscowParts.minute,
+    second: moscowParts.second,
+    cutoffHour: OPERATIONAL_DAY_START_HOUR,
+    isBeforeOperationalCutoff: moscowParts.hour < OPERATIONAL_DAY_START_HOUR,
+  };
+}
+
+export function getOperationalIsoDate(now: Date = new Date()): string {
+  return getOperationalDateInfo(now).operationalDate;
+}
+
+export function getOperationalSheetName(now: Date = new Date()): string {
+  return getOperationalDateInfo(now).operationalSheetName;
+}
+
+export function getMillisecondsUntilNextOperationalBoundary(now: Date = new Date()): number {
+  const parts = getMoscowDateParts(now);
+  const currentUtc = buildUtcDateFromMoscowParts(parts);
+  const nextBoundaryUtc = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, OPERATIONAL_DAY_START_HOUR, 0, 0));
+
+  if (parts.hour >= OPERATIONAL_DAY_START_HOUR) {
+    nextBoundaryUtc.setUTCDate(nextBoundaryUtc.getUTCDate() + 1);
+  }
+
+  return Math.max(nextBoundaryUtc.getTime() - currentUtc.getTime() + 1000, 1000);
+}
+
 /** Текущее время в минутах от полуночи. */
 export function nowMinutes(): number {
   const n = new Date();
@@ -61,10 +176,9 @@ export function calcDuration(start?: string, end?: string): string {
   return formatDuration(diff);
 }
 
-/** Сегодняшняя дата в формате "DD.MM". */
+/** Текущая операционная дата в формате "DD.MM" (Москва, смена в 06:00). */
 export function todayDDMM(): string {
-  const d = new Date();
-  return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2);
+  return getOperationalSheetName();
 }
 
 /** Для сортировки дат формата "DD.MM" → числовое значение. */

@@ -3,7 +3,7 @@ import { api } from '../services/api';
 import { Task, TaskActionResult, TranslationSet } from '../types';
 import { Phone, Check, Play, Layers, Search, X, ChevronUp, Undo2, Timer, WifiOff, Wifi, MapPin } from 'lucide-react';
 import { offlineQueue } from '../services/offlineQueue';
-import { parseHHMM, elapsedMin } from '../utils/time';
+import { elapsedMin, getMillisecondsUntilNextOperationalBoundary } from '../utils/time';
 import { useAppContext } from './AppContext';
 import { useEscape } from '../utils/useEscape';
 import { vibrate } from '../utils/haptics';
@@ -68,6 +68,22 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   }, [fetchQueue, startPolling, stopPolling]);
 
   useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const scheduleBoundaryRefresh = () => {
+      timeoutId = setTimeout(() => {
+        fetchQueue();
+        scheduleBoundaryRefresh();
+      }, getMillisecondsUntilNextOperationalBoundary());
+    };
+
+    scheduleBoundaryRefresh();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [fetchQueue]);
+
+  useEffect(() => {
     const id = setInterval(() => setTick(n => n + 1), 30000);
     return () => clearInterval(id);
   }, []);
@@ -123,11 +139,11 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     }
   };
 
-  const handleUndo = async (taskId: string) => {
-    setUndoingId(taskId);
+  const handleUndo = async (task: Task) => {
+    setUndoingId(task.id);
     stopPolling();
     try {
-      await api.taskAction(taskId, 'undo_start', '', '', '', '', '');
+      await api.taskAction(task.id, 'undo_start', '', '', '', '', '', task.sheet_date || '');
       vibrate([50, 30, 50]);
       await fetchQueue();
       setUndoConfirm(null);
@@ -344,7 +360,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
                       {showUndoConfirm ? (
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] text-red-400 font-bold">Отменить?</span>
-                          <button onClick={() => handleUndo(task.id)} disabled={isUndoing}
+                          <button onClick={() => handleUndo(task)} disabled={isUndoing}
                             className="px-3 py-1.5 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 text-[10px] font-bold hover:bg-red-500/25 transition-all disabled:opacity-50">
                             {isUndoing ? '...' : 'Да'}
                           </button>

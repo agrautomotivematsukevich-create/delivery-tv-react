@@ -1,5 +1,6 @@
 import { SCRIPT_URL } from "../constants";
 import { DashboardData, Task, Issue, TaskInput, PlanRow, LotContainer, PendingUser } from "../types";
+import { getOperationalSheetName } from "../utils/time";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TOKEN MANAGEMENT
@@ -268,7 +269,7 @@ export const api = {
   },
 
   fetchTasks: async (mode: "get_operator_tasks" | "get_stats"): Promise<Task[]> => {
-    return cachedFetch(`tasks_${mode}`, 60000, async () => {
+    return cachedFetch(`tasks_${mode}_${getOperationalSheetName()}`, 60000, async () => {
       const res = await authRead(mode);
       if (!res) return [];
       const data = await res.json();
@@ -451,11 +452,19 @@ export const api = {
     }
   },
 
-  taskAction: async (id: string, act: string, user: string, zone: string | null = "", pGen: string = "", pSeal: string = "", pEmpty: string = ""): Promise<void> => {
-    await authPost(
-      { mode: "task_action", id, act, op: user, zone: zone || "", pGen, pSeal, pEmpty },
-      { timeout: 20000 }
-    );
+  taskAction: async (id: string, act: string, user: string, zone: string | null = "", pGen: string = "", pSeal: string = "", pEmpty: string = "", dateStr: string = ""): Promise<void> => {
+    const payload: Record<string, string> = {
+      mode: "task_action",
+      id,
+      act,
+      op: user,
+      zone: zone || "",
+      pGen,
+      pSeal,
+      pEmpty,
+    };
+    if (dateStr) payload.date = dateStr;
+    await authPost(payload, { timeout: 20000 });
   },
 
   uploadPhoto: async (image: string, mimeType: string, filename: string): Promise<string> => {
@@ -521,9 +530,11 @@ export const api = {
     await authPost({ mode: "reject_user", login });
   },
 
-  updateAccountingStatus: async (taskId: string, system: 'SAP' | 'LES', status: 'WAIT' | 'ACCEPTED' | 'REJECTED'): Promise<boolean> => {
+  updateAccountingStatus: async (taskId: string, system: 'SAP' | 'LES', status: 'WAIT' | 'ACCEPTED' | 'REJECTED', dateStr: string = ''): Promise<boolean> => {
     try {
-      const res = await authPost({ mode: "update_accounting", id: taskId, system, status });
+      const payload: Record<string, string> = { mode: "update_accounting", id: taskId, system, status };
+      if (dateStr) payload.date = dateStr;
+      const res = await authPost(payload);
       const txt = await res.text();
       return txt.includes("OK");
     } catch (e: unknown) {

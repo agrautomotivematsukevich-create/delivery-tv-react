@@ -6,6 +6,7 @@
 // ── CONFIGURATION ────────────────────────────────────────────────────────────
 
 var TIMEZONE     = "Europe/Moscow";
+var OPERATIONAL_DAY_START_HOUR = 6;
 var ALERT_EMAIL  = "MHReceiving@agr.auto";  // TODO: move to sheet config cell
 
 var ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
@@ -464,8 +465,8 @@ function verifyToken(token) {
 }
 
 // ── Today-sheet read cache ──────────────────────────────────────────────────
-// Shared 15s cache for handleReadComplex + handleGetStats keyed by today's
-// sheet name. With N clients polling in parallel, only one actually reads the
+// Shared 15s cache for handleReadComplex + handleGetStats keyed by the current
+// operational sheet name. With N clients polling in parallel, only one actually reads the
 // sheet per 15s window; others hit CacheService. Write handlers invalidate
 // immediately, so operator UI never sees its own stale action.
 var TODAY_READ_CACHE_TTL = 15;
@@ -622,21 +623,47 @@ function getActionTime(act, fallbackTime) {
   return m ? m[1] : fallbackTime;
 }
 
-function getTodaySheetName() {
-  return Utilities.formatDate(new Date(), TIMEZONE, "dd.MM");
+function getOperationalDateInfo(now) {
+  var current = now || new Date();
+  var hour = parseInt(Utilities.formatDate(current, TIMEZONE, "H"), 10) || 0;
+  var minute = parseInt(Utilities.formatDate(current, TIMEZONE, "m"), 10) || 0;
+  var isBeforeOperationalCutoff = hour < OPERATIONAL_DAY_START_HOUR;
+  var operationalBase = isBeforeOperationalCutoff
+    ? new Date(current.getTime() - 24 * 60 * 60 * 1000)
+    : new Date(current.getTime());
+  var previousBase = new Date(operationalBase.getTime() - 24 * 60 * 60 * 1000);
+
+  return {
+    calendarDate: Utilities.formatDate(current, TIMEZONE, "yyyy-MM-dd"),
+    operationalDate: Utilities.formatDate(operationalBase, TIMEZONE, "yyyy-MM-dd"),
+    calendarSheetName: Utilities.formatDate(current, TIMEZONE, "dd.MM"),
+    operationalSheetName: Utilities.formatDate(operationalBase, TIMEZONE, "dd.MM"),
+    previousSheetName: Utilities.formatDate(previousBase, TIMEZONE, "dd.MM"),
+    hour: hour,
+    minute: minute,
+    cutoffHour: OPERATIONAL_DAY_START_HOUR,
+    isBeforeOperationalCutoff: isBeforeOperationalCutoff
+  };
 }
 
-function getYesterdaySheetName() {
-  var d = new Date();
-  var yesterday = new Date(d.getTime() - 24 * 60 * 60 * 1000);
-  return Utilities.formatDate(yesterday, TIMEZONE, "dd.MM");
+function getOperationalSheetName(now) {
+  return getOperationalDateInfo(now).operationalSheetName;
 }
 
-function isNightCarryover() {
-  var timeString = Utilities.formatDate(new Date(), TIMEZONE, "HH:mm");
-  var parts = timeString.split(":");
-  var mins = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-  return mins < 390;
+function getCalendarSheetName(now) {
+  return getOperationalDateInfo(now).calendarSheetName;
+}
+
+function getTodaySheetName(now) {
+  return getOperationalSheetName(now);
+}
+
+function getYesterdaySheetName(now) {
+  return getOperationalDateInfo(now).previousSheetName;
+}
+
+function isNightCarryover(now) {
+  return getOperationalDateInfo(now).isBeforeOperationalCutoff;
 }
 
 function isValidEmail(email) {
@@ -650,7 +677,7 @@ function isValidEmail(email) {
 
 function handleTvDashboard(params, ss) {
   var sheet = ss.getSheetByName(getTodaySheetName());
-  if (!sheet && !isNightCarryover()) {
+  if (!sheet) {
     return jsonOut({
       status: "WAIT", done: 0, total: 0, nextId: "---", nextTime: "",
       shiftCounts: { morning: 0, evening: 0, night: 0 },
@@ -662,7 +689,6 @@ function handleTvDashboard(params, ss) {
   var activeList = [];
   var shiftMorning = 0, shiftEvening = 0, shiftNight = 0;
   var onTerritory = 0;
-  var seenIds = {};
 
   if (sheet) {
     var lr = sheet.getLastRow();
@@ -671,7 +697,6 @@ function handleTvDashboard(params, ss) {
       for (var i = 0; i < d.length; i++) {
         var row = d[i];
         if (row[4]) {
-          seenIds[row[4]] = true;
           total++;
           if (row[8]) {
             done++;
@@ -688,25 +713,6 @@ function handleTvDashboard(params, ss) {
           else {
             if (nextId === "---") { nextId = row[4]; nextTime = row[6]; }
             if (row[15] && row[15] !== "") onTerritory++;
-          }
-        }
-      }
-    }
-  }
-
-  if (isNightCarryover()) {
-    var ySheet = ss.getSheetByName(getYesterdaySheetName());
-    if (ySheet && ySheet.getLastRow() >= 5) {
-      var yData = ySheet.getRange(5, 1, ySheet.getLastRow() - 4, 16).getDisplayValues();
-      for (var j = 0; j < yData.length; j++) {
-        var yRow = yData[j];
-        if (yRow[4] && !seenIds[yRow[4]] && !yRow[8]) {
-          total++;
-          if (yRow[7]) {
-            activeList.push({ id: yRow[4], start: yRow[7], zone: yRow[10] || "" });
-          } else {
-            if (nextId === "---") { nextId = yRow[4]; nextTime = yRow[6]; }
-            if (yRow[15] && yRow[15] !== "") onTerritory++;
           }
         }
       }
@@ -927,12 +933,11 @@ function handleReadComplex(params, ss) {
 
   var sheet = ss.getSheetByName(getTodaySheetName());
   // 1. Заглушка теперь отдает 6 нулей (3 для факта, 3 для плана)
-  if (!sheet && !isNightCarryover()) return textOut("WAIT;0|0;---;00:00;0|0|0|0|0|0;0\n###MSG###");
+  if (!sheet) return textOut("WAIT;0|0;---;00:00;0|0|0|0|0|0;0\n###MSG###");
 
   var total = 0, done = 0, nextId = "---", nextTime = "";
   var activeRows = [];
   var onTerritory = 0;
-  var seenIds = {};
 
   // 2. СЧЕТЧИКИ ДЛЯ СМЕН (ФАКТ И ПЛАН)
   var m_fact = 0, e_fact = 0, n_fact = 0;
@@ -946,7 +951,6 @@ function handleReadComplex(params, ss) {
       for (var i = 0; i < d.length; i++) {
         var row = d[i];
         if (row[4]) {
-          seenIds[row[4]] = true;
           total++;
           
           // --- СЧИТАЕМ ФАКТ (По времени завершения - колонка I / row[8]) ---
@@ -979,35 +983,6 @@ function handleReadComplex(params, ss) {
     }
   }
 
-  // --- ОБРАБАТЫВАЕМ ПЕРЕХОДЯЩИЕ НОЧНЫЕ ЗАДАЧИ ---
-  if (isNightCarryover()) {
-    var ySheet = ss.getSheetByName(getYesterdaySheetName());
-    if (ySheet && ySheet.getLastRow() >= 5) {
-      var yData = ySheet.getRange(5, 1, ySheet.getLastRow() - 4, 16).getDisplayValues();
-      for (var j = 0; j < yData.length; j++) {
-        var yRow = yData[j];
-        if (yRow[4] && !seenIds[yRow[4]] && !yRow[8]) {
-          total++;
-          if (yRow[7]) activeRows.push(yRow[4] + "|" + yRow[7] + "|0|" + yRow[2] + "|" + yRow[10]);
-          else {
-            if (nextId === "---") { nextId = yRow[4]; nextTime = yRow[6]; }
-            if (yRow[15] && yRow[15] !== "") onTerritory++;
-          }
-
-          // Добавляем их в план смены по ETA
-          var yEtaMin = parseTimeToMin(yRow[6]);
-          if (yEtaMin === null) {
-            noEtaCount++;
-          } else {
-            if (yEtaMin >= 470 && yEtaMin < 1010) m_base++;
-            else if (yEtaMin >= 1010 || yEtaMin < 110) e_base++;
-            else if (yEtaMin >= 110 && yEtaMin < 470) n_base++;
-          }
-        }
-      }
-    }
-  }
-
   // 3. РАСПРЕДЕЛЯЕМ ЗАДАЧИ БЕЗ ETA И ПЕРЕНОСИМ ДОЛГИ
   if (noEtaCount > 0) {
     var half = Math.ceil(noEtaCount / 2);
@@ -1018,8 +993,8 @@ function handleReadComplex(params, ss) {
   var m_target = m_base, e_target = e_base, n_target = n_base;
 
   // Узнаем текущую смену
-  var now = new Date();
-  var nowMin = now.getHours() * 60 + now.getMinutes();
+  var operationalNow = getOperationalDateInfo();
+  var nowMin = operationalNow.hour * 60 + operationalNow.minute;
   var activeShift = "none";
   if (nowMin >= 470 && nowMin < 1010) activeShift = "morning";
   else if (nowMin >= 1010 || nowMin < 110) activeShift = "evening";
@@ -1055,16 +1030,15 @@ function handleGetStats(params, ss) {
   if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
 
   var tasks = [];
-  var seenIds = {};
+  var sheetName = getTodaySheetName();
 
-  var sheet = ss.getSheetByName(getTodaySheetName());
+  var sheet = ss.getSheetByName(sheetName);
   if (sheet && sheet.getLastRow() >= 5) {
     var data = sheet.getRange(5, 1, sheet.getLastRow() - 4, 16).getDisplayValues();
     for (var i = 0; i < data.length; i++) {
       var row = data[i];
       var id = row[4];
       if (id) {
-        seenIds[id] = true;
         var status = deriveStatus(row[7], row[8]);
         var timeDisplay = row[6];
         if (row[8]) timeDisplay = row[8];
@@ -1074,30 +1048,8 @@ function handleGetStats(params, ss) {
           status: status, time: timeDisplay, start_time: row[7], end_time: row[8],
           zone: row[10] || "", operator: row[11] || "",
           photo_gen: row[12] || "", photo_seal: row[13] || "",
-          arrival_time: row[15] || ""
+          arrival_time: row[15] || "", sheet_date: sheetName
         });
-      }
-    }
-  }
-
-  if (isNightCarryover()) {
-    var ySheet = ss.getSheetByName(getYesterdaySheetName());
-    if (ySheet && ySheet.getLastRow() >= 5) {
-      var yData = ySheet.getRange(5, 1, ySheet.getLastRow() - 4, 16).getDisplayValues();
-      for (var j = 0; j < yData.length; j++) {
-        var yRow = yData[j];
-        var yId = yRow[4];
-        if (yId && !seenIds[yId] && !yRow[8]) {
-          var yStatus = yRow[7] ? "ACTIVE" : "WAIT";
-          var yTime = yRow[7] || yRow[6];
-          tasks.push({
-            id: yId, type: yRow[2], pallets: yRow[3], phone: yRow[5], eta: yRow[6],
-            status: yStatus, time: yTime, start_time: yRow[7], end_time: "",
-            zone: yRow[10] || "", operator: yRow[11] || "",
-            photo_gen: yRow[12] || "", photo_seal: yRow[13] || "",
-            arrival_time: yRow[15] || ""
-          });
-        }
       }
     }
   }
@@ -1108,7 +1060,7 @@ function handleGetStats(params, ss) {
 
 // Bundle endpoint: one HTTP call → {dashboardText, tasks}.
 // Intentionally delegates to existing handlers so the contract cannot drift.
-// Both handlers share the 15s server-side cache on today's sheet, so a single
+// Both handlers share the 15s server-side cache on the operational sheet, so a single
 // sheet read is amortized across all bundle+legacy callers in the TTL window.
 // Future optimization: single-pass implementation that reads the sheet once
 // and builds both outputs — not worth the risk until prod is stable.
@@ -1141,6 +1093,7 @@ function handleGetHistory(params, ss) {
         status: deriveStatus(row[7], row[8]), start_time: row[7], end_time: row[8],
         zone: row[10], operator: row[11], photo_gen: row[12],
         photo_seal: row[13], photo_empty: row[14], arrival_time: row[15],
+        sheet_date: dateStr,
         sap_status: mapAccountingFromSheet(row[16]),
         les_status: mapAccountingFromSheet(row[17])
       });
@@ -1168,15 +1121,19 @@ function handleUpdateAccounting(params, ss) {
   var id     = (params.id || "").toString().trim();
   var system = (params.system || "").toString().trim();
   var status = (params.status || "").toString().trim();
+  var requestedDate = (params.date || "").toString().trim();
 
   if (!id || (system !== "SAP" && system !== "LES")) {
     return jsonOut({ error: "INVALID_PARAMS" });
+  }
+  if (requestedDate && !isValidDateFormat(requestedDate)) {
+    return jsonOut({ error: "INVALID_DATE" });
   }
   if (status !== "WAIT" && status !== "ACCEPTED" && status !== "REJECTED") {
     return jsonOut({ error: "INVALID_STATUS" });
   }
 
-  var sheetName = getTodaySheetName();
+  var sheetName = requestedDate || getTodaySheetName();
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) return jsonOut({ error: "SHEET_NOT_FOUND" });
 
@@ -1189,8 +1146,8 @@ function handleUpdateAccounting(params, ss) {
   for (var i = 0; i < ids.length; i++) {
     if (ids[i][0] === id) {
       sheet.getRange(i + 5, col).setValue(mapAccountingToSheet(status));
-      invalidateTodayReadCache();
       invalidateDateReadCache(sheetName);
+      if (sheetName === getTodaySheetName()) invalidateTodayReadCache();
       return jsonOut({ status: "OK" });
     }
   }
@@ -1320,6 +1277,7 @@ function handleGetIssues(params, ss) {
 function handleTaskAction(params, ss) {
   var id  = (params.id || "").trim();
   var act = (params.act || "").trim();
+  var requestedDate = (params.date || "").toString().trim();
   var caller = params._caller || null;
   var successAuditAction = null;
   var failedAuditAction = null;
@@ -1346,51 +1304,31 @@ function handleTaskAction(params, ss) {
     }
     return textOut("INVALID_INPUT");
   }
+  if (requestedDate && !isValidDateFormat(requestedDate)) {
+    return textOut("INVALID_DATE");
+  }
 
   var time = Utilities.formatDate(new Date(), TIMEZONE, "HH:mm");
-  var todayName = getTodaySheetName();
+  var sheetName = requestedDate || getTodaySheetName();
   try {
-    var sheet = ss.getSheetByName(todayName);
+    var sheet = ss.getSheetByName(sheetName);
     if (sheet) {
       var result = applyTaskAction(sheet, id, act, time, params);
       if (result) {
-        invalidateTodayReadCache();
+        invalidateDateReadCache(sheetName);
+        if (sheetName === getTodaySheetName()) invalidateTodayReadCache();
         if (successAuditAction) {
           appendAuditLog(ss, {
             caller: caller,
             action: successAuditAction,
             entityType: "container",
             entityId: id,
-            details: buildAuditDetails(["act=" + act, "sheet=" + todayName]),
+            details: buildAuditDetails(["act=" + act, "sheet=" + sheetName]),
             device: "unknown",
             result: "success"
           });
         }
         return result;
-      }
-    }
-
-    if (isNightCarryover()) {
-      var yName = getYesterdaySheetName();
-      var ySheet = ss.getSheetByName(yName);
-      if (ySheet) {
-        var yResult = applyTaskAction(ySheet, id, act, time, params);
-        if (yResult) {
-          invalidateTodayReadCache();
-          invalidateDateReadCache(yName);
-          if (successAuditAction) {
-            appendAuditLog(ss, {
-              caller: caller,
-              action: successAuditAction,
-              entityType: "container",
-              entityId: id,
-              details: buildAuditDetails(["act=" + act, "sheet=" + yName]),
-              device: "unknown",
-              result: "success"
-            });
-          }
-          return yResult;
-        }
       }
     }
 
