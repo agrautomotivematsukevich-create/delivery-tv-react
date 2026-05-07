@@ -8,6 +8,7 @@ interface AccountingViewProps {
 }
 
 type AccountingStatus = 'WAIT' | 'ACCEPTED' | 'REJECTED';
+type AccountingFilter = 'ALL' | 'UNACCEPTED';
 
 const STATUS_CYCLE: AccountingStatus[] = ['WAIT', 'ACCEPTED', 'REJECTED'];
 
@@ -34,6 +35,10 @@ function getTodayFormatted(): string {
   const dd = String(now.getDate()).padStart(2, '0');
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   return `${dd}.${mm}`;
+}
+
+function isUnacceptedTask(task: Task): boolean {
+  return task.sap_status !== 'ACCEPTED' || task.les_status !== 'ACCEPTED';
 }
 
 const StatusBadge: React.FC<{
@@ -73,6 +78,7 @@ const StatusBadge: React.FC<{
 const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [accountingFilter, setAccountingFilter] = useState<AccountingFilter>('ALL');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -96,9 +102,14 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
     const total = doneTasks.length;
     const sapAccepted = doneTasks.filter((t) => t.sap_status === 'ACCEPTED').length;
     const lesAccepted = doneTasks.filter((t) => t.les_status === 'ACCEPTED').length;
-    const waiting = doneTasks.filter((t) => t.sap_status !== 'ACCEPTED' || t.les_status !== 'ACCEPTED').length;
+    const waiting = doneTasks.filter(isUnacceptedTask).length;
     return { total, sapAccepted, lesAccepted, waiting };
   }, [doneTasks]);
+
+  const filteredDoneTasks = useMemo(() => {
+    if (accountingFilter === 'ALL') return doneTasks;
+    return doneTasks.filter(isUnacceptedTask);
+  }, [accountingFilter, doneTasks]);
 
   const handleStatusClick = useCallback(async (taskId: string, system: 'SAP' | 'LES') => {
     setTasks((prev) =>
@@ -180,6 +191,34 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
             </div>
           </div>
 
+          <div className="mb-4 flex flex-col gap-2">
+            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+              Быстрый фильтр контейнеров
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setAccountingFilter('ALL')}
+                aria-pressed={accountingFilter === 'ALL'}
+                className={`flex min-h-[42px] items-center gap-2 rounded-xl border px-4 py-2 text-xs font-black transition-all ${accountingFilter === 'ALL' ? 'border-cyan-400/30 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-white/5 text-white/70 hover:text-white'}`}
+              >
+                <span>Все</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] ${accountingFilter === 'ALL' ? 'bg-cyan-300/20 text-cyan-50' : 'bg-white/10 text-white/60'}`}>
+                  {stats.total}
+                </span>
+              </button>
+              <button
+                onClick={() => setAccountingFilter('UNACCEPTED')}
+                aria-pressed={accountingFilter === 'UNACCEPTED'}
+                className={`flex min-h-[42px] items-center gap-2 rounded-xl border px-4 py-2 text-xs font-black transition-all ${accountingFilter === 'UNACCEPTED' ? 'border-amber-400/30 bg-amber-400/15 text-amber-50' : 'border-white/10 bg-white/5 text-white/70 hover:text-white'}`}
+              >
+                <span>Непринятые</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] ${accountingFilter === 'UNACCEPTED' ? 'bg-amber-300/20 text-amber-50' : 'bg-white/10 text-white/60'}`}>
+                  {stats.waiting}
+                </span>
+              </button>
+            </div>
+          </div>
+
           {/* Stats Widgets */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <div className="bg-white/5 border border-white/5 rounded-xl p-4">
@@ -223,9 +262,14 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
             <CheckCircle2 size={48} className="mb-4 opacity-30" />
             <div className="text-sm font-bold">Нет завершенных машин за сегодня</div>
           </div>
+        ) : filteredDoneTasks.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-white/30">
+            <CheckCircle2 size={48} className="mb-4 opacity-30" />
+            <div className="text-sm font-bold">Непринятых контейнеров нет</div>
+          </div>
         ) : (
           <div className="flex flex-col gap-1">
-            {doneTasks.map((task, index) => (
+            {filteredDoneTasks.map((task, index) => (
               <div
                 key={task.id}
                 className="grid grid-cols-1 md:grid-cols-[50px_1fr_1fr_1fr_1fr_140px_140px] gap-2 px-4 py-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all items-center"
