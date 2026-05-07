@@ -19,6 +19,25 @@
 
 ---
 
+## 2026-05-07 — SAP/LES accounting unaccepted filter
+
+**Type**: Frontend-only UX addition for the SAP/LES accounting screen. No backend/API/auth/polling/offline/PWA/TV/operator-terminal changes.
+
+**Source files modified**:
+- `components/AccountingView.tsx` — added a local `Все / Непринятые` filter with counters and an unaccepted-only empty state, all derived from already loaded rows.
+
+**Preserved**:
+- Existing status values (`WAIT`, `ACCEPTED`, `REJECTED`), status cycle, click handlers, API usage, and accounting save flow.
+- `OperatorTerminal.tsx`, `LotTrackerTV`, `?tv=1`, `?tv=2`, backend code, auth, polling, offline queue, and PWA behavior were not touched by this change.
+
+**Regression note**:
+- Filter buttons stay finger-friendly and wrap on narrow phones; desktop keeps the same accounting table layout.
+- `.claude` memory should be committed separately from the code commit.
+
+**Memory files updated**: `05-ui-behavior.md`, `11-change-log.md`.
+
+---
+
 ## 2026-04-27 — Desktop dashboard premium redesign
 
 **Type**: Frontend-only presentation change for the ordinary non-TV dashboard. No backend/API/auth/offline/PWA/polling/terminal/TV logic changes. No push/deploy.

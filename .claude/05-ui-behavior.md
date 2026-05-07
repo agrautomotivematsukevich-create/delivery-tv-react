@@ -41,7 +41,9 @@ neither             → desktop/phone mode (header, footer, full nav)
 
 - `AccountingView` is a phone/desktop-only route. TV branches (`?tv=1`, `?tv=2`, `LotTrackerTV`) do not render it.
 - Each SAP/LES control shows the current status in the top badge and the exact result of the next click on the button below (`Принять`, `Не принять`, `Ожидает`).
+- The list has a client-side quick filter with counters: `Все` and `Непринятые`; `Непринятые` means `sap_status !== 'ACCEPTED' || les_status !== 'ACCEPTED'` on already loaded rows only.
 - On mobile, task metadata stays compact and SAP/LES controls use one column at `360/375px`, then split into two columns from `390px` upward to avoid horizontal overflow.
+- When the `Непринятые` filter is active and no rows match, the empty state says `Непринятых контейнеров нет`.
 
 ## Dashboard layout
 
