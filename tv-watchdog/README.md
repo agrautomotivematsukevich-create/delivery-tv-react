@@ -66,6 +66,8 @@ These runtime files are ignored by git. Status is kept in memory and restored fr
 
 ## Interpretation
 
+- Each physical TV gets a persistent `clientId` stored in browser localStorage under `agr_tv_diagnostics_client_id`. Two TVs can open the same dashboard URL and still appear as different clients.
+- Optional `tvClient` query value is used only as `clientLabel`; it is not required. If absent, `clientLabel` equals `clientId`.
 - Heartbeat stops without recent events: TV sleep, browser crash, Android kill, power loss, reboot, or network loss are still possible. Use this as the exact cutoff time.
 - Last event is `visibilitychange` with `hidden`: browser/page left foreground before heartbeat stopped.
 - Last event is `pagehide` or `beforeunload`: page was unloaded or browser/navigation closed it.

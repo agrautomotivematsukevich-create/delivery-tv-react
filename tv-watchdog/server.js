@@ -118,17 +118,21 @@ function readLastJsonlRecords(filePath, limit) {
 }
 
 function clientKey(payload) {
-  return `${payload.tvMode || 'unknown'}|${payload.url || ''}`;
+  return payload.clientId || `legacy|${payload.tvMode || 'unknown'}|${payload.url || ''}`;
 }
 
 function rememberClient(payload) {
   const key = clientKey(payload);
+  const existing = state.knownClients.get(key);
   state.knownClients.set(key, {
+    clientId: payload.clientId || key,
+    clientLabel: payload.clientLabel || payload.clientId || key,
     tvMode: payload.tvMode || 'unknown',
     url: payload.url || '',
     userAgent: payload.userAgent || '',
     lastSeenAt: payload.serverReceivedAt,
-    heartbeatCount: (state.knownClients.get(key)?.heartbeatCount || 0) + 1,
+    lastSeenAtMoscow: payload.serverReceivedAtMoscow || '',
+    heartbeatCount: (existing?.heartbeatCount || 0) + 1,
   });
 }
 
@@ -169,6 +173,10 @@ function getStatus() {
     lastEvents: state.lastEvents,
     lastError: state.lastError,
     knownClients: Array.from(state.knownClients.values())
+      .map((client) => ({
+        ...client,
+        secondsSinceLastHeartbeat: secondsSince(client.lastSeenAt),
+      }))
       .sort((a, b) => String(b.lastSeenAt).localeCompare(String(a.lastSeenAt)))
       .slice(0, 20),
   };
@@ -202,8 +210,10 @@ function renderStatusHtml() {
     ['Server timezone', status.serverTimezone],
     ['Status', status.offline ? 'OFFLINE by threshold' : 'heartbeat fresh'],
     ['Last heartbeat', formatAgo(status.secondsSinceLastHeartbeat)],
-    ['URL', hb.url],
+    ['Client ID', hb.clientId],
+    ['Client label', hb.clientLabel],
     ['TV mode', hb.tvMode],
+    ['URL', hb.url],
     ['User agent', hb.userAgent],
     ['Visibility', hb.visibilityState],
     ['Online', hb.online],
@@ -218,7 +228,7 @@ function renderStatusHtml() {
     .map(([label, value]) => `<tr><th>${htmlEscape(label)}</th><td>${htmlEscape(value)}</td></tr>`)
     .join('');
   const known = status.knownClients
-    .map((client) => `<li>${htmlEscape(client.tvMode)} - ${htmlEscape(client.lastSeenAt)} - ${htmlEscape(client.url)}</li>`)
+    .map((client) => `<li>${htmlEscape(client.clientLabel || client.clientId)} | ${htmlEscape(client.tvMode)} | last heartbeat ${htmlEscape(formatAgo(client.secondsSinceLastHeartbeat))} | ${htmlEscape(client.url)}</li>`)
     .join('') || '<li>none yet</li>';
   const pillClass = status.offline ? 'bad' : 'ok';
 

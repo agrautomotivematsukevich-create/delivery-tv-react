@@ -1,6 +1,7 @@
 const HEARTBEAT_INTERVAL_MS = 45000;
 const APP_NAME = "delivery-tv-react";
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || "0.1.0";
+const CLIENT_ID_KEY = "agr_tv_diagnostics_client_id";
 
 type TvMode = "tv1" | "tv2" | "unknown";
 
@@ -9,6 +10,8 @@ interface TvDiagnosticsState {
   endpoint: string;
   pageStartedAt: number;
   heartbeatId: number | null;
+  clientId: string | null;
+  clientLabel: string | null;
   lastSuccessfulDataAt: string | null;
   lastError: string | null;
 }
@@ -18,6 +21,8 @@ const state: TvDiagnosticsState = {
   endpoint: "",
   pageStartedAt: Date.now(),
   heartbeatId: null,
+  clientId: null,
+  clientLabel: null,
   lastSuccessfulDataAt: null,
   lastError: null,
 };
@@ -32,6 +37,35 @@ function getTvMode(): TvMode {
   if (tv === "1") return "tv1";
   if (tv === "2") return "tv2";
   return "unknown";
+}
+
+function generateClientId(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return `tv-client-${crypto.randomUUID()}`;
+  const randomPart = Math.random().toString(36).slice(2, 10);
+  return `tv-client-${Date.now().toString(36)}-${randomPart}`;
+}
+
+function getStoredClientId(): string {
+  try {
+    const existing = localStorage.getItem(CLIENT_ID_KEY);
+    if (existing) return existing;
+
+    const next = generateClientId();
+    localStorage.setItem(CLIENT_ID_KEY, next);
+    return next;
+  } catch {
+    return generateClientId();
+  }
+}
+
+function getQueryClientLabel(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("tvClient") || null;
+}
+
+function ensureClientIdentity(): void {
+  if (!state.clientId) state.clientId = getStoredClientId();
+  state.clientLabel = getQueryClientLabel() || state.clientId;
 }
 
 function isTvUrl(): boolean {
@@ -64,8 +98,12 @@ function getMemoryInfo() {
 }
 
 function basePayload() {
+  ensureClientIdentity();
+
   return {
     clientTimestamp: nowIso(),
+    clientId: state.clientId,
+    clientLabel: state.clientLabel,
     url: window.location.href,
     path: window.location.pathname,
     search: window.location.search,
