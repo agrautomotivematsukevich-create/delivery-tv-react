@@ -64,6 +64,7 @@ function loadConfig() {
     host: '0.0.0.0',
     port: 8787,
     offlineThresholdSeconds: 300,
+    clientLabels: {},
   };
 
   let fileConfig = {};
@@ -82,6 +83,9 @@ function loadConfig() {
         fileConfig.offline_threshold_seconds ||
         defaults.offlineThresholdSeconds,
     ),
+    clientLabels: fileConfig.clientLabels && typeof fileConfig.clientLabels === 'object'
+      ? fileConfig.clientLabels
+      : defaults.clientLabels,
   };
 }
 
@@ -121,19 +125,106 @@ function clientKey(payload) {
   return payload.clientId || `legacy|${payload.tvMode || 'unknown'}|${payload.url || ''}`;
 }
 
+function displayClientLabel(clientId, heartbeatLabel) {
+  return config.clientLabels[clientId] || heartbeatLabel || clientId;
+}
+
+function normalizeRemoteAddress(address) {
+  if (!address) return '';
+  return address.replace(/^::ffff:/, '');
+}
+
+function formatViewport(viewport) {
+  if (!viewport || typeof viewport !== 'object') return '';
+  const width = viewport.width ?? '';
+  const height = viewport.height ?? '';
+  const ratio = viewport.devicePixelRatio ?? '';
+  return `${width}x${height}${ratio ? ` @ ${ratio}` : ''}`;
+}
+
+function isRealTvLogin(login) {
+  return ['TV', 'TV1', 'TV2'].includes(String(login || '').trim().toUpperCase());
+}
+
+function likelyTvClient(client) {
+  if (isRealTvLogin(client.authLogin)) return true;
+  if (client.authLogin) return false;
+
+  const ua = String(client.userAgent || '');
+  const viewport = client.viewport || {};
+  const width = Number(viewport.width || 0);
+  const height = Number(viewport.height || 0);
+  const largeScreen = width >= 1200 && height >= 650;
+
+  if (/Windows NT|Win64|Macintosh|X11/i.test(ua) && /Chrome|Edg|Firefox/i.test(ua) && !/Android|TV|Yandex/i.test(ua)) {
+    return false;
+  }
+
+  return /Android|TV|Yandex|Linux/i.test(ua) && largeScreen;
+}
+
 function rememberClient(payload) {
   const key = clientKey(payload);
   const existing = state.knownClients.get(key);
+  const clientId = payload.clientId || key;
+  const heartbeatCount = (existing?.heartbeatCount || 0) + 1;
+  const auth = payload.auth && typeof payload.auth === 'object' ? payload.auth : {};
+
   state.knownClients.set(key, {
-    clientId: payload.clientId || key,
-    clientLabel: payload.clientLabel || payload.clientId || key,
+    clientId,
+    clientLabel: payload.clientLabel || clientId,
+    clientLabelOverride: config.clientLabels[clientId] || null,
+    displayLabel: displayClientLabel(clientId, payload.clientLabel),
     tvMode: payload.tvMode || 'unknown',
     url: payload.url || '',
     userAgent: payload.userAgent || '',
+    auth: {
+      login: auth.login ?? null,
+      name: auth.name ?? null,
+      role: auth.role ?? null,
+    },
+    authLogin: auth.login ?? null,
+    authName: auth.name ?? null,
+    authRole: auth.role ?? null,
+    viewport: payload.viewport || null,
+    visibilityState: payload.visibilityState ?? null,
+    online: payload.online ?? null,
+    pageUptimeMs: payload.pageUptimeMs ?? null,
+    lastSuccessfulDataAt: payload.lastSuccessfulDataAt ?? null,
+    remoteAddress: normalizeRemoteAddress(payload.remoteAddress),
+    firstSeenAtUtc: existing?.firstSeenAtUtc || payload.serverReceivedAtUtc || payload.serverReceivedAt,
+    firstSeenAtMoscow: existing?.firstSeenAtMoscow || payload.serverReceivedAtMoscow || '',
     lastSeenAt: payload.serverReceivedAt,
+    lastSeenAtUtc: payload.serverReceivedAtUtc || payload.serverReceivedAt,
     lastSeenAtMoscow: payload.serverReceivedAtMoscow || '',
-    heartbeatCount: (existing?.heartbeatCount || 0) + 1,
+    heartbeatCount,
+    lastEvent: existing?.lastEvent || null,
+    lastError: existing?.lastError || null,
   });
+}
+
+function rememberClientEvent(record) {
+  const key = clientKey(record);
+  const existing = state.knownClients.get(key);
+  if (!existing) return;
+
+  const auth = record.auth && typeof record.auth === 'object' ? record.auth : null;
+  const next = {
+    ...existing,
+    auth: auth ? {
+      login: auth.login ?? null,
+      name: auth.name ?? null,
+      role: auth.role ?? null,
+    } : existing.auth,
+    authLogin: auth ? auth.login ?? null : existing.authLogin,
+    authName: auth ? auth.name ?? null : existing.authName,
+    authRole: auth ? auth.role ?? null : existing.authRole,
+    lastEvent: record,
+  };
+  if (record.eventType === 'error' || record.eventType === 'unhandledrejection') {
+    next.lastError = record;
+  }
+  state.knownClients.set(key, next);
 }
 
 function hydrateStateFromLogs() {
@@ -175,6 +266,9 @@ function getStatus() {
     knownClients: Array.from(state.knownClients.values())
       .map((client) => ({
         ...client,
+        clientLabelOverride: config.clientLabels[client.clientId] || client.clientLabelOverride || null,
+        displayLabel: displayClientLabel(client.clientId, client.clientLabel),
+        likelyTv: likelyTvClient(client),
         secondsSinceLastHeartbeat: secondsSince(client.lastSeenAt),
       }))
       .sort((a, b) => String(b.lastSeenAt).localeCompare(String(a.lastSeenAt)))
@@ -210,6 +304,9 @@ function renderStatusHtml() {
     ['Server timezone', status.serverTimezone],
     ['Status', status.offline ? 'OFFLINE by threshold' : 'heartbeat fresh'],
     ['Last heartbeat', formatAgo(status.secondsSinceLastHeartbeat)],
+    ['Login', hb.auth?.login],
+    ['Name', hb.auth?.name],
+    ['Role', hb.auth?.role],
     ['Client ID', hb.clientId],
     ['Client label', hb.clientLabel],
     ['TV mode', hb.tvMode],
@@ -227,9 +324,45 @@ function renderStatusHtml() {
   const table = rows
     .map(([label, value]) => `<tr><th>${htmlEscape(label)}</th><td>${htmlEscape(value)}</td></tr>`)
     .join('');
-  const known = status.knownClients
-    .map((client) => `<li>${htmlEscape(client.clientLabel || client.clientId)} | ${htmlEscape(client.tvMode)} | last heartbeat ${htmlEscape(formatAgo(client.secondsSinceLastHeartbeat))} | ${htmlEscape(client.url)}</li>`)
-    .join('') || '<li>none yet</li>';
+  const known = status.knownClients.length
+    ? `<table class="clients"><thead><tr>
+        <th>Login</th>
+        <th>Name</th>
+        <th>Role</th>
+        <th>Client label</th>
+        <th>Client ID</th>
+        <th>Likely TV</th>
+        <th>TV mode</th>
+        <th>Remote IP</th>
+        <th>Last heartbeat</th>
+        <th>First seen</th>
+        <th>Heartbeats</th>
+        <th>Visibility</th>
+        <th>Online</th>
+        <th>Viewport</th>
+        <th>Page uptime</th>
+        <th>User agent</th>
+        <th>URL</th>
+      </tr></thead><tbody>${status.knownClients.map((client) => `<tr>
+        <td>${htmlEscape(client.authLogin)}</td>
+        <td>${htmlEscape(client.authName)}</td>
+        <td>${htmlEscape(client.authRole)}</td>
+        <td>${htmlEscape(client.displayLabel)}</td>
+        <td>${htmlEscape(client.clientId)}</td>
+        <td>${htmlEscape(client.likelyTv ? 'true' : 'false')}</td>
+        <td>${htmlEscape(client.tvMode)}</td>
+        <td>${htmlEscape(client.remoteAddress)}</td>
+        <td>${htmlEscape(formatAgo(client.secondsSinceLastHeartbeat))}<br><small>${htmlEscape(client.lastSeenAtMoscow || client.lastSeenAtUtc)}</small></td>
+        <td>${htmlEscape(client.firstSeenAtMoscow || client.firstSeenAtUtc)}</td>
+        <td>${htmlEscape(client.heartbeatCount)}</td>
+        <td>${htmlEscape(client.visibilityState)}</td>
+        <td>${htmlEscape(client.online)}</td>
+        <td>${htmlEscape(formatViewport(client.viewport))}</td>
+        <td>${htmlEscape(client.pageUptimeMs)}</td>
+        <td>${htmlEscape(client.userAgent)}</td>
+        <td>${htmlEscape(client.url)}</td>
+      </tr>`).join('')}</tbody></table>`
+    : '<p>none yet</p>';
   const pillClass = status.offline ? 'bad' : 'ok';
 
   return `<!doctype html>
@@ -246,6 +379,9 @@ function renderStatusHtml() {
     .ok { background: #065f46; color: #d1fae5; }
     .bad { background: #991b1b; color: #fee2e2; }
     table { border-collapse: collapse; margin-top: 18px; width: 100%; max-width: 1100px; }
+    .clients { max-width: none; font-size: 12px; }
+    .clients th, .clients td { max-width: 280px; overflow-wrap: anywhere; }
+    small { color: #9ca3af; }
     th, td { border-bottom: 1px solid #374151; padding: 10px; text-align: left; vertical-align: top; }
     th { width: 220px; color: #9ca3af; }
     code { color: #93c5fd; }
@@ -256,7 +392,7 @@ function renderStatusHtml() {
   <div class="pill ${pillClass}">${htmlEscape(rows[1][1])}</div>
   <table>${table}</table>
   <h2>Known TV clients</h2>
-  <ul>${known}</ul>
+  ${known}
   <p>JSON: <code>/api/tv/status</code></p>
 </body>
 </html>`;
@@ -301,8 +437,12 @@ function readRequestJson(req, callback) {
   });
 }
 
-function handleHeartbeat(payload, res) {
-  const record = { ...payload, ...serverTimestamps() };
+function handleHeartbeat(payload, req, res) {
+  const record = {
+    ...payload,
+    remoteAddress: normalizeRemoteAddress(req.socket?.remoteAddress),
+    ...serverTimestamps(),
+  };
   state.lastHeartbeat = record;
   rememberClient(record);
   appendJsonl(HEARTBEAT_LOG, record);
@@ -316,6 +456,7 @@ function handleEvent(payload, res) {
   if (record.eventType === 'error' || record.eventType === 'unhandledrejection') {
     state.lastError = record;
   }
+  rememberClientEvent(record);
   appendJsonl(EVENTS_LOG, record);
   sendJson(res, 200, { ok: true, serverReceivedAt: record.serverReceivedAt });
 }
@@ -353,7 +494,7 @@ function requestHandler(req, res) {
       }
 
       try {
-        if (pathname === '/api/tv/heartbeat') handleHeartbeat(payload, res);
+        if (pathname === '/api/tv/heartbeat') handleHeartbeat(payload, req, res);
         else handleEvent(payload, res);
       } catch (writeError) {
         logServer('write_failed', { path: pathname, error: String(writeError && writeError.stack || writeError) });

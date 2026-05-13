@@ -5,6 +5,12 @@ const CLIENT_ID_KEY = "agr_tv_diagnostics_client_id";
 
 type TvMode = "tv1" | "tv2" | "unknown";
 
+interface AuthSnapshot {
+  login?: string | null;
+  name?: string | null;
+  role?: string | null;
+}
+
 interface TvDiagnosticsState {
   started: boolean;
   endpoint: string;
@@ -12,6 +18,7 @@ interface TvDiagnosticsState {
   heartbeatId: number | null;
   clientId: string | null;
   clientLabel: string | null;
+  auth: AuthSnapshot | null;
   lastSuccessfulDataAt: string | null;
   lastError: string | null;
 }
@@ -23,6 +30,7 @@ const state: TvDiagnosticsState = {
   heartbeatId: null,
   clientId: null,
   clientLabel: null,
+  auth: null,
   lastSuccessfulDataAt: null,
   lastError: null,
 };
@@ -104,6 +112,7 @@ function basePayload() {
     clientTimestamp: nowIso(),
     clientId: state.clientId,
     clientLabel: state.clientLabel,
+    auth: state.auth,
     url: window.location.href,
     path: window.location.pathname,
     search: window.location.search,
@@ -277,6 +286,10 @@ export const tvDiagnostics = {
     if (!shouldRun()) return;
     void source;
     state.lastSuccessfulDataAt = nowIso();
+  },
+
+  setAuth(auth: AuthSnapshot | null): void {
+    state.auth = auth;
   },
 
   markError(error: unknown): void {

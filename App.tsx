@@ -121,6 +121,14 @@ function App() {
     return () => tvDiagnostics.stop();
   }, [isTV, isTV2]);
 
+  useEffect(() => {
+    tvDiagnostics.setAuth(user ? {
+      login: user.user,
+      name: user.name,
+      role: user.role,
+    } : null);
+  }, [user]);
+
   const refreshDashboard = useCallback(async () => {
     // Защита: если предыдущий запрос ещё не завершился — пропускаем
     if (isFetchingRef.current) return null;
