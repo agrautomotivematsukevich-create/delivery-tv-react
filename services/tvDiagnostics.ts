@@ -8,7 +8,7 @@ interface TvDiagnosticsState {
   started: boolean;
   endpoint: string;
   pageStartedAt: number;
-  heartbeatId: ReturnType<typeof window.setInterval> | null;
+  heartbeatId: number | null;
   lastSuccessfulDataAt: string | null;
   lastError: string | null;
 }
