@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { LotContainer } from '../types';
 import { api } from '../services/api';
+import { tvDiagnostics } from '../services/tvDiagnostics';
 import { Clock, Package, Truck, Timer, CheckCircle2 } from 'lucide-react';
 import { parseHHMM, elapsedMin, nowMinutes, minutesUntil, formatDuration, todayDDMM, dateSortValue } from '../utils/time';
 
@@ -58,9 +59,15 @@ const LotTrackerTV: React.FC<Props> = ({ lot: lotProp = '' }) => {
 
   const fetchData = useCallback(async () => {
     if (!lot) { setLoading(false); return; }
-    const data = await api.fetchLotTracker(lot);
-    setContainers(data);
-    setLoading(false);
+    try {
+      const data = await api.fetchLotTracker(lot);
+      tvDiagnostics.markDataSuccess('lot-tracker');
+      setContainers(data);
+      setLoading(false);
+    } catch (error) {
+      tvDiagnostics.markError(error);
+      throw error;
+    }
   }, [lot]);
 
   // Polling with pause-on-hidden. fetchLotTracker scans up to 30 sheets server-side,

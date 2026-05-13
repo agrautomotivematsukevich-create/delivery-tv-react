@@ -1,6 +1,14 @@
 # Logs
 logs
+!tv-watchdog/logs/
+!tv-watchdog/logs/.gitkeep
 *.log
+tv-watchdog/data/*.sqlite
+tv-watchdog/data/*.sqlite-*
+tv-watchdog/data/*.db
+tv-watchdog/data/*.db-*
+tv-watchdog/logs/*.jsonl
+tv-watchdog/__pycache__/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

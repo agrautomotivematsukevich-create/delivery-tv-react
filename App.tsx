@@ -14,6 +14,7 @@ import PageMeta from './components/PageMeta';
 import TVLoginScreen from './components/TVLoginScreen';
 import PwaUpdateBanner from './components/PwaUpdateBanner';
 import { api } from './services/api';
+import { tvDiagnostics } from './services/tvDiagnostics';
 import { TRANSLATIONS } from './constants';
 import { DashboardData, Task, TaskAction, TaskActionResult } from './types';
 import { useAppContext } from './components/AppContext';
@@ -115,6 +116,11 @@ function App() {
     lastDashboardRef.current = dashboardData;
   }, [dashboardData]);
 
+  useEffect(() => {
+    if (isTV || isTV2) tvDiagnostics.start();
+    return () => tvDiagnostics.stop();
+  }, [isTV, isTV2]);
+
   const refreshDashboard = useCallback(async () => {
     // Защита: если предыдущий запрос ещё не завершился — пропускаем
     if (isFetchingRef.current) return null;
@@ -139,6 +145,7 @@ function App() {
         });
         if (!carryoverDashboard) saveLastNonZeroDashboard(nextDashboard);
         setIsOffline(false);
+        tvDiagnostics.markDataSuccess('dashboard');
       } else {
         setIsOffline(true);
       }
@@ -155,6 +162,7 @@ function App() {
       return nextDashboard;
     } catch (e) {
       setIsOffline(true);
+      tvDiagnostics.markError(e);
       return null;
     } finally {
       isFetchingRef.current = false;
