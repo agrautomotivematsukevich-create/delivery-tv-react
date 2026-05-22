@@ -60,7 +60,8 @@ export default defineConfig(({ mode }) => {
         }
       },
       esbuild: {
-        drop: mode === 'production' ? ['console', 'debugger'] : []
+        // Keep console output in production temporarily for incident diagnostics.
+        drop: mode === 'production' ? ['debugger'] : []
       }
     };
 });

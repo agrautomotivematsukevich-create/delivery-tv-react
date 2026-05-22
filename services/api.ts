@@ -273,7 +273,15 @@ export const api = {
     return cachedFetch("dashboard", 60000, async () => {
       const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}`, { timeout: 60000 });
       const text = await res.text();
-      return parseDashboardData(text);
+      const parsed = parseDashboardData(text);
+      if (!parsed) {
+        console.error("[dashboard-offline]", {
+          reason: "parseDashboardData returned null in fetchDashboard",
+          payloadLength: text.length,
+          payloadStart: text.slice(0, 200),
+        });
+      }
+      return parsed;
     });
   },
 
@@ -308,8 +316,19 @@ export const api = {
         const json = JSON.parse(text);
         const dashboard = json?.dashboardText ? parseDashboardData(json.dashboardText) : null;
         const tasks = Array.isArray(json?.tasks) ? json.tasks as Task[] : null;
+        if (!dashboard) {
+          console.error("[dashboard-offline]", {
+            reason: "bundle dashboard is null",
+            hasDashboardText: !!json?.dashboardText,
+            dashboardTextLength: typeof json?.dashboardText === "string" ? json.dashboardText.length : 0,
+          });
+        }
         return { dashboard, tasks };
       } catch {
+        console.error("[dashboard-offline]", {
+          reason: "fetchDashboardBundle fallback path",
+          dateStr,
+        });
         const [dashboard, tasks] = await Promise.all([
           api.fetchDashboard().catch(() => null),
           api.fetchHistory(dateStr).catch(() => null),

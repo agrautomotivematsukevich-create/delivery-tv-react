@@ -155,6 +155,13 @@ function App() {
         setIsOffline(false);
         tvDiagnostics.markDataSuccess('dashboard');
       } else {
+        console.error('[dashboard-offline]', {
+          reason: 'refreshDashboard resolved with null dashboard',
+          hasBundle: !!bundle,
+          hasRawDashboard: !!data,
+          hasCarryoverDashboard: !!carryoverDashboard,
+          hasTasks: tasks !== null,
+        });
         setIsOffline(true);
       }
 
@@ -169,6 +176,10 @@ function App() {
 
       return nextDashboard;
     } catch (e) {
+      console.error('[dashboard-offline]', {
+        reason: 'refreshDashboard exception',
+        error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : e,
+      });
       setIsOffline(true);
       tvDiagnostics.markError(e);
       return null;
