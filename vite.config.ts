@@ -22,16 +22,18 @@ export default defineConfig(({ mode }) => {
             cleanupOutdatedCaches: true,
             runtimeCaching: [
               {
-                urlPattern: /^https:\/\/script\.google\.com\/.*/i,
+                // GAS responds through script.googleusercontent.com after redirect.
+                // Match both hosts and cache only successful responses.
+                urlPattern: /^https:\/\/script\.google(?:usercontent)?\.com\/.*/i,
                 handler: 'NetworkFirst',
                 options: {
-                  cacheName: 'api-cache',
+                  cacheName: 'api-cache-v2',
                   expiration: {
                     maxEntries: 100,
                     maxAgeSeconds: 60 // match client cache TTL
                   },
                   cacheableResponse: {
-                    statuses: [0, 200]
+                    statuses: [200]
                   }
                 }
               }
