@@ -200,8 +200,15 @@ export const parseDashboardData = (text: string): DashboardData | null => {
     if (!text || text.includes("DOCTYPE")) return null;
 
     const parts = text.split("###MSG###");
-    const lines = parts[0].split("\n");
-    const r1 = lines[0].split(";");
+    const payload = parts[0].replace(/\r/g, "").trimStart();
+    const lines = payload
+      .split("\n")
+      .map(l => l.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return null;
+
+    const headerLine = lines.find(l => l.includes(";")) || lines[0];
+    const r1 = headerLine.split(";");
 
     if (r1.length < 3) return null;
 
@@ -213,7 +220,9 @@ export const parseDashboardData = (text: string): DashboardData | null => {
     for (let i = 1; i < lines.length; i++) {
       if (lines[i].includes("|")) {
         const p = lines[i].split("|");
-        activeList.push({ id: p[0], start: p[1], zone: p[4] });
+        if (p.length >= 5 && p[0]) {
+          activeList.push({ id: p[0], start: p[1], zone: p[4] });
+        }
       }
     }
 
