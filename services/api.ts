@@ -209,6 +209,8 @@ export const parseDashboardData = (text: string): DashboardData | null => {
 
     const headerLine = lines.find(l => l.includes(";")) || lines[0];
     const r1 = headerLine.split(";");
+    const metaLine = lines.find((l, idx) => idx > 0 && l.startsWith(";") && l.includes(";")) || null;
+    const metaParts = metaLine ? metaLine.split(";") : null;
 
     if (r1.length < 3) return null;
 
@@ -218,19 +220,23 @@ export const parseDashboardData = (text: string): DashboardData | null => {
     const activeList = [];
 
     for (let i = 1; i < lines.length; i++) {
-      if (lines[i].includes("|")) {
-        const p = lines[i].split("|");
-        if (p.length >= 5 && p[0]) {
-          activeList.push({ id: p[0], start: p[1], zone: p[4] });
-        }
+      if (lines[i].startsWith(";")) continue; // continuation/meta line, not an active container row
+      if (!lines[i].includes("|")) continue;
+      const p = lines[i].split("|");
+      if (p.length >= 5 && p[0]) {
+        activeList.push({ id: p[0], start: p[1], zone: p[4] });
       }
     }
+
+    const nextTimeRaw = (r1[3] ?? "").trim() || (metaParts?.[1] ?? "").trim();
+    const shiftRaw = (r1[4] ?? "") || (metaParts?.[2] ?? "");
+    const onTerritoryRaw = (r1[5] ?? "") || (metaParts?.[3] ?? "");
 
     let shiftFacts = { morning: 0, evening: 0, night: 0 };
     let shiftTargets = { morning: 0, evening: 0, night: 0 };
     
-    if (r1[4]) {
-      const sc = r1[4].split("|");
+    if (shiftRaw) {
+      const sc = shiftRaw.split("|");
       shiftFacts = {
         morning: parseInt(sc[0]) || 0,
         evening: parseInt(sc[1]) || 0,
@@ -245,14 +251,14 @@ export const parseDashboardData = (text: string): DashboardData | null => {
       }
     }
     
-    const onTerritory = r1[5] ? (parseInt(r1[5]) || 0) : 0;
+    const onTerritory = onTerritoryRaw ? (parseInt(onTerritoryRaw) || 0) : 0;
 
     return { 
       status: r1[0].trim(), 
       done, 
       total, 
       nextId: r1[2].trim(), 
-      nextTime: r1[3].trim(), 
+      nextTime: nextTimeRaw, 
       activeList, 
       shiftCounts: shiftFacts, 
       shiftFacts,              
