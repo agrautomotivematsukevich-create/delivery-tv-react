@@ -30,6 +30,18 @@ body {
   }
 }
 
+.app-shell--arrival {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.app-main--arrival {
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+  overflow-x: hidden;
+}
+
 @media (max-width: 767px) {
   body {
     background-attachment: scroll;
@@ -87,7 +99,9 @@ body {
   color: #fff;
   font-family: 'Manrope', system-ui, sans-serif;
   border-radius: 0;
-  padding: 0 0 48px;
+  padding: 0 0 80px;
+  margin: 0;
+  overflow: visible;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -808,6 +822,10 @@ body {
 }
 
 @media (max-width: 760px) {
+  .app-shell--arrival {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
   .arrival-design { border-radius: 0; }
   .arrival-inner { padding: 16px 0 0; }
   .arrival-filter-top,
