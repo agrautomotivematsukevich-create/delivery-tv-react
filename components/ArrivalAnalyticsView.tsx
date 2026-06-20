@@ -120,13 +120,8 @@ function buildIsoRange(period: PeriodMode, customFrom: string, customTo: string)
 }
 
 function diffForward(endMin: number, startMin: number): number | null {
-  let diff = endMin - startMin;
-  if (diff < 0) {
-    const looksLikeMidnightCrossing = startMin >= 12 * 60 && endMin <= 12 * 60;
-    if (!looksLikeMidnightCrossing) return null;
-    diff += 1440;
-  }
-  return diff >= 0 ? diff : null;
+  const diff = endMin - startMin;
+  return diff > 0 ? diff : 0;
 }
 
 function nowMoscowMinutes(): number {
@@ -143,15 +138,13 @@ function nowMoscowMinutes(): number {
 
 function liveDiffFromBase(baseMin: number): number {
   const current = nowMoscowMinutes();
-  let diff = current - baseMin;
-  if (diff < 0 && baseMin >= 12 * 60 && current <= 12 * 60) diff += 1440;
-  return Math.max(0, diff);
+  const diff = current - baseMin;
+  return diff > 0 ? diff : 0;
 }
 
 function getBaseTime(etaMin: number | null, arrivalMin: number | null): number | null {
-  if (etaMin === null && arrivalMin === null) return null;
+  if (arrivalMin === null) return null;
   if (etaMin === null) return arrivalMin;
-  if (arrivalMin === null) return etaMin;
   return Math.max(etaMin, arrivalMin);
 }
 
@@ -450,8 +443,8 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = () => {
               </div>
               {spotlight.length > 0 ? (
                 <div className="arrival-spotlight-list arrival-sx">
-                  {spotlight.map((task) => (
-                    <article key={`${task.displayDate}-${task.id}`} className="arrival-spot-card">
+                  {spotlight.map((task, index) => (
+                    <article key={`${task.sourceDateIso ?? task.displayDate}-${task.id}-spot-${index}`} className="arrival-spot-card">
                       <div className="arrival-card-top">
                         <span>{task.type || 'W/S'}</span>
                         <i />
@@ -559,11 +552,11 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = () => {
           </div>
           {liveCards.length > 0 ? (
             <div className="arrival-live-grid">
-              {liveCards.map((task) => {
+              {liveCards.map((task, index) => {
                 const cat = CATEGORY_STYLE[task.category];
                 const tag = task.category === 'over' ? 'ПРЕВЫШЕНИЕ' : task.category === 'risk' ? 'БЛИЗКО К 7Ч' : 'В НОРМЕ';
                 return (
-                  <article key={`${task.displayDate}-${task.id}`} className={`arrival-live-card arrival-live-${task.category}`}>
+                  <article key={`${task.sourceDateIso ?? task.displayDate}-${task.id}-live-${index}`} className={`arrival-live-card arrival-live-${task.category}`}>
                     <div className="arrival-card-top">
                       <span>{task.type || 'W/S'}</span>
                       <b style={{ color: cat.text, background: cat.bg, borderColor: cat.border }}>{tag}</b>
@@ -594,10 +587,10 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = () => {
             <div className="arrival-section-title"><TrendingUp size={16} /> <span>Топ долгих простоев</span></div>
             {antirating.length > 0 ? (
               <div className="arrival-antirating-list">
-                {antirating.map((task) => {
+                {antirating.map((task, index) => {
                   const cat = CATEGORY_STYLE[task.category];
                   return (
-                    <div key={`${task.displayDate}-${task.id}`} className="arrival-antirating-row">
+                    <div key={`${task.sourceDateIso ?? task.displayDate}-${task.id}-top-${index}`} className="arrival-antirating-row">
                       <div><strong>{task.id}</strong><span>{task.type || 'W/S'}</span></div>
                       <div>
                         <span style={{ width: `${Math.round(((task.downtime ?? 0) / antiratingMax) * 100)}%`, background: cat.bg }} />

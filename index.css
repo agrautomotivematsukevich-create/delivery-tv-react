@@ -78,6 +78,7 @@ body {
 @keyframes agrGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
 .arrival-design {
+  width: 100%;
   min-height: 100%;
   background:
     radial-gradient(1100px 560px at 78% -8%, rgba(245,158,11,0.055), transparent 58%),
@@ -85,8 +86,8 @@ body {
     linear-gradient(180deg,#0a0c12 0%,#08090d 60%);
   color: #fff;
   font-family: 'Manrope', system-ui, sans-serif;
-  border-radius: 24px;
-  padding-bottom: 48px;
+  border-radius: 0;
+  padding: 0 0 48px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -102,9 +103,10 @@ body {
 .arrival-sy::-webkit-scrollbar { width: 7px; }
 
 .arrival-inner {
-  max-width: 1560px;
-  margin: 0 auto;
-  padding: 24px 32px 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 24px 0 0;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -806,8 +808,8 @@ body {
 }
 
 @media (max-width: 760px) {
-  .arrival-design { border-radius: 16px; }
-  .arrival-inner { padding: 16px 14px 0; }
+  .arrival-design { border-radius: 0; }
+  .arrival-inner { padding: 16px 0 0; }
   .arrival-filter-top,
   .arrival-period-controls,
   .arrival-date-range,
