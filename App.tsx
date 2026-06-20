@@ -282,6 +282,20 @@ function App() {
 
   const currentView = location.pathname.slice(1) || 'dashboard';
   const isArrivalView = currentView === 'arrival';
+
+  useEffect(() => {
+    const arrivalBodyClass = 'body--arrival-page';
+    if (isArrivalView && !isTV && !isTV2) {
+      document.body.classList.add(arrivalBodyClass);
+    } else {
+      document.body.classList.remove(arrivalBodyClass);
+    }
+
+    return () => {
+      document.body.classList.remove(arrivalBodyClass);
+    };
+  }, [isArrivalView, isTV, isTV2]);
+
   const handleSetView = (view: string) => {
     navigate(view === 'dashboard' ? '/' : `/${view}`);
   };
@@ -339,9 +353,9 @@ function App() {
           {lazyRoutes}
         </div>
       ) : (
-        <div className={`relative app-shell w-full flex flex-col bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-hidden ${isArrivalView ? 'app-shell--arrival' : ''}`}>
-          <div className={`relative z-20 flex-1 flex flex-col min-h-0 w-full ${isArrivalView ? 'max-w-none mx-0' : 'max-w-[1920px] mx-auto'}`}>
-            <div className="relative z-50"> 
+        <div className={`relative app-shell w-full flex flex-col bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-hidden ${isArrivalView ? 'app-shell--arrival-page' : ''}`}>
+          <div className={`relative z-20 flex-1 flex flex-col min-h-0 w-full ${isArrivalView ? 'app-frame--arrival-page max-w-none mx-0' : 'max-w-[1920px] mx-auto'}`}>
+            <div className={`relative z-50 ${isArrivalView ? 'app-header--arrival-page' : ''}`}> 
               <Header 
                 user={user} 
                 lang={lang} 
@@ -360,7 +374,7 @@ function App() {
               />
             </div>
 
-            <main className={`relative z-10 flex-1 mt-2 md:mt-4 min-h-0 overflow-y-auto custom-scrollbar ${isArrivalView ? 'app-main--arrival' : ''}`}>
+            <main className={`relative z-10 flex-1 mt-2 md:mt-4 min-h-0 overflow-y-auto custom-scrollbar ${isArrivalView ? 'app-main--arrival-page' : ''}`}>
               {lazyRoutes}
             </main>
           </div>
@@ -373,14 +387,16 @@ function App() {
           {showAdmin && user?.role === 'ADMIN' && <AdminPanel onClose={() => setShowAdmin(false)} />}
           {currentAction && user && <ActionModal action={currentAction} user={user} t={t} onClose={handleActionClose} onSuccess={handleActionSuccess} />}
 
-          <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
-            <div className="flex flex-col items-center gap-1">
-              <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
-              <p className="text-[8px] font-medium tracking-[0.5em] text-white/50 uppercase text-center">
-                Developed by <span className="ml-2 text-white/50 font-black tracking-[0.2em]">Vladislav_Matsukevich</span>
-              </p>
-            </div>
-          </footer>
+          {!isArrivalView && (
+            <footer className="mt-8 z-[5] flex justify-center items-center opacity-30 hover:opacity-100 transition-all duration-700">
+              <div className="flex flex-col items-center gap-1">
+                <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                <p className="text-[8px] font-medium tracking-[0.5em] text-white/50 uppercase text-center">
+                  Developed by <span className="ml-2 text-white/50 font-black tracking-[0.2em]">Vladislav_Matsukevich</span>
+                </p>
+              </div>
+            </footer>
+          )}
         </div>
       )}
     </>

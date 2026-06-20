@@ -13,6 +13,12 @@ body {
   background-attachment: fixed;
 }
 
+body.body--arrival-page {
+  background-color: #08090d;
+  background-image: none;
+  background-attachment: scroll;
+}
+
 .app-shell {
   height: 100vh;
   padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
@@ -30,16 +36,65 @@ body {
   }
 }
 
-.app-shell--arrival {
-  padding-left: 24px;
-  padding-right: 24px;
-}
-
-.app-main--arrival {
+.app-shell--arrival-page {
   width: 100%;
   max-width: none;
+  min-height: 100vh;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  background:
+    radial-gradient(1100px 560px at 78% -8%, rgba(245,158,11,0.055), transparent 58%),
+    radial-gradient(900px 500px at 12% 4%, rgba(56,90,140,0.07), transparent 60%),
+    linear-gradient(180deg,#0a0c12 0%,#08090d 60%);
+}
+
+@supports (height: 100dvh) {
+  .app-shell--arrival-page {
+    min-height: 100dvh;
+    height: auto;
+  }
+}
+
+.app-frame--arrival-page {
+  width: 100%;
+  max-width: none;
+  min-height: auto;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.app-header--arrival-page {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  width: 100%;
+  background: rgba(9,11,16,0.82);
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+.app-header--arrival-page > div {
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 13px 32px !important;
+  margin-bottom: 0 !important;
+}
+
+.app-main--arrival-page {
+  width: 100%;
+  max-width: none;
+  min-height: auto;
+  margin: 0 !important;
+  padding: 0;
+  flex: 0 0 auto;
   align-self: stretch;
-  overflow-x: hidden;
+  overflow: visible;
+  overflow-y: visible;
+  overflow-x: visible;
+  background: transparent;
 }
 
 @media (max-width: 767px) {
@@ -91,19 +146,26 @@ body {
 
 .arrival-design {
   width: 100%;
-  min-height: 100%;
+  min-height: auto;
   background:
     radial-gradient(1100px 560px at 78% -8%, rgba(245,158,11,0.055), transparent 58%),
     radial-gradient(900px 500px at 12% 4%, rgba(56,90,140,0.07), transparent 60%),
     linear-gradient(180deg,#0a0c12 0%,#08090d 60%);
   color: #fff;
   font-family: 'Manrope', system-ui, sans-serif;
+  border: none;
   border-radius: 0;
-  padding: 0 0 80px;
+  box-shadow: none;
+  padding: 0 0 64px;
   margin: 0;
   overflow: visible;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+.app-shell--arrival-page .arrival-design {
+  min-height: auto;
+  background: transparent;
 }
 
 .arrival-design * { box-sizing: border-box; }
@@ -118,9 +180,9 @@ body {
 
 .arrival-inner {
   width: 100%;
-  max-width: none;
-  margin: 0;
-  padding: 24px 0 0;
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 24px 32px 0;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -822,12 +884,11 @@ body {
 }
 
 @media (max-width: 760px) {
-  .app-shell--arrival {
-    padding-left: 12px;
-    padding-right: 12px;
+  .app-header--arrival-page > div {
+    padding: 12px 16px;
   }
   .arrival-design { border-radius: 0; }
-  .arrival-inner { padding: 16px 0 0; }
+  .arrival-inner { padding: 16px 16px 0; }
   .arrival-filter-top,
   .arrival-period-controls,
   .arrival-date-range,
