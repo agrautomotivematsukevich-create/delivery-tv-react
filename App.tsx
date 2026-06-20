@@ -29,6 +29,7 @@ const ArrivalAnalyticsView = React.lazy(() => import('./components/ArrivalAnalyt
 const LotTrackerTV         = React.lazy(() => import('./components/LotTrackerTV'));
 const LotTrackerView       = React.lazy(() => import('./components/LotTrackerView'));
 const AccountingView       = React.lazy(() => import('./components/AccountingView'));
+const TvCommandCenterLight = React.lazy(() => import('./components/TvCommandCenterLight'));
 
 const DASHBOARD_LKG_KEY = 'warehouse_dashboard_last_nonzero';
 
@@ -81,14 +82,17 @@ function App() {
   const navigate = useNavigate();
 
   // Мемоизируем URL-параметры — читаем один раз, не пересоздаём на каждый рендер
-  const { isTV, isTV2, tv2Lot } = useMemo(() => {
+  const { isTV, isTV2, isTV3, tv2Lot } = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
+    const tvMode = params.get('tv');
     return {
-      isTV: params.get('tv') === '1',
-      isTV2: params.get('tv') === '2',
+      isTV: tvMode === '1',
+      isTV2: tvMode === '2',
+      isTV3: tvMode === '3',
       tv2Lot: params.get('lot') || '',
     };
   }, []);
+  const isAnyTV = isTV || isTV2 || isTV3;
 
   const [isAppReady, setIsAppReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -117,9 +121,9 @@ function App() {
   }, [dashboardData]);
 
   useEffect(() => {
-    if (isTV || isTV2) tvDiagnostics.start();
+    if (isAnyTV) tvDiagnostics.start();
     return () => tvDiagnostics.stop();
-  }, [isTV, isTV2]);
+  }, [isAnyTV]);
 
   useEffect(() => {
     tvDiagnostics.setAuth(user ? {
@@ -192,7 +196,7 @@ function App() {
 
   // 🚀 GATE 1: Первичная загрузка
   useEffect(() => {
-    if ((isTV || isTV2) && !user) {
+    if (isAnyTV && !user) {
       setIsLoading(false);
       const timer = setTimeout(() => setIsAppReady(true), 500);
       return () => clearTimeout(timer);
@@ -208,12 +212,12 @@ function App() {
       timer = setTimeout(() => setIsAppReady(true), 1200);
     });
     return () => clearTimeout(timer);
-  }, [refreshDashboard, isTV2, isTV, user]);
+  }, [refreshDashboard, isTV2, isAnyTV, user]);
 
   // 🚀 GATE 2: Polling с защитой от наложения
   useEffect(() => {
     if (location.pathname !== '/' || isTV2) return;
-    if (isTV && !user) return;
+    if ((isTV || isTV3) && !user) return;
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
@@ -235,11 +239,11 @@ function App() {
       stopPolling();
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [refreshDashboard, location.pathname, isTV2, isTV, user]);
+  }, [refreshDashboard, location.pathname, isTV2, isTV, isTV3, user]);
 
   useEffect(() => {
     if (isTV2) return;
-    if (isTV && !user) return;
+    if ((isTV || isTV3) && !user) return;
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const scheduleBoundaryRefresh = () => {
@@ -254,7 +258,7 @@ function App() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [refreshDashboard, isTV2, isTV, user]);
+  }, [refreshDashboard, isTV2, isTV, isTV3, user]);
 
   const handleTaskActionRequest = (task: Task, actionType: 'start' | 'finish') => {
     return new Promise<TaskActionResult>((resolve, reject) => {
@@ -285,7 +289,7 @@ function App() {
 
   useEffect(() => {
     const arrivalBodyClass = 'body--arrival-page';
-    if (isArrivalView && !isTV && !isTV2) {
+    if (isArrivalView && !isAnyTV) {
       document.body.classList.add(arrivalBodyClass);
     } else {
       document.body.classList.remove(arrivalBodyClass);
@@ -294,7 +298,7 @@ function App() {
     return () => {
       document.body.classList.remove(arrivalBodyClass);
     };
-  }, [isArrivalView, isTV, isTV2]);
+  }, [isArrivalView, isAnyTV]);
 
   const handleSetView = (view: string) => {
     navigate(view === 'dashboard' ? '/' : `/${view}`);
@@ -329,13 +333,13 @@ function App() {
       )}
       <PwaUpdateBanner
         isBlocked={isUpdateBannerBlocked || !isAppReady || isLoading}
-        isTVMode={isTV || isTV2}
-        allowTVAutoReload={(isTV || isTV2) && Boolean(user) && isAppReady}
+        isTVMode={isAnyTV}
+        allowTVAutoReload={isAnyTV && Boolean(user) && isAppReady}
       />
       <SplashScreen isLoaded={!isLoading} />
 
       {/* 🚀 ЛОГИКА ОТОБРАЖЕНИЯ ТВ ЭКРАНОВ */}
-      {(isTV || isTV2) && !user ? (
+      {isAnyTV && !user ? (
         <div className={`fixed inset-0 bg-[#191B25] flex flex-col transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} z-50`}>
           <TVLoginScreen onSuccess={() => {
             setIsLoading(true);
@@ -346,6 +350,12 @@ function App() {
         <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-y-auto overflow-x-hidden`}>
           <Suspense fallback={<ViewFallback />}>
             <LotTrackerTV lot={tv2Lot} />
+          </Suspense>
+        </div>
+      ) : isTV3 ? (
+        <div className={`fixed inset-0 bg-[#c4c9d2] transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-hidden`}>
+          <Suspense fallback={<ViewFallback />}>
+            <TvCommandCenterLight data={dashboardData} allTasks={allTasks} isTasksLoading={isTasksLoading} t={t} />
           </Suspense>
         </div>
       ) : isTV ? (
