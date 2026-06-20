@@ -900,8 +900,8 @@ body.body--arrival-page {
   transform-origin: center;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 36px;
+  gap: 14px;
+  padding: 24px;
   background:
     linear-gradient(rgba(15,23,42,0.035) 1px, transparent 1px) 0 0/48px 48px,
     linear-gradient(90deg, rgba(15,23,42,0.035) 1px, transparent 1px) 0 0/48px 48px,
@@ -910,20 +910,20 @@ body.body--arrival-page {
     #edf0f5;
 }
 
-.tv3-row { display: flex; gap: 20px; min-height: 0; }
+.tv3-row { display: flex; gap: 14px; min-height: 0; }
 .tv3-row--top { flex: 1.4; }
 .tv3-row--bottom { flex: 1; }
 
 .tv3-card {
   background: #fff;
   border: 1px solid #e7eaf0;
-  border-radius: 24px;
+  border-radius: 22px;
   box-shadow: 0 6px 22px rgba(15,23,42,0.06);
 }
 
 .tv3-kicker {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 2px;
   color: #94a3b8;
@@ -935,12 +935,12 @@ body.body--arrival-page {
   justify-content: space-between;
   flex: none;
 }
-.tv3-card-head--spaced { margin-bottom: 16px; }
+.tv3-card-head--spaced { margin-bottom: 10px; }
 
 .tv3-hero {
   flex: none;
   width: 900px;
-  padding: 28px 32px;
+  padding: 22px 28px;
   position: relative;
   overflow: hidden;
   display: flex;
@@ -969,7 +969,7 @@ body.body--arrival-page {
 .tv3-live-cluster {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   position: relative;
   z-index: 1;
 }
@@ -979,18 +979,18 @@ body.body--arrival-page {
   align-items: center;
   gap: 7px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 2px;
   color: #64748b;
   border: 1px solid #e2e8f0;
   border-radius: 9px;
-  padding: 7px 11px;
+  padding: 6px 12px;
 }
 .tv3-live-pill span,
 .tv3-status span {
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: #2563eb;
   animation: tv3Pulse 1.8s ease-in-out infinite;
@@ -999,7 +999,7 @@ body.body--arrival-page {
 .tv3-clock {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 800;
-  font-size: 44px;
+  font-size: 48px;
   letter-spacing: 1px;
   color: #0f172a;
   line-height: 1;
@@ -1012,7 +1012,7 @@ body.body--arrival-page {
 }
 .tv3-date div {
   font-family: 'Saira', sans-serif;
-  font-size: 16px;
+  font-size: 19px;
   font-weight: 700;
   color: #334155;
   letter-spacing: .5px;
@@ -1020,7 +1020,7 @@ body.body--arrival-page {
 .tv3-date span {
   display: block;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: 2px;
   color: #94a3b8;
@@ -1032,16 +1032,16 @@ body.body--arrival-page {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
 }
 
 .tv3-next-id {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 800;
-  font-size: 112px;
-  line-height: .95;
-  letter-spacing: 0;
+  font-size: 120px;
+  line-height: .92;
+  letter-spacing: -1px;
   background: linear-gradient(180deg, #0f172a, #475569);
   -webkit-background-clip: text;
   background-clip: text;
@@ -1060,12 +1060,12 @@ body.body--arrival-page {
   background: #fffbeb;
   border: 1px solid #fde68a;
   border-radius: 12px;
-  padding: 9px 16px;
+  padding: 8px 16px;
   width: fit-content;
 }
 .tv3-next-delay span {
   font-family: 'Saira', sans-serif;
-  font-size: 17px;
+  font-size: 22px;
   font-weight: 800;
   letter-spacing: 1.5px;
   color: #b45309;
@@ -1079,7 +1079,7 @@ body.body--arrival-page {
 }
 .tv3-territory-label span {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: 2px;
   color: #64748b;
@@ -1087,7 +1087,7 @@ body.body--arrival-page {
 .tv3-territory-count {
   font-family: 'Saira', sans-serif;
   font-weight: 800;
-  font-size: 24px;
+  font-size: 30px;
   color: #2563eb;
   background: #eff6ff;
   border: 1px solid #bfdbfe;
@@ -1097,7 +1097,7 @@ body.body--arrival-page {
 .tv3-territory-list {
   display: flex;
   gap: 12px;
-  margin-top: 13px;
+  margin-top: 10px;
 }
 .tv3-territory-item {
   flex: 1;
@@ -1105,12 +1105,12 @@ body.body--arrival-page {
   background: #f8fafc;
   border: 1px solid #e7eaf0;
   border-radius: 14px;
-  padding: 13px 15px;
+  padding: 11px 14px;
 }
 .tv3-territory-item > div:first-child {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
-  font-size: 18px;
+  font-size: 26px;
   color: #1e293b;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1120,19 +1120,19 @@ body.body--arrival-page {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 9px;
+  gap: 6px;
+  margin-top: 6px;
 }
 .tv3-territory-item span {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 500;
   color: #64748b;
 }
 .tv3-wait {
   font-family: 'Saira', sans-serif;
   font-weight: 800;
-  font-size: 16px;
+  font-size: 21px;
   border-radius: 9px;
   padding: 3px 11px;
   white-space: nowrap;
@@ -1151,7 +1151,7 @@ body.body--arrival-page {
   border: 1px dashed #dbe2ea;
   border-radius: 14px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: 2px;
   color: #cbd5e1;
@@ -1160,7 +1160,7 @@ body.body--arrival-page {
 .tv3-progress {
   flex: none;
   width: 470px;
-  padding: 26px 28px;
+  padding: 22px 24px;
   display: flex;
   flex-direction: column;
 }
@@ -1172,9 +1172,9 @@ body.body--arrival-page {
   background: #ecfdf5;
   border: 1px solid #a7f3d0;
   border-radius: 10px;
-  padding: 6px 13px;
+  padding: 5px 12px;
   font-family: 'Saira', sans-serif;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 800;
   letter-spacing: 2px;
   color: #059669;
@@ -1200,16 +1200,16 @@ body.body--arrival-page {
 .tv3-progress-ring strong {
   font-family: 'Saira', sans-serif;
   font-weight: 800;
-  font-size: 84px;
+  font-size: 90px;
   line-height: .85;
   color: #0f172a;
 }
 .tv3-progress-ring span {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
-  font-size: 22px;
+  font-size: 26px;
   color: #94a3b8;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 .tv3-progress-ring em {
   font-style: normal;
@@ -1220,8 +1220,8 @@ body.body--arrival-page {
   flex: none;
   background: #f8fafc;
   border: 1px solid #e7eaf0;
-  border-radius: 16px;
-  padding: 16px 18px;
+  border-radius: 14px;
+  padding: 14px 16px;
 }
 .tv3-norm-top {
   display: flex;
@@ -1238,14 +1238,14 @@ body.body--arrival-page {
   font-weight: 800;
 }
 .tv3-norm-top > div:first-child strong {
-  font-size: 38px;
+  font-size: 48px;
   line-height: .9;
   color: #0f172a;
 }
 .tv3-norm-top > div:first-child span {
   font-family: 'Saira', sans-serif;
   font-weight: 600;
-  font-size: 20px;
+  font-size: 24px;
   color: #94a3b8;
 }
 .tv3-norm-top > div:last-child {
@@ -1255,24 +1255,24 @@ body.body--arrival-page {
 .tv3-norm-top > div:last-child span {
   display: block;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 500;
   letter-spacing: 1.5px;
   color: #64748b;
 }
 .tv3-norm-top > div:last-child strong {
   display: block;
-  font-size: 15px;
+  font-size: 19px;
   letter-spacing: 1px;
   color: #2563eb;
   margin-top: 2px;
 }
 .tv3-norm-bar {
   position: relative;
-  height: 8px;
+  height: 10px;
   border-radius: 5px;
   background: #e2e8f0;
-  margin-top: 13px;
+  margin-top: 10px;
 }
 .tv3-norm-bar span {
   position: absolute;
@@ -1286,9 +1286,9 @@ body.body--arrival-page {
 }
 .tv3-norm-bar i {
   position: absolute;
-  top: -4px;
-  width: 3px;
-  height: 16px;
+  top: -5px;
+  width: 4px;
+  height: 20px;
   border-radius: 2px;
   background: #0f172a;
   box-shadow: 0 0 0 3px rgba(255,255,255,.9);
@@ -1297,15 +1297,15 @@ body.body--arrival-page {
 .tv3-shifts {
   flex: 1;
   min-width: 0;
-  padding: 26px 24px;
+  padding: 22px 20px;
   display: flex;
   flex-direction: column;
 }
 .tv3-shift-grid {
   flex: 1;
   display: flex;
-  gap: 14px;
-  margin-top: 18px;
+  gap: 12px;
+  margin-top: 14px;
   min-height: 0;
 }
 .tv3-shift-card {
@@ -1314,16 +1314,16 @@ body.body--arrival-page {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   background: #f8fafc;
   border: 1px solid #e7eaf0;
-  border-radius: 16px;
-  padding: 16px 10px;
+  border-radius: 14px;
+  padding: 12px 8px;
 }
 .tv3-shift-card > div:first-child {
   font-family: 'Saira', sans-serif;
   font-weight: 800;
-  font-size: 15px;
+  font-size: 19px;
   letter-spacing: 1.5px;
 }
 .tv3-shift-gauge {
@@ -1333,11 +1333,11 @@ body.body--arrival-page {
   justify-content: center;
   width: 100%;
   min-height: 0;
-  padding: 14px 0;
+  padding: 8px 0;
 }
 .tv3-shift-gauge > span {
   position: relative;
-  width: 30px;
+  width: 38px;
   height: 100%;
   border-radius: 8px;
   background: #e9edf2;
@@ -1355,43 +1355,43 @@ body.body--arrival-page {
 .tv3-shift-count {
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 5px;
 }
 .tv3-shift-count strong {
   font-family: 'Saira', sans-serif;
   font-weight: 800;
-  font-size: 32px;
+  font-size: 44px;
   line-height: .9;
 }
 .tv3-shift-count span {
   font-family: 'Saira', sans-serif;
   font-weight: 600;
-  font-size: 15px;
+  font-size: 20px;
   color: #cbd5e1;
 }
 
 .tv3-active {
   flex: 1;
   min-width: 0;
-  padding: 24px 26px;
+  padding: 20px 22px;
   display: flex;
   flex-direction: column;
 }
 .tv3-active-total {
   font-family: 'Saira', sans-serif;
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 800;
   letter-spacing: 1px;
   color: #059669;
   background: #ecfdf5;
   border: 1px solid #a7f3d0;
   border-radius: 10px;
-  padding: 4px 13px;
+  padding: 4px 12px;
 }
 .tv3-active-list {
   flex: 1;
   display: flex;
-  gap: 14px;
+  gap: 12px;
   min-height: 0;
 }
 .tv3-active-card {
@@ -1401,8 +1401,8 @@ body.body--arrival-page {
   flex-direction: column;
   background: #fbfcfe;
   border: 1px solid #e7eaf0;
-  border-radius: 18px;
-  padding: 16px 16px 14px;
+  border-radius: 16px;
+  padding: 13px 14px 11px;
 }
 .tv3-active-card--over {
   background: #fef2f2;
@@ -1413,23 +1413,23 @@ body.body--arrival-page {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 .tv3-active-head span {
   font-family: 'Saira', sans-serif;
   font-weight: 800;
-  font-size: 17px;
+  font-size: 24px;
   letter-spacing: 1px;
   color: #475569;
   background: #eef2f7;
   border: 1px solid #dbe2ea;
   border-radius: 8px;
-  padding: 3px 10px;
+  padding: 2px 10px;
 }
 .tv3-active-head em {
   font-family: 'JetBrains Mono', monospace;
   font-style: normal;
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 1px;
 }
@@ -1443,8 +1443,8 @@ body.body--arrival-page {
 }
 .tv3-small-ring {
   position: relative;
-  width: 104px;
-  height: 104px;
+  width: 120px;
+  height: 120px;
 }
 .tv3-small-ring svg { transform: rotate(-90deg); }
 .tv3-small-ring > div {
@@ -1459,11 +1459,11 @@ body.body--arrival-page {
 .tv3-small-ring strong {
   font-family: 'Saira', sans-serif;
   font-weight: 800;
-  font-size: 32px;
+  font-size: 40px;
 }
 .tv3-small-ring span {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 1px;
   color: #94a3b8;
@@ -1472,10 +1472,10 @@ body.body--arrival-page {
 .tv3-active-mid > strong {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
-  font-size: 19px;
+  font-size: 28px;
   color: #0f172a;
-  margin-top: 14px;
-  letter-spacing: 0;
+  margin-top: 8px;
+  letter-spacing: -0.5px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1487,11 +1487,11 @@ body.body--arrival-page {
   justify-content: center;
   gap: 8px;
   border-top: 1px solid #eef1f5;
-  padding-top: 11px;
+  padding-top: 8px;
 }
 .tv3-active-start span {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 500;
   letter-spacing: 1.5px;
   color: #94a3b8;
@@ -1499,7 +1499,7 @@ body.body--arrival-page {
 .tv3-active-start strong {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 800;
-  font-size: 17px;
+  font-size: 22px;
   color: #059669;
 }
 .tv3-empty-line--active { min-height: 100%; }
@@ -1507,14 +1507,14 @@ body.body--arrival-page {
 .tv3-zones {
   flex: none;
   width: 728px;
-  padding: 24px 26px;
+  padding: 20px 22px;
   display: flex;
   flex-direction: column;
 }
 .tv3-zone-total {
   font-family: 'Saira', sans-serif;
   font-weight: 800;
-  font-size: 20px;
+  font-size: 24px;
   color: #334155;
 }
 .tv3-zone-total strong { color: #059669; }
@@ -1527,19 +1527,19 @@ body.body--arrival-page {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: 1fr 1fr;
-  gap: 13px;
+  gap: 10px;
   min-height: 0;
 }
 .tv3-zone-card {
   background: #f8fafc;
   border: 1px solid #e7eaf0;
-  border-radius: 16px;
-  padding: 15px 16px;
+  border-radius: 14px;
+  padding: 11px 13px;
   display: flex;
   flex-direction: column;
 }
 .tv3-zone-card--busy {
-  gap: 9px;
+  gap: 4px;
   background: #f6fefb;
   border-color: #a7f3d0;
   box-shadow: 0 8px 20px rgba(5,150,105,.05);
@@ -1553,7 +1553,7 @@ body.body--arrival-page {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 .tv3-zone-name {
   display: flex;
@@ -1561,12 +1561,12 @@ body.body--arrival-page {
   gap: 8px;
   font-family: 'Saira', sans-serif;
   font-weight: 800;
-  font-size: 26px;
+  font-size: 34px;
   letter-spacing: .5px;
 }
 .tv3-zone-name span {
-  width: 11px;
-  height: 11px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
 }
 .tv3-zone-name--free { color: #94a3b8; }
@@ -1574,12 +1574,12 @@ body.body--arrival-page {
 .tv3-zone-row em {
   font-family: 'JetBrains Mono', monospace;
   font-style: normal;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 1px;
   border: 1px solid;
   border-radius: 7px;
-  padding: 3px 8px;
+  padding: 2px 7px;
 }
 .tv3-zone-body {
   flex: 1;
@@ -1590,7 +1590,7 @@ body.body--arrival-page {
 .tv3-zone-body > span {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 21px;
   color: #64748b;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1600,23 +1600,23 @@ body.body--arrival-page {
   display: flex;
   align-items: baseline;
   gap: 5px;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 .tv3-zone-body strong {
   font-family: 'Saira', sans-serif;
   font-weight: 800;
-  font-size: 36px;
-  line-height: .85;
+  font-size: 46px;
+  line-height: .82;
 }
 .tv3-zone-body em {
   font-family: 'JetBrains Mono', monospace;
   font-style: normal;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 700;
   color: #94a3b8;
 }
 .tv3-zone-bar {
-  height: 6px;
+  height: 7px;
   border-radius: 4px;
   background: #eef1f5;
   overflow: hidden;
@@ -1635,7 +1635,7 @@ body.body--arrival-page {
   align-items: center;
   justify-content: center;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: 3px;
   color: #cbd5e1;

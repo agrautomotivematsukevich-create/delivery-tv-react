@@ -14,7 +14,7 @@ interface TvCommandCenterLightProps {
 const ARTBOARD_W = 1920;
 const ARTBOARD_H = 1080;
 const BIG_CIRC = 2 * Math.PI * 130;
-const SMALL_CIRC = 2 * Math.PI * 44;
+const SMALL_CIRC = 2 * Math.PI * 50;
 
 type Tone = 'ok' | 'warn' | 'over';
 
@@ -113,14 +113,14 @@ const Kicker: React.FC<{ accent?: string; children: React.ReactNode }> = ({ acce
 );
 
 const ClockIcon = () => (
-  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <circle cx="12" cy="12" r="10" />
     <polyline points="12 6 12 12 16 14" />
   </svg>
 );
 
 const TruckIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M14 18V6a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h1" />
     <path d="M14 9h4l4 4v4a1 1 0 0 1-1 1h-1" />
     <circle cx="7.5" cy="18.5" r="2.5" />
@@ -373,9 +373,9 @@ const TvCommandCenterLight: React.FC<TvCommandCenterLightProps> = ({ data, allTa
                     </div>
                     <div className="tv3-active-mid">
                       <div className="tv3-small-ring">
-                        <svg width="104" height="104" viewBox="0 0 104 104">
-                          <circle cx="52" cy="52" r="44" fill="none" stroke="#eef1f5" strokeWidth="8" />
-                          <circle cx="52" cy="52" r="44" fill="none" stroke={color} strokeWidth="8" strokeLinecap="round" strokeDasharray={SMALL_CIRC.toFixed(1)} strokeDashoffset={(SMALL_CIRC * (1 - frac)).toFixed(1)} />
+                        <svg width="120" height="120" viewBox="0 0 120 120">
+                          <circle cx="60" cy="60" r="50" fill="none" stroke="#eef1f5" strokeWidth="9" />
+                          <circle cx="60" cy="60" r="50" fill="none" stroke={color} strokeWidth="9" strokeLinecap="round" strokeDasharray={SMALL_CIRC.toFixed(1)} strokeDashoffset={(SMALL_CIRC * (1 - frac)).toFixed(1)} />
                         </svg>
                         <div><strong style={{ color }}>{isOver ? `+${item.elapsed - UNLOAD_TARGET}` : Math.max(0, UNLOAD_TARGET - item.elapsed)}</strong><span>МИН</span></div>
                       </div>
