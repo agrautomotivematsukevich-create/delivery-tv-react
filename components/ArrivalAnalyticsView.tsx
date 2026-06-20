@@ -1,461 +1,686 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../services/api';
 import { Task, TranslationSet } from '../types';
 import {
-  Calendar, Timer, TrendingUp, AlertTriangle, CheckCircle,
-  Clock, Package, ChevronDown, ChevronUp, ChevronsUpDown, Truck
+  AlertTriangle,
+  Calendar,
+  CheckCircle,
+  ChevronsUpDown,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  MapPin,
+  Package,
+  Timer,
+  TrendingUp,
+  Truck,
 } from 'lucide-react';
-
-import { formatWait, getOperationalIsoDate, parseHHMM } from '../utils/time';
+import { getOperationalIsoDate, parseHHMM } from '../utils/time';
 
 interface ArrivalAnalyticsViewProps {
   t: TranslationSet;
 }
 
-interface EnrichedTask extends Task {
-  waitMinutes: number | null; 
-  isLiveWaiting: boolean; // Машина приехала, но разгрузка не начата
-}
-
-// --- Вспомогательные функции ---
-
-function getWaitStyle(minutes: number | null): { bg: string; text: string; dot: string; } {
-  if (minutes === null) return { bg: 'bg-white/5', text: 'text-white/30', dot: 'bg-white/20' };
-  if (minutes <= 0)     return { bg: 'bg-white/5', text: 'text-white/30', dot: 'bg-white/20' };
-  if (minutes <= 30)    return { bg: 'bg-emerald-500/10', text: 'text-emerald-400', dot: 'bg-emerald-400' };
-  if (minutes <= 60)    return { bg: 'bg-amber-500/10', text: 'text-amber-400', dot: 'bg-amber-400' };
-  return { bg: 'bg-red-500/10', text: 'text-red-400', dot: 'bg-red-400' };
-}
-
-type SortKey = 'id' | 'type' | 'eta' | 'arrival_time' | 'start_time' | 'waitMinutes' | 'zone' | 'operator';
+type PeriodMode = 'week' | 'month' | 'custom';
+type SortKey = 'id' | 'type' | 'eta' | 'arrival' | 'start' | 'downtime' | 'status' | 'zone' | 'operator' | 'date';
 type SortDir = 'asc' | 'desc';
+type DelayCategory = 'norm' | 'risk' | 'over' | 'none';
 
-// --- Компонент ---
+interface EnrichedTask extends Task {
+  etaMin: number | null;
+  arrivalMin: number | null;
+  startMin: number | null;
+  baseMin: number | null;
+  downtime: number | null;
+  arrivalWait: number | null;
+  live: boolean;
+  early: boolean;
+  category: DelayCategory;
+  displayDate: string;
+  sourceDateIso: string | null;
+}
 
-const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = ({ t }) => {
-  const [date, setDate] = useState<string>(getOperationalIsoDate());
-  const [tasks, setTasks] = useState<Task[]>([]);
+interface ChartPoint {
+  label: string;
+  value: number;
+}
+
+const TERRITORY_LIMIT_MIN = 7 * 60;
+const RISK_LIMIT_MIN = 5 * 60;
+
+const PREFERRED_WS = ['Assembly', 'Paint', 'Welding', 'Баки', 'Запчасти'];
+
+const CATEGORY_STYLE: Record<DelayCategory, { text: string; bg: string; border: string; dot: string; label: string }> = {
+  norm: { text: '#34d399', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.25)', dot: '#34d399', label: 'НОРМА' },
+  risk: { text: '#fbbf24', bg: 'rgba(245,158,11,0.13)', border: 'rgba(245,158,11,0.28)', dot: '#fbbf24', label: 'РИСК' },
+  over: { text: '#f87171', bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.32)', dot: '#f87171', label: '>7Ч' },
+  none: { text: 'rgba(255,255,255,0.3)', bg: 'rgba(255,255,255,0.05)', border: 'rgba(255,255,255,0.1)', dot: 'rgba(255,255,255,0.2)', label: '—' },
+};
+
+function fmtDur(min: number | null): string {
+  if (min === null || Number.isNaN(min)) return '—';
+  const rounded = Math.max(0, Math.round(min));
+  const h = Math.floor(rounded / 60);
+  const m = rounded % 60;
+  if (h <= 0) return `${m}м`;
+  return m === 0 ? `${h}ч` : `${h}ч ${m}м`;
+}
+
+function fmtTime(min: number | null): string {
+  if (min === null || Number.isNaN(min)) return '—';
+  const normalized = ((Math.round(min) % 1440) + 1440) % 1440;
+  const h = Math.floor(normalized / 60);
+  const m = normalized % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function parseIsoAsUtc(iso: string): Date {
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatIso(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+function isoToSheetDate(iso: string): string {
+  const date = parseIsoAsUtc(iso);
+  return `${String(date.getUTCDate()).padStart(2, '0')}.${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function sheetDateToIso(sheetDate?: string): string | null {
+  if (!sheetDate || !/^\d{2}\.\d{2}$/.test(sheetDate)) return null;
+  const year = parseIsoAsUtc(getOperationalIsoDate()).getUTCFullYear();
+  const [day, month] = sheetDate.split('.').map(Number);
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function shiftIso(iso: string, days: number): string {
+  const date = parseIsoAsUtc(iso);
+  date.setUTCDate(date.getUTCDate() + days);
+  return formatIso(date);
+}
+
+function buildIsoRange(period: PeriodMode, customFrom: string, customTo: string): string[] {
+  let fromIso = customFrom;
+  let toIso = customTo;
+
+  if (period === 'week') fromIso = shiftIso(toIso, -6);
+  if (period === 'month') fromIso = shiftIso(toIso, -29);
+
+  let from = parseIsoAsUtc(fromIso);
+  let to = parseIsoAsUtc(toIso);
+  if (from.getTime() > to.getTime()) [from, to] = [to, from];
+
+  const dates: string[] = [];
+  for (const cur = new Date(from.getTime()); cur.getTime() <= to.getTime(); cur.setUTCDate(cur.getUTCDate() + 1)) {
+    dates.push(formatIso(cur));
+  }
+  return dates;
+}
+
+function diffForward(endMin: number, startMin: number): number | null {
+  let diff = endMin - startMin;
+  if (diff < 0) {
+    const looksLikeMidnightCrossing = startMin >= 12 * 60 && endMin <= 12 * 60;
+    if (!looksLikeMidnightCrossing) return null;
+    diff += 1440;
+  }
+  return diff >= 0 ? diff : null;
+}
+
+function nowMoscowMinutes(): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Moscow',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+  return hour * 60 + minute;
+}
+
+function liveDiffFromBase(baseMin: number): number {
+  const current = nowMoscowMinutes();
+  let diff = current - baseMin;
+  if (diff < 0 && baseMin >= 12 * 60 && current <= 12 * 60) diff += 1440;
+  return Math.max(0, diff);
+}
+
+function getBaseTime(etaMin: number | null, arrivalMin: number | null): number | null {
+  if (etaMin === null && arrivalMin === null) return null;
+  if (etaMin === null) return arrivalMin;
+  if (arrivalMin === null) return etaMin;
+  return Math.max(etaMin, arrivalMin);
+}
+
+function getCategory(min: number | null): DelayCategory {
+  if (min === null) return 'none';
+  if (min <= RISK_LIMIT_MIN) return 'norm';
+  if (min <= TERRITORY_LIMIT_MIN) return 'risk';
+  return 'over';
+}
+
+function enrichTask(task: Task, isoDate: string, isToday: boolean): EnrichedTask | null {
+  if (!task.id?.trim()) return null;
+
+  const etaMin = parseHHMM(task.eta);
+  const arrivalMin = parseHHMM(task.arrival_time);
+  const startMin = parseHHMM(task.start_time);
+  const baseMin = getBaseTime(etaMin, arrivalMin);
+  const live = isToday && startMin === null && task.status !== 'DONE' && baseMin !== null;
+
+  let downtime: number | null = null;
+  if (baseMin !== null && startMin !== null) downtime = diffForward(startMin, baseMin);
+  else if (live && baseMin !== null) downtime = liveDiffFromBase(baseMin);
+
+  let arrivalWait: number | null = null;
+  if (arrivalMin !== null && startMin !== null) arrivalWait = diffForward(startMin, arrivalMin);
+  else if (isToday && arrivalMin !== null && startMin === null && task.status !== 'DONE') arrivalWait = liveDiffFromBase(arrivalMin);
+
+  const taskIso = sheetDateToIso(task.sheet_date) ?? isoDate;
+  return {
+    ...task,
+    etaMin,
+    arrivalMin,
+    startMin,
+    baseMin,
+    downtime,
+    arrivalWait,
+    live,
+    early: etaMin !== null && arrivalMin !== null && arrivalMin < etaMin,
+    category: getCategory(downtime),
+    displayDate: task.sheet_date || isoToSheetDate(taskIso),
+    sourceDateIso: taskIso,
+  };
+}
+
+function colorForDelay(min: number | null): string {
+  return CATEGORY_STYLE[getCategory(min)].text;
+}
+
+function seriesPath(points: ChartPoint[], width: number, height: number): { line: string; area: string; coords: Array<{ x: number; y: number }> } {
+  const maxValue = Math.max(2, ...points.map((p) => p.value));
+  const x0 = 8;
+  const y0 = 14;
+  const plotWidth = width - 16;
+  const plotHeight = height - 42;
+  const coords = points.map((p, i) => {
+    const x = points.length === 1 ? x0 + plotWidth / 2 : x0 + (i / (points.length - 1)) * plotWidth;
+    const y = y0 + (1 - p.value / maxValue) * plotHeight;
+    return { x, y };
+  });
+  const line = coords.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  const area = `${line} L${coords[coords.length - 1]?.x.toFixed(1) ?? width} ${y0 + plotHeight} L${x0} ${y0 + plotHeight} Z`;
+  return { line, area, coords };
+}
+
+const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = () => {
+  const operationalIso = getOperationalIsoDate();
+  const [period, setPeriod] = useState<PeriodMode>('week');
+  const [customTo, setCustomTo] = useState(operationalIso);
+  const [customFrom, setCustomFrom] = useState(shiftIso(operationalIso, -6));
+  const [tasks, setTasks] = useState<EnrichedTask[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortKey, setSortKey] = useState<SortKey>('waitMinutes');
+  const [wsFilter, setWsFilter] = useState('ALL');
+  const [sortKey, setSortKey] = useState<SortKey>('downtime');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
-  const [wsFilter, setWsFilter] = useState<string>('ALL');
 
-  const isToday = useMemo(() => {
-    const today = getOperationalIsoDate();
-    return date === today;
-  }, [date]);
+  const isoRange = useMemo(() => buildIsoRange(period, customFrom, customTo), [period, customFrom, customTo]);
+  const isSingleTodayRange = isoRange.length === 1 && isoRange[0] === operationalIso;
 
-  const fetchData = async (d: string) => {
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    try {
-      const [, m, day] = d.split('-');
-      const formattedDate = `${day}.${m}`;
-      const data = await api.fetchHistory(formattedDate);
-      setTasks(data);
-    } catch {
-      // keep previous data on network error
-    } finally {
-      setLoading(false);
+
+    Promise.all(
+      isoRange.map(async (iso) => {
+        const sheetDate = isoToSheetDate(iso);
+        try {
+          const dayTasks = await api.fetchHistory(sheetDate);
+          return dayTasks
+            .map((task) => enrichTask({ ...task, sheet_date: task.sheet_date || sheetDate }, iso, iso === operationalIso))
+            .filter((task): task is EnrichedTask => Boolean(task));
+        } catch {
+          return [] as EnrichedTask[];
+        }
+      })
+    ).then((days) => {
+      if (!cancelled) setTasks(days.flat());
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isoRange, operationalIso]);
+
+  const wsOptions = useMemo(() => {
+    const fromData = Array.from(new Set(tasks.map((task) => task.type).filter((value): value is string => Boolean(value)))).sort();
+    const ordered = [...PREFERRED_WS, ...fromData.filter((ws) => !PREFERRED_WS.includes(ws))];
+    return ['ALL', ...ordered.filter((ws, index, arr) => arr.indexOf(ws) === index)];
+  }, [tasks]);
+
+  const filtered = useMemo(() => {
+    const list = wsFilter === 'ALL' ? tasks : tasks.filter((task) => task.type === wsFilter);
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const readNumber = (task: EnrichedTask, key: SortKey): number | null => {
+      if (key === 'eta') return task.etaMin;
+      if (key === 'arrival') return task.arrivalMin;
+      if (key === 'start') return task.startMin;
+      if (key === 'downtime') return task.downtime;
+      if (key === 'date') return task.sourceDateIso ? parseIsoAsUtc(task.sourceDateIso).getTime() : null;
+      return null;
+    };
+
+    return [...list].sort((a, b) => {
+      const avn = readNumber(a, sortKey);
+      const bvn = readNumber(b, sortKey);
+      if (avn !== null || bvn !== null) return ((avn ?? -1) - (bvn ?? -1)) * dir;
+      const av = sortKey === 'arrival' ? a.arrival_time : sortKey === 'start' ? a.start_time : (a as unknown as Record<string, unknown>)[sortKey];
+      const bv = sortKey === 'arrival' ? b.arrival_time : sortKey === 'start' ? b.start_time : (b as unknown as Record<string, unknown>)[sortKey];
+      return String(av ?? '').localeCompare(String(bv ?? ''), 'ru') * dir;
+    });
+  }, [sortDir, sortKey, tasks, wsFilter]);
+
+  const completed = filtered.filter((task) => !task.live && task.downtime !== null);
+  const live = filtered.filter((task) => task.live);
+  const over7Completed = completed.filter((task) => (task.downtime ?? 0) > TERRITORY_LIMIT_MIN);
+  const liveOver7 = live.filter((task) => (task.downtime ?? 0) > TERRITORY_LIMIT_MIN);
+  const avgDelay = completed.length ? Math.round(completed.reduce((sum, task) => sum + (task.downtime ?? 0), 0) / completed.length) : null;
+  const allKnownDelays = filtered.map((task) => task.downtime).filter((value): value is number => value !== null);
+  const maxDelay = allKnownDelays.length ? Math.max(...allKnownDelays) : null;
+  const withoutViolationPct = completed.length
+    ? Math.round((completed.filter((task) => (task.downtime ?? 0) <= TERRITORY_LIMIT_MIN).length / completed.length) * 100)
+    : null;
+  const arrivalWaits = completed.map((task) => task.arrivalWait).filter((value): value is number => value !== null);
+  const arrivalAvg = arrivalWaits.length ? Math.round(arrivalWaits.reduce((sum, value) => sum + value, 0) / arrivalWaits.length) : null;
+  const arrivalMax = arrivalWaits.length ? Math.max(...arrivalWaits) : null;
+  const earlyCount = completed.filter((task) => task.early).length;
+
+  const chartPoints = useMemo<ChartPoint[]>(() => {
+    return isoRange.map((iso) => ({
+      label: isoToSheetDate(iso).slice(0, 2),
+      value: tasks.filter((task) => task.sourceDateIso === iso && !task.live && (task.downtime ?? 0) > TERRITORY_LIMIT_MIN).length,
+    }));
+  }, [isoRange, tasks]);
+
+  const chart = seriesPath(chartPoints.length ? chartPoints : [{ label: '', value: 0 }], 900, 200);
+  const spark = seriesPath(chartPoints.length ? chartPoints : [{ label: '', value: 0 }], 120, 34);
+  const chartTotal = chartPoints.reduce((sum, point) => sum + point.value, 0);
+  const chartPeak = Math.max(0, ...chartPoints.map((point) => point.value));
+  const maxChartValue = Math.max(2, chartPeak);
+  const gridLines = [maxChartValue, Math.round(maxChartValue / 2), 0].map((value) => ({
+    value,
+    y: 14 + (1 - value / maxChartValue) * 158,
+  }));
+
+  const antirating = completed
+    .filter((task) => (task.downtime ?? 0) > 0)
+    .sort((a, b) => (b.downtime ?? 0) - (a.downtime ?? 0))
+    .slice(0, 9);
+  const antiratingMax = Math.max(1, antirating[0]?.downtime ?? 1);
+
+  const periodLabel = period === 'week' ? 'за неделю' : period === 'month' ? 'за месяц' : 'за период';
+  const periodTag = period === 'week' ? '· неделя' : period === 'month' ? '· месяц' : '';
+  const heroCritical = over7Completed.length > 0;
+  const heroAccent = heroCritical ? '#f87171' : '#34d399';
+  const heroBg = heroCritical
+    ? 'radial-gradient(700px 300px at 12% -20%, rgba(239,68,68,0.12), transparent 60%), rgba(239,68,68,0.05)'
+    : 'rgba(16,185,129,0.045)';
+  const heroBorder = heroCritical ? 'rgba(239,68,68,0.22)' : 'rgba(52,211,153,0.2)';
+  const spotlight = liveOver7.sort((a, b) => (b.downtime ?? 0) - (a.downtime ?? 0));
+  const liveCards = live.slice().sort((a, b) => (b.downtime ?? 0) - (a.downtime ?? 0));
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir((current) => current === 'asc' ? 'desc' : 'asc');
+    else {
+      setSortKey(key);
+      setSortDir('desc');
     }
   };
 
-  useEffect(() => { fetchData(date); }, [date]);
-
-  // Обогащаем данные
-  const enriched = useMemo<EnrichedTask[]>(() => {
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-    return tasks.map(task => {
-      const arrMin = parseHHMM(task.arrival_time);
-      const startMin = parseHHMM(task.start_time);
-      let waitMinutes: number | null = null;
-      let isLiveWaiting = false;
-
-      if (arrMin !== null && startMin !== null) {
-        waitMinutes = startMin - arrMin;
-        if (waitMinutes < -60) waitMinutes = null; 
-      } else if (isToday && arrMin !== null && !startMin && task.status !== 'DONE') {
-        // Считаем live-ожидание для машин, которые стоят прямо сейчас
-        waitMinutes = currentMinutes - arrMin;
-        if (waitMinutes < 0) waitMinutes = 0; // Защита от перевала через полночь
-        isLiveWaiting = true;
-      }
-
-      return { ...task, waitMinutes, isLiveWaiting };
-    });
-  }, [tasks, isToday]);
-
-  // Уникальные W/S для фильтра
-  const wsOptions = useMemo(() => {
-    const set = new Set(enriched.map(t => t.type || '—').filter(Boolean));
-    return ['ALL', ...Array.from(set).sort()];
-  }, [enriched]);
-
-  // Фильтрация + сортировка
-  const filtered = useMemo(() => {
-    let list = wsFilter === 'ALL' ? enriched : enriched.filter(t => t.type === wsFilter);
-    return [...list].sort((a, b) => {
-      const dir = sortDir === 'asc' ? 1 : -1;
-      if (sortKey === 'waitMinutes') {
-        const av = a.waitMinutes ?? -9999;
-        const bv = b.waitMinutes ?? -9999;
-        return (av - bv) * dir;
-      }
-      const av = (a as any)[sortKey] ?? '';
-      const bv = (b as any)[sortKey] ?? '';
-      return String(av).localeCompare(String(bv)) * dir;
-    });
-  }, [enriched, sortKey, sortDir, wsFilter]);
-
-  // Статистика (Продуктовый подход)
-  const stats = useMemo(() => {
-    const withWait = enriched.filter(t => t.waitMinutes !== null && t.waitMinutes >= 0 && !t.isLiveWaiting);
-    const total = enriched.length;
-    const withDataCount = withWait.length;
-    
-    const avg = withDataCount > 0
-      ? Math.round(withWait.reduce((s, t) => s + (t.waitMinutes ?? 0), 0) / withDataCount)
-      : null;
-    
-    const max = withDataCount > 0
-      ? Math.max(...withWait.map(t => t.waitMinutes ?? 0))
-      : null;
-    
-    const overHour = withWait.filter(t => (t.waitMinutes ?? 0) > 60).length;
-    
-    // Метрика SLA (сколько разгрузили быстрее 30 минут)
-    const slaMet = withWait.filter(t => (t.waitMinutes ?? 0) <= 30).length;
-    const slaPct = withDataCount > 0 ? Math.round((slaMet / withDataCount) * 100) : null;
-
-    const liveWaiters = enriched.filter(t => t.isLiveWaiting);
-
-    return { total, withDataCount, avg, max, overHour, slaPct, liveWaiters };
-  }, [enriched]);
-
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir('desc'); }
+  const SortIcon = ({ keyName }: { keyName: SortKey }) => {
+    if (sortKey !== keyName) return <ChevronsUpDown size={11} style={{ opacity: 0.4 }} />;
+    return sortDir === 'asc' ? <ChevronUp size={11} color="#fbbf24" /> : <ChevronDown size={11} color="#fbbf24" />;
   };
 
-  const SortIcon = ({ k }: { k: SortKey }) => {
-    if (sortKey !== k) return <ChevronsUpDown size={12} className="opacity-30" />;
-    return sortDir === 'desc'
-      ? <ChevronDown size={12} className="text-accent-blue" />
-      : <ChevronUp size={12} className="text-accent-blue" />;
+  const setPresetPeriod = (next: PeriodMode) => {
+    setPeriod(next);
+    if (next === 'week') setCustomFrom(shiftIso(customTo, -6));
+    if (next === 'month') setCustomFrom(shiftIso(customTo, -29));
   };
+
+  const segmentClass = (value: PeriodMode) => value === period ? 'arrival-segment arrival-segment-active' : 'arrival-segment';
+  const chipClass = (value: string) => value === wsFilter ? 'arrival-chip arrival-chip-active' : 'arrival-chip';
 
   return (
-    <div className="flex flex-col gap-6 h-full flex-1 min-h-0">
-
-      {/* ── Хедер страницы ── */}
-      <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl p-5 flex flex-wrap items-center gap-4 shadow-xl">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-            <Timer size={18} className="text-amber-400" />
-          </div>
-          <div>
-            <h2 className="font-black text-white text-base uppercase tracking-wider">Аналитика прибытия</h2>
-            <div className="text-xs text-white/40 mt-0.5">Время ожидания между заездом и началом разгрузки</div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 ml-auto flex-wrap">
-          <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-1">
-            {wsOptions.map(ws => (
-              <button
-                key={ws}
-                onClick={() => setWsFilter(ws)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                  wsFilter === ws ? 'bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white'
-                }`}
-              >
-                {ws === 'ALL' ? 'Все W/S' : ws}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-4 py-2 hover:bg-white/10 transition-colors">
-            <Calendar size={14} className="text-white/40" />
-            <input
-              type="date"
-              value={date}
-              onChange={e => setDate(e.target.value)}
-              className="bg-transparent text-white font-mono text-sm outline-none [color-scheme:dark] cursor-pointer"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ── НОВЫЙ БЛОК: Оперативный контроль (Live) ── */}
-      {!loading && isToday && stats.liveWaiters.length > 0 && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-3xl p-6 shadow-[0_0_30px_rgba(239,68,68,0.1)] animate-in slide-in-from-top duration-500">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <Truck className="text-red-400 animate-pulse" size={24} />
-              <h3 className="text-lg font-black text-white uppercase">Ожидают разгрузки прямо сейчас</h3>
-            </div>
-            <div className="text-sm font-bold text-red-400 bg-red-500/20 px-3 py-1 rounded-lg">
-              {stats.liveWaiters.length} машин в очереди
-            </div>
-          </div>
-          
-          <div className="flex gap-3 overflow-x-auto custom-scrollbar pb-2">
-            {stats.liveWaiters.map(task => {
-              const wait = task.waitMinutes ?? 0;
-              const isCritical = wait > 30;
-              return (
-                <div key={task.id} className={`shrink-0 border rounded-xl p-4 min-w-[200px] ${
-                  isCritical ? 'bg-red-500/20 border-red-500/30' : 'bg-amber-500/10 border-amber-500/20'
-                }`}>
-                  <div className="text-xs font-bold text-white/60 mb-1">{task.type || 'W/S'}</div>
-                  <div className="text-lg font-black font-mono text-white mb-2">{task.id}</div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-white/50">Стоит уже:</span>
-                    <span className={`font-bold tabular-nums ${isCritical ? 'text-red-400' : 'text-amber-400'}`}>
-                      {formatWait(wait)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Карточки статистики ── */}
-      {!loading && tasks.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          
-          {/* Улучшенная карточка: Норматив (SLA) */}
-          <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-lg relative overflow-hidden">
-            <div className="absolute -right-4 -top-4 opacity-10">
-              <CheckCircle size={100} className={stats.slaPct && stats.slaPct >= 80 ? 'text-emerald-400' : 'text-white'} />
-            </div>
-            <div className="flex items-center gap-2 mb-3">
-              <CheckCircle size={16} className={stats.slaPct && stats.slaPct >= 80 ? 'text-emerald-400' : 'text-amber-400'} />
-              <span className="text-xs text-white/40 uppercase tracking-wider">Норматив (≤30м)</span>
-            </div>
-            <div className={`text-4xl font-black tabular-nums ${
-              stats.slaPct === null ? 'text-white/30' :
-              stats.slaPct >= 80 ? 'text-emerald-400' :
-              stats.slaPct >= 50 ? 'text-amber-400' : 'text-red-400'
-            }`}>
-              {stats.slaPct !== null ? `${stats.slaPct}%` : '—'}
-            </div>
-            <div className="text-xs text-white/40 mt-1">от всех разгруженных машин</div>
-          </div>
-
-          {/* Среднее ожидание */}
-          <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-lg">
-            <div className="flex items-center gap-2 mb-3">
-              <Clock size={16} className="text-amber-400/60" />
-              <span className="text-xs text-white/40 uppercase tracking-wider">Среднее ожидание</span>
-            </div>
-            <div className={`text-4xl font-black tabular-nums ${
-              stats.avg === null ? 'text-white/30' :
-              stats.avg <= 30 ? 'text-emerald-400' :
-              stats.avg <= 60 ? 'text-amber-400' : 'text-red-400'
-            }`}>
-              {stats.avg !== null ? formatWait(stats.avg) : '—'}
-            </div>
-            <div className="text-xs text-white/40 mt-1">целевой KPI: 30мин</div>
-          </div>
-
-          {/* Макс. ожидание */}
-          <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-lg">
-            <div className="flex items-center gap-2 mb-3">
-              <TrendingUp size={16} className="text-red-400/60" />
-              <span className="text-xs text-white/40 uppercase tracking-wider">Максимум</span>
-            </div>
-            <div className={`text-4xl font-black tabular-nums ${
-              stats.max === null ? 'text-white/30' :
-              stats.max <= 30 ? 'text-emerald-400' :
-              stats.max <= 60 ? 'text-amber-400' : 'text-red-400'
-            }`}>
-              {stats.max !== null ? formatWait(stats.max) : '—'}
-            </div>
-            <div className="text-xs text-white/40 mt-1">самый долгий простой</div>
-          </div>
-
-          {/* Критичных > 1 часа */}
-          <div className={`backdrop-blur-xl border rounded-2xl p-5 shadow-lg ${
-            stats.overHour > 0
-              ? 'bg-red-500/10 border-red-500/30'
-              : 'bg-card-bg border-white/10'
-          }`}>
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle size={16} className={stats.overHour > 0 ? 'text-red-400' : 'text-emerald-400/60'} />
-              <span className="text-xs text-white/40 uppercase tracking-wider">Критичные (&gt;60м)</span>
-            </div>
-            <div className={`text-4xl font-black tabular-nums ${stats.overHour > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-              {stats.overHour}
-            </div>
-            <div className="text-xs text-white/40 mt-1">нарушения норматива</div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Антирейтинг (Бар-чарт) ── */}
-      {!loading && stats.withDataCount > 0 && (() => {
-        const withData = filtered.filter(t => t.waitMinutes !== null && t.waitMinutes > 0 && !t.isLiveWaiting);
-        if (withData.length === 0) return null;
-        const maxVal = Math.max(...withData.map(t => t.waitMinutes ?? 0));
-        
-        return (
-          <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-xl">
-            <div className="text-sm font-black uppercase tracking-widest text-white mb-4 flex items-center gap-2">
-              <TrendingUp size={16} className="text-red-400" />
-              Топ самых долгих ожиданий (Антирейтинг)
-            </div>
-            <div className="flex flex-col gap-3">
-              {withData.slice(0, 10).map(task => {
-                const pct = maxVal > 0 ? ((task.waitMinutes ?? 0) / maxVal) * 100 : 0;
-                const style = getWaitStyle(task.waitMinutes);
-                return (
-                  <div key={task.id} className="flex items-center gap-3 group">
-                    <div className="w-40 text-xs font-mono text-white/70 truncate text-right shrink-0 flex flex-col items-end">
-                      <span className="font-bold text-white">{task.id}</span>
-                      <span className="text-[10px] text-white/40">{task.type || 'W/S'}</span>
-                    </div>
-                    <div className="flex-1 h-7 bg-white/5 rounded-lg overflow-hidden relative border border-white/5">
-                      <div
-                        className={`h-full transition-all duration-1000 ease-out ${
-                          style.dot === 'bg-emerald-400' ? 'bg-emerald-500/30' : 
-                          style.dot === 'bg-amber-400' ? 'bg-amber-500/30' : 'bg-red-500/40'
-                        }`}
-                        style={{ width: `${pct}%` }}
-                      />
-                      <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black tabular-nums drop-shadow-md ${style.text}`}>
-                        {formatWait(task.waitMinutes ?? 0)}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ── Таблица ── */}
-      <div className="bg-card-bg backdrop-blur-xl border border-white/10 rounded-3xl flex-1 min-h-0 overflow-hidden flex flex-col shadow-2xl">
-        {loading ? (
-          <div className="flex-1 flex items-center justify-center text-white/30 animate-pulse gap-3">
-            <Timer size={24} strokeWidth={1} className="animate-spin" />
-            <span>Загрузка данных...</span>
-          </div>
-        ) : tasks.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-white/30 gap-4">
-            <Package size={48} strokeWidth={1} />
-            <div>Нет данных за выбранную дату</div>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between px-6 pt-4 pb-2 border-b border-white/5">
-              <div className="flex items-center gap-4">
-                {[
-                  { dot: 'bg-white/20', label: 'Нет данных' },
-                  { dot: 'bg-emerald-400', label: `Норма (≤30м)` },
-                  { dot: 'bg-amber-400', label: `Превышение (30–60м)` },
-                  { dot: 'bg-red-400', label: `Критично (>60м)` },
-                ].map(item => (
-                  <div key={item.label} className="flex items-center gap-1.5">
-                    <div className={`w-2 h-2 rounded-full ${item.dot}`} />
-                    <span className="text-[10px] text-white/50 uppercase tracking-wider font-bold">{item.label}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="text-xs text-white/40 font-bold bg-white/5 px-2 py-1 rounded-md">
-                Показано: {filtered.length} из {enriched.length}
+    <div className="arrival-design">
+      <div className="arrival-inner">
+        <section className="arrival-filter-panel">
+          <div className="arrival-filter-top">
+            <div className="arrival-title-row">
+              <div className="arrival-title-icon"><Timer size={20} /></div>
+              <div>
+                <h2>Простой на территории</h2>
+                <p>Время от ожидаемого/фактического заезда до начала разгрузки · порог нарушения <b>7 часов</b></p>
               </div>
             </div>
 
-            {/* ✅ ИСПРАВЛЕННЫЕ ЗАГОЛОВКИ ТАБЛИЦЫ (keys) */}
-            <div className="grid grid-cols-[2.5rem_1fr_5rem_4rem_4rem_6rem_5rem_1fr] gap-2 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-white/40 border-b border-white/10 bg-black/20">
-              <div className="text-center">#</div>
-              {[
-                { key: 'id' as SortKey, label: 'Контейнер' },
-                { key: 'type' as SortKey, label: 'W/S' },          // Исправлено
-                { key: 'eta' as SortKey, label: 'План' },
-                { key: 'arrival_time' as SortKey, label: 'Факт' },
-                { key: 'start_time' as SortKey, label: 'Разгрузка' },
-                { key: 'waitMinutes' as SortKey, label: 'Ожидание' },
-                { key: 'zone' as SortKey, label: 'Зона' },
-                { key: 'operator' as SortKey, label: 'Оператор' }, // Исправлено
-              ].map(({ key, label }, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleSort(key)}
-                  className={`flex items-center gap-1 hover:text-white transition-colors text-left ${
-                    key === 'waitMinutes' ? 'justify-center' : ''
-                  }`}
-                >
-                  {label}
-                  <SortIcon k={key} />
+            <div className="arrival-period-controls">
+              <div className="arrival-segments">
+                <button onClick={() => setPresetPeriod('week')} className={segmentClass('week')}>Неделя</button>
+                <button onClick={() => setPresetPeriod('month')} className={segmentClass('month')}>Месяц</button>
+                <button onClick={() => setPeriod('custom')} className={segmentClass('custom')}>Диапазон</button>
+              </div>
+              <div className="arrival-date-range">
+                <Calendar size={15} />
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(event) => {
+                    setCustomFrom(event.target.value);
+                    setPeriod('custom');
+                  }}
+                />
+                <span>—</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(event) => {
+                    setCustomTo(event.target.value);
+                    if (period !== 'custom') setCustomFrom(shiftIso(event.target.value, period === 'week' ? -6 : -29));
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="arrival-ws-row">
+            <span>КАТЕГОРИЯ W/S</span>
+            <div className="arrival-chip-list">
+              {wsOptions.map((ws) => (
+                <button key={ws} onClick={() => setWsFilter(ws)} className={chipClass(ws)}>
+                  {ws === 'ALL' ? 'Все W/S' : ws}
                 </button>
               ))}
             </div>
+          </div>
+        </section>
 
-            {/* Строки */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              {filtered.map((task, idx) => {
-                const style = getWaitStyle(task.waitMinutes);
-                return (
-                  <div
-                    key={task.id}
-                    className={`grid grid-cols-[2.5rem_1fr_5rem_4rem_4rem_6rem_5rem_1fr] gap-2 px-4 py-3 border-b border-white/5 items-center transition-colors hover:bg-white/10 ${
-                      task.status !== 'DONE' && !task.isLiveWaiting ? 'opacity-50' : ''
-                    } ${task.isLiveWaiting ? 'bg-red-500/5' : ''}`}
-                  >
-                    <div className="text-center text-xs text-white/30 font-mono">{idx + 1}</div>
+        <section className="arrival-hero" style={{ background: heroBg, borderColor: heroBorder }}>
+          <div className="arrival-hero-main">
+            <div className="arrival-hero-summary">
+              <div className="arrival-hero-label">
+                <div className="arrival-hero-icon" style={{ color: heroAccent, borderColor: heroBorder }}>
+                  <Truck size={22} />
+                </div>
+                <div>Задержались на<br />территории &gt; 7 часов</div>
+              </div>
 
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className={`w-1.5 h-8 rounded-full shrink-0 ${task.isLiveWaiting ? 'bg-red-500 animate-pulse' : style.dot}`} />
-                      <div>
-                        <div className="font-mono text-sm font-bold text-white truncate">{task.id}</div>
-                        {task.status !== 'DONE' && (
-                          <div className={`text-[9px] uppercase tracking-wider font-bold ${task.isLiveWaiting ? 'text-red-400' : 'text-white/30'}`}>
-                            {task.isLiveWaiting ? 'В ОЧЕРЕДИ' : (task.status === 'ACTIVE' ? 'в работе' : 'ожидание')}
-                          </div>
-                        )}
+              <div className="arrival-hero-number">
+                <span style={{ color: heroAccent }}>{over7Completed.length}</span>
+                <svg viewBox="0 0 120 34" width="118" height="34" preserveAspectRatio="none">
+                  <path d={spark.area} fill={heroCritical ? 'rgba(239,68,68,0.14)' : 'rgba(52,211,153,0.14)'} />
+                  <path d={spark.line} fill="none" stroke={heroAccent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                </svg>
+              </div>
+              <div className="arrival-hero-sub">
+                {heroCritical ? 'нарушений за период · из них критичны прямо сейчас' : 'за выбранный период нарушений норматива нет'}
+              </div>
+
+              <div className="arrival-hero-kpis">
+                <div>
+                  <span>КРИТИЧНЫ СЕЙЧАС</span>
+                  <strong style={{ color: liveOver7.length > 0 ? '#f87171' : '#34d399' }}>{liveOver7.length}</strong>
+                </div>
+                <div>
+                  <span>В ОЧЕРЕДИ ВСЕГО</span>
+                  <strong>{live.length}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="arrival-spotlight">
+              <div className="arrival-section-head">
+                <span>ТЕКУЩИЕ КРИТИЧЕСКИЕ СЛУЧАИ</span>
+                <em>требуют немедленного решения</em>
+              </div>
+              {spotlight.length > 0 ? (
+                <div className="arrival-spotlight-list arrival-sx">
+                  {spotlight.map((task) => (
+                    <article key={`${task.displayDate}-${task.id}`} className="arrival-spot-card">
+                      <div className="arrival-card-top">
+                        <span>{task.type || 'W/S'}</span>
+                        <i />
                       </div>
-                    </div>
-
-                    <div className="text-xs font-bold text-white/60 bg-white/5 border border-white/10 rounded-md px-2 py-1 truncate w-fit">
-                      {task.type || '—'}
-                    </div>
-
-                    <div className="text-xs font-mono text-white/40">{task.eta || '—'}</div>
-                    <div className="text-xs font-mono text-white/70 font-bold">{task.arrival_time || '—'}</div>
-                    <div className="text-xs font-mono text-white/70 font-bold">{task.start_time || '—'}</div>
-
-                    <div className="flex justify-center">
-                      <div className={`text-sm font-black text-center rounded-lg px-3 py-1 min-w-[70px] ${task.isLiveWaiting ? 'bg-red-500/20 text-red-400 border border-red-500/30' : `${style.bg} ${style.text}`}`}>
-                        {task.waitMinutes === null
-                          ? <span className="text-xs font-normal text-white/20">—</span>
-                          : task.waitMinutes <= 0
-                            ? <span className="text-xs text-white/30">0м</span>
-                            : formatWait(task.waitMinutes)
-                        }
+                      <strong>{task.id}</strong>
+                      <p><MapPin size={11} /> {task.zone || '—'} · {task.operator || '—'}</p>
+                      <div className="arrival-spot-bottom">
+                        <div>
+                          <span>ПРОСТОЙ</span>
+                          <b>{fmtDur(task.downtime)}</b>
+                        </div>
+                        <p>план {fmtTime(task.etaMin)}<br />заезд {fmtTime(task.arrivalMin)}</p>
                       </div>
-                    </div>
-
-                    <div className="text-xs font-mono text-white/60">{task.zone || '—'}</div>
-                    <div className="text-xs text-white/50 truncate">{task.operator || '—'}</div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="arrival-empty-good">
+                  <CheckCircle size={28} />
+                  <div>
+                    <strong>Критических задержек сейчас нет</strong>
+                    <span>Все машины на территории в пределах норматива</span>
                   </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="arrival-kpi-grid">
+          {[
+            { icon: <AlertTriangle size={15} />, label: `ЗАДЕРЖЕК >7Ч ${periodTag}`, value: over7Completed.length, color: over7Completed.length > 0 ? '#f87171' : '#34d399', hint: 'нарушений норматива территории', ghost: <AlertTriangle size={92} /> },
+            { icon: <Clock size={15} />, label: 'СРЕДНИЙ ПРОСТОЙ', value: fmtDur(avgDelay), color: colorForDelay(avgDelay), hint: 'целевой KPI: ≤ 5ч на территории' },
+            { icon: <TrendingUp size={15} />, label: 'МАКСИМУМ', value: fmtDur(maxDelay), color: colorForDelay(maxDelay), hint: 'самый долгий простой за период' },
+            { icon: <CheckCircle size={15} />, label: 'БЕЗ НАРУШЕНИЯ', value: withoutViolationPct === null ? '—' : `${withoutViolationPct}%`, color: withoutViolationPct === null ? 'rgba(255,255,255,0.3)' : withoutViolationPct >= 80 ? '#34d399' : withoutViolationPct >= 50 ? '#fbbf24' : '#f87171', hint: 'поставок уложились в норматив', ghost: <CheckCircle size={92} /> },
+          ].map((item) => (
+            <article key={item.label} className="arrival-kpi-card">
+              {item.ghost && <div className="arrival-kpi-ghost">{item.ghost}</div>}
+              <div><span style={{ color: item.color }}>{item.icon}</span><span>{item.label}</span></div>
+              <strong style={{ color: item.color }}>{item.value}</strong>
+              <p>{item.hint}</p>
+            </article>
+          ))}
+        </section>
+
+        <section className="arrival-chart-grid">
+          <div className="arrival-chart-card">
+            <div className="arrival-section-head">
+              <span><TrendingUp size={16} /> Динамика задержек &gt; 7 часов</span>
+              <em>{periodLabel} · по дням</em>
+            </div>
+            <div className="arrival-chart-stats">
+              <div><strong>{chartTotal}</strong><span>всего за период</span></div>
+              <div><strong style={{ color: chartPeak >= 6 ? '#f87171' : chartPeak >= 3 ? '#fbbf24' : '#34d399' }}>{chartPeak}</strong><span>пик за день</span></div>
+            </div>
+            <svg viewBox="0 0 900 200" width="100%" preserveAspectRatio="xMidYMid meet" className="arrival-chart">
+              <defs>
+                <linearGradient id="agrArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="rgba(245,158,11,0.34)" />
+                  <stop offset="100%" stopColor="rgba(245,158,11,0)" />
+                </linearGradient>
+              </defs>
+              {gridLines.map((line) => (
+                <g key={line.value}>
+                  <line x1="8" y1={line.y.toFixed(1)} x2="892" y2={line.y.toFixed(1)} stroke="rgba(255,255,255,0.07)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                  <text x="0" y={(line.y + 3).toFixed(1)} fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="JetBrains Mono">{line.value}</text>
+                </g>
+              ))}
+              <path d={chart.area} fill="url(#agrArea)" />
+              <path d={chart.line} fill="none" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+              {chart.coords.map((point, index) => (
+                <g key={`${point.x}-${index}`}>
+                  {chartPoints.length <= 10 && <circle cx={point.x.toFixed(1)} cy={point.y.toFixed(1)} r="3.5" fill="#0a0c12" stroke="#fbbf24" strokeWidth="2.5" />}
+                  {(chartPoints.length <= 10 || index % 5 === 0 || index === chartPoints.length - 1) && (
+                    <text x={point.x.toFixed(1)} y="196" fill="rgba(255,255,255,0.4)" fontSize="10.5" fontFamily="JetBrains Mono" textAnchor="middle">{chartPoints[index]?.label}</text>
+                  )}
+                </g>
+              ))}
+            </svg>
+          </div>
+
+          <div className="arrival-mini-card">
+            <div className="arrival-section-title"><Timer size={16} /> <span>Аналитика прибытия</span></div>
+            <p>ожидание в очереди после заезда</p>
+            <div className="arrival-mini-list">
+              <div><span><b>Среднее ожидание</b><em>от заезда до разгрузки</em></span><strong style={{ color: colorForDelay(arrivalAvg) }}>{fmtDur(arrivalAvg)}</strong></div>
+              <div><span><b>Макс. ожидание</b><em>пиковая очередь</em></span><strong style={{ color: colorForDelay(arrivalMax) }}>{fmtDur(arrivalMax)}</strong></div>
+              <div className="arrival-mini-blue"><span><b>Приехали раньше плана</b><em>не учтено в простое территории</em></span><strong>{earlyCount}</strong></div>
+            </div>
+          </div>
+        </section>
+
+        <section className="arrival-live">
+          <div className="arrival-live-head">
+            <div>
+              <i />
+              <span>Прямо сейчас на территории</span>
+              <em>накопленный простой в реальном времени</em>
+            </div>
+            <div className="arrival-legend">
+              <span><i style={{ background: '#34d399' }} />в норме</span>
+              <span><i style={{ background: '#fbbf24' }} />близко к 7ч</span>
+              <span><i style={{ background: '#f87171' }} />превышение</span>
+            </div>
+          </div>
+          {liveCards.length > 0 ? (
+            <div className="arrival-live-grid">
+              {liveCards.map((task) => {
+                const cat = CATEGORY_STYLE[task.category];
+                const tag = task.category === 'over' ? 'ПРЕВЫШЕНИЕ' : task.category === 'risk' ? 'БЛИЗКО К 7Ч' : 'В НОРМЕ';
+                return (
+                  <article key={`${task.displayDate}-${task.id}`} className={`arrival-live-card arrival-live-${task.category}`}>
+                    <div className="arrival-card-top">
+                      <span>{task.type || 'W/S'}</span>
+                      <b style={{ color: cat.text, background: cat.bg, borderColor: cat.border }}>{tag}</b>
+                    </div>
+                    <div className="arrival-live-main">
+                      <div>
+                        <strong>{task.id}</strong>
+                        <p>план {fmtTime(task.etaMin)} · заезд {fmtTime(task.arrivalMin)}</p>
+                      </div>
+                      <div>
+                        <span>СТОИТ УЖЕ</span>
+                        <strong style={{ color: cat.text }}>{fmtDur(task.downtime)}</strong>
+                      </div>
+                    </div>
+                    <div className="arrival-progress"><span style={{ width: `${Math.min(100, Math.round(((task.downtime ?? 0) / TERRITORY_LIMIT_MIN) * 100))}%`, background: cat.text }} /></div>
+                    <div className="arrival-live-foot"><span>{task.zone || '—'} · {task.operator || '—'}</span><span>порог 7ч</span></div>
+                  </article>
                 );
               })}
             </div>
-          </>
-        )}
-      </div>
+          ) : (
+            <div className="arrival-live-empty">{isSingleTodayRange ? 'Сейчас на территории нет машин, ожидающих разгрузки' : 'Для выбранного периода текущая очередь доступна только по сегодняшнему дню'}</div>
+          )}
+        </section>
 
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
-      `}</style>
+        <section className="arrival-bottom-grid">
+          <aside className="arrival-antirating">
+            <div className="arrival-section-title"><TrendingUp size={16} /> <span>Топ долгих простоев</span></div>
+            {antirating.length > 0 ? (
+              <div className="arrival-antirating-list">
+                {antirating.map((task) => {
+                  const cat = CATEGORY_STYLE[task.category];
+                  return (
+                    <div key={`${task.displayDate}-${task.id}`} className="arrival-antirating-row">
+                      <div><strong>{task.id}</strong><span>{task.type || 'W/S'}</span></div>
+                      <div>
+                        <span style={{ width: `${Math.round(((task.downtime ?? 0) / antiratingMax) * 100)}%`, background: cat.bg }} />
+                        <b style={{ color: cat.text }}>{fmtDur(task.downtime)}</b>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="arrival-panel-empty"><Package size={32} /> Нет данных для антирейтинга</div>
+            )}
+          </aside>
+
+          <section className="arrival-table-card">
+            <div className="arrival-table-head">
+              <div>
+                <span>Проблемные машины</span>
+                <div className="arrival-table-legend">
+                  <i style={{ background: '#34d399' }} />НОРМА ≤5Ч
+                  <i style={{ background: '#fbbf24' }} />РИСК 5–7Ч
+                  <i style={{ background: '#f87171' }} />&gt;7Ч
+                </div>
+              </div>
+              <strong>Показано {filtered.length} из {tasks.length}</strong>
+            </div>
+
+            <div className="arrival-table">
+              <div className="arrival-table-row arrival-table-header">
+                <div>#</div>
+                {[
+                  ['id', 'Контейнер'],
+                  ['type', 'W/S'],
+                  ['eta', 'План'],
+                  ['arrival', 'Факт'],
+                  ['start', 'Разгрузка'],
+                  ['downtime', 'Простой'],
+                  ['status', 'Статус'],
+                  ['zone', 'Зона'],
+                  ['operator', 'Оператор'],
+                  ['date', 'Дата'],
+                ].map(([key, label]) => (
+                  <button key={key} onClick={() => handleSort(key as SortKey)} className={sortKey === key ? 'active' : ''}>
+                    {label}<SortIcon keyName={key as SortKey} />
+                  </button>
+                ))}
+              </div>
+
+              <div className="arrival-table-body arrival-sy">
+                {loading ? (
+                  <div className="arrival-table-empty"><Timer size={24} /> Загрузка данных...</div>
+                ) : filtered.length === 0 ? (
+                  <div className="arrival-table-empty"><Package size={34} /> Нет данных за выбранный период</div>
+                ) : (
+                  filtered.map((task, index) => {
+                    const cat = CATEGORY_STYLE[task.category];
+                    return (
+                      <div key={`${task.displayDate}-${task.id}-${index}`} className={`arrival-table-row ${task.live ? `arrival-row-live arrival-row-${task.category}` : ''}`}>
+                        <div>{index + 1}</div>
+                        <div className="arrival-id-cell">
+                          <i style={{ background: cat.dot }} />
+                          <span><strong>{task.id}</strong>{task.live && <em>{task.category === 'over' ? 'ПРЕВЫШЕНИЕ 7Ч' : 'НА ТЕРРИТОРИИ'}</em>}</span>
+                        </div>
+                        <div><b className="arrival-ws-badge">{task.type || '—'}</b></div>
+                        <div>{fmtTime(task.etaMin)}</div>
+                        <div>{fmtTime(task.arrivalMin)}{task.early && <em>раньше</em>}</div>
+                        <div>{task.live ? '—' : fmtTime(task.startMin)}</div>
+                        <div><b className="arrival-delay-badge" style={{ color: cat.text, background: cat.bg, borderColor: cat.border }}>{fmtDur(task.downtime)}</b></div>
+                        <div><b className="arrival-status-badge" style={{ color: cat.text, background: cat.bg, borderColor: cat.border }}>{task.live ? (task.category === 'over' ? '>7Ч' : 'НА ТЕРР.') : cat.label}</b></div>
+                        <div>{task.zone || '—'}</div>
+                        <div>{task.operator || '—'}</div>
+                        <div>{task.displayDate}</div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <footer className="arrival-footer">AGR WAREHOUSE · АНАЛИТИКА ВРЕМЕНИ ПРОСТОЯ</footer>
+      </div>
     </div>
   );
 };
