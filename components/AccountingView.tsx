@@ -133,7 +133,25 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
     }
   }, [activeSheetDate, tasks]);
 
+  const handleFilterChange = useCallback((nextFilter: AccountingFilter) => {
+    api.auditEvent('ACCOUNTING_FILTER_CHANGE', {
+      entityType: 'page',
+      entityId: 'accounting',
+      oldValue: accountingFilter,
+      newValue: nextFilter,
+      sheetDate: activeSheetDate,
+      details: { from: accountingFilter, to: nextFilter },
+    }, `accounting-filter:${nextFilter}`, 2000);
+    setAccountingFilter(nextFilter);
+  }, [accountingFilter, activeSheetDate]);
+
   const exportCSV = useCallback(() => {
+    api.auditEvent('ACCOUNTING_EXPORT_CSV', {
+      entityType: 'page',
+      entityId: 'accounting',
+      sheetDate: activeSheetDate,
+      details: { rows: doneTasks.length, filter: accountingFilter },
+    }, `accounting-export:${activeSheetDate}`, 5000);
     const BOM = '\uFEFF';
     const header = ['№', 'ID контейнера', 'Зона выгрузки', 'Окончание выгрузки', 'Оператор', 'Статус SAP', 'Статус LES'];
     const statusLabel = (s?: string) => {
@@ -158,7 +176,7 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
     a.download = `accounting_${activeSheetDate.replace('.', '-')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [activeSheetDate, doneTasks]);
+  }, [accountingFilter, activeSheetDate, doneTasks]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0 w-full">
@@ -172,7 +190,14 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
             </h2>
             <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={() => loadData()}
+                onClick={() => {
+                  api.auditEvent('ACCOUNTING_REFRESH', {
+                    entityType: 'page',
+                    entityId: 'accounting',
+                    sheetDate: activeSheetDate,
+                  }, `accounting-refresh:${activeSheetDate}`, 5000);
+                  loadData();
+                }}
                 className="flex min-h-[42px] items-center gap-2 rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-xs font-bold text-white/60 transition-all hover:text-white"
               >
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -195,7 +220,7 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => setAccountingFilter('ALL')}
+                onClick={() => handleFilterChange('ALL')}
                 aria-pressed={accountingFilter === 'ALL'}
                 className={`flex min-h-[42px] items-center gap-2 rounded-xl border px-4 py-2 text-xs font-black transition-all ${accountingFilter === 'ALL' ? 'border-cyan-400/30 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-white/5 text-white/70 hover:text-white'}`}
               >
@@ -205,7 +230,7 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
                 </span>
               </button>
               <button
-                onClick={() => setAccountingFilter('UNACCEPTED')}
+                onClick={() => handleFilterChange('UNACCEPTED')}
                 aria-pressed={accountingFilter === 'UNACCEPTED'}
                 className={`flex min-h-[42px] items-center gap-2 rounded-xl border px-4 py-2 text-xs font-black transition-all ${accountingFilter === 'UNACCEPTED' ? 'border-amber-400/30 bg-amber-400/15 text-amber-50' : 'border-white/10 bg-white/5 text-white/70 hover:text-white'}`}
               >

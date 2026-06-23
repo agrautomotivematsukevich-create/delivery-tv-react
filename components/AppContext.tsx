@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { User, DashboardData } from '../types';
-import { getToken, clearToken, onSessionExpired } from '../services/api';
+import { api, getToken, clearToken, onSessionExpired } from '../services/api';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SECURITY MODEL (updated):
@@ -99,6 +99,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     return loadUserInfo(); // may be null if info was cleared separately
   });
+  const restoredUserRef = useRef<User | null>(user);
 
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -111,6 +112,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     description?: string;
     onConfirm: () => void;
   }>({ isOpen: false, message: '', onConfirm: () => {} });
+
+  useEffect(() => {
+    const restoredUser = restoredUserRef.current;
+    if (!restoredUser) return;
+    restoredUserRef.current = null;
+    api.auditEvent('SESSION_RESTORE', {
+      entityType: 'auth',
+      entityId: restoredUser.user,
+      details: { name: restoredUser.name, role: restoredUser.role },
+    }, 'session-restore', 30000);
+  }, []);
 
   // ── Toast system ──
 

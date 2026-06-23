@@ -9,6 +9,7 @@ import { getOperationalSheetName } from "../utils/time";
 // ══════════════════════════════════════════════════════════════════════════════
 
 const TOKEN_KEY = "warehouse_session_token";
+const AUDIT_SESSION_KEY = "warehouse_audit_session_id";
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -39,6 +40,52 @@ function getClientDeviceType(): DeviceType {
   }
 
   return "desktop";
+}
+
+function createAuditId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function getAuditSessionId(): string {
+  try {
+    let sessionId = localStorage.getItem(AUDIT_SESSION_KEY);
+    if (!sessionId) {
+      sessionId = createAuditId();
+      localStorage.setItem(AUDIT_SESSION_KEY, sessionId);
+    }
+    return sessionId;
+  } catch {
+    return "unknown";
+  }
+}
+
+function getClientInfo(): Record<string, unknown> {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return {};
+  return {
+    path: window.location.pathname,
+    search: window.location.search,
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+    screen: `${window.screen?.width ?? 0}x${window.screen?.height ?? 0}`,
+    language: navigator.language,
+    platform: navigator.platform,
+    online: navigator.onLine,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    device: getClientDeviceType(),
+  };
+}
+
+export function getAuditClientPayload(): Record<string, unknown> {
+  return {
+    requestId: createAuditId(),
+    sessionId: getAuditSessionId(),
+    device: getClientDeviceType(),
+    userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
+    clientTimestamp: new Date().toISOString(),
+    clientInfo: getClientInfo(),
+  };
 }
 
 // ── Session-expiry callback ──
@@ -135,7 +182,7 @@ async function authRead(mode: string, extraParams: Record<string, string> = {}):
   const res = await fetchWithTimeout(SCRIPT_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ mode, token, ...extraParams }),
+    body: JSON.stringify({ mode, token, ...extraParams, ...getAuditClientPayload() }),
   });
 
   const txt = await res.text();
@@ -179,7 +226,7 @@ async function authPost(payload: Record<string, unknown>, opts: PostOptions = {}
   const res = await fetchWithTimeout(SCRIPT_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ ...payload, token }),
+    body: JSON.stringify({ ...payload, token, ...getAuditClientPayload() }),
     timeout: opts.timeout,
   });
 
@@ -274,7 +321,49 @@ export const parseDashboardData = (text: string): DashboardData | null => {
 // API OBJECT
 // ══════════════════════════════════════════════════════════════════════════════
 
+type AuditEventPayload = {
+  entityType?: string;
+  entityId?: string;
+  sheetName?: string;
+  sheetDate?: string;
+  rowNumber?: string | number;
+  containerNo?: string;
+  lotNo?: string;
+  ws?: string;
+  zone?: string;
+  photoType?: string;
+  oldValue?: unknown;
+  newValue?: unknown;
+  details?: unknown;
+  result?: "success" | "failed" | "partial";
+  error?: unknown;
+};
+
+type UploadPhotoContext = {
+  containerId?: string;
+  photoType?: "container" | "seal" | "unloaded" | "issue" | string;
+  sheetDate?: string;
+  actionType?: string;
+};
+
+const _auditThrottle: Record<string, number> = {};
+
 export const api = {
+  auditEvent: (action: string, payload: AuditEventPayload = {}, throttleKey?: string, throttleMs: number = 3000): void => {
+    if (!getToken()) return;
+    const now = Date.now();
+    if (throttleKey) {
+      const last = _auditThrottle[throttleKey] || 0;
+      if (now - last < throttleMs) return;
+      _auditThrottle[throttleKey] = now;
+    }
+    void authPost({
+      mode: "audit_event",
+      action,
+      ...payload,
+    }, { timeout: 8000 }).catch(() => undefined);
+  },
+
   fetchDashboard: async (): Promise<DashboardData | null> => {
     return cachedFetch("dashboard", 60000, async () => {
       const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}`, { timeout: 60000 });
@@ -405,7 +494,7 @@ export const api = {
       const res = await fetchWithTimeout(SCRIPT_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ mode: "login", user, hash, device: getClientDeviceType() }),
+        body: JSON.stringify({ mode: "login", user, hash, ...getAuditClientPayload() }),
       });
       const txt = await res.text();
 
@@ -441,7 +530,7 @@ export const api = {
       await fetchWithTimeout(SCRIPT_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ mode: "register", user, hash, name }),
+        body: JSON.stringify({ mode: "register", user, hash, name, ...getAuditClientPayload() }),
       });
       return true;
     } catch {
@@ -501,12 +590,21 @@ export const api = {
     await authPost(payload, { timeout: 20000 });
   },
 
-  uploadPhoto: async (image: string, mimeType: string, filename: string): Promise<string> => {
+  uploadPhoto: async (image: string, mimeType: string, filename: string, context: UploadPhotoContext = {}): Promise<string> => {
     let retries = 3;
     while (retries > 0) {
       try {
         const res = await authPost(
-          { mode: "upload_photo", image, mimeType, filename },
+          {
+            mode: "upload_photo",
+            image,
+            mimeType,
+            filename,
+            containerId: context.containerId || "",
+            photoType: context.photoType || "",
+            sheetDate: context.sheetDate || "",
+            actionType: context.actionType || "",
+          },
           { timeout: 45000 }
         );
         const data = await res.json();

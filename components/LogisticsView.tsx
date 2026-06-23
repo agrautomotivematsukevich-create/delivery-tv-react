@@ -27,6 +27,27 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [editingItem, setEditingItem] = useState<PlanRow | null>(null);
 
+  const handleModeChange = (nextMode: 'create' | 'edit') => {
+    api.auditEvent('LOGISTICS_MODE_CHANGE', {
+      entityType: 'page',
+      entityId: 'logistics',
+      oldValue: mode,
+      newValue: nextMode,
+      details: { from: mode, to: nextMode },
+    }, `logistics-mode:${mode}:${nextMode}`, 2000);
+    setMode(nextMode);
+  };
+
+  const handleDateChange = (nextDate: string) => {
+    api.auditEvent('LOGISTICS_DATE_CHANGE', {
+      entityType: 'plan',
+      oldValue: date,
+      newValue: nextDate,
+      details: { mode, from: date, to: nextDate },
+    }, `logistics-date:${nextDate}`, 2000);
+    setDate(nextDate);
+  };
+
   // === CREATE MODE LOGIC ===
   const addCreateRow = () => setCreateRows([...createRows, { ...emptyRow }]);
   
@@ -107,13 +128,13 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
                {/* Mode Toggles */}
                <div className="bg-white/5 rounded-full p-1 border border-white/10 flex">
                   <button 
-                    onClick={() => setMode('create')}
+                    onClick={() => handleModeChange('create')}
                     className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${mode === 'create' ? 'bg-accent-purple text-white shadow-lg' : 'text-white/50 hover:text-white'}`}
                   >
                     {t.log_mode_create}
                   </button>
                   <button 
-                    onClick={() => setMode('edit')}
+                    onClick={() => handleModeChange('edit')}
                     className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${mode === 'edit' ? 'bg-accent-purple text-white shadow-lg' : 'text-white/50 hover:text-white'}`}
                   >
                     {t.log_mode_edit}
@@ -126,7 +147,7 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
               <input 
                 type="date" 
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => handleDateChange(e.target.value)}
                 className="bg-transparent text-white font-mono text-lg outline-none border-none [color-scheme:dark] p-2 w-full lg:w-auto"
               />
             </div>

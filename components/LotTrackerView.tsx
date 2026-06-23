@@ -34,8 +34,14 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
 
   const doSearch = useCallback(async (lot: string) => {
     if (!lot.trim()) return;
+    const normalizedLot = lot.trim().toUpperCase();
+    api.auditEvent('LOT_SEARCH', {
+      entityType: 'lot',
+      entityId: normalizedLot,
+      details: { query: normalizedLot },
+    }, `lot-search:${normalizedLot}`, 5000);
     setLoading(true);
-    setActiveLot(lot.trim().toUpperCase());
+    setActiveLot(normalizedLot);
     try {
       const data = await api.fetchLotTracker(lot.trim());
       setContainers(data);

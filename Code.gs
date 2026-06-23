@@ -6,7 +6,8 @@
 // ── CONFIGURATION ────────────────────────────────────────────────────────────
 
 var TIMEZONE     = "Europe/Moscow";
-var OPERATIONAL_DAY_START_HOUR = 6;
+var OPERATIONAL_DAY_START_HOUR = 7;
+var OPERATIONAL_DAY_START_MINUTE = 50;
 var ALERT_EMAIL  = "MHReceiving@agr.auto";  // TODO: move to sheet config cell
 
 var ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
@@ -14,7 +15,14 @@ var MAX_PHOTO_BASE64_LEN = 7000000;  // ~5 MB decoded
 var UPLOAD_PHOTO_MAX_ATTEMPTS = 3;
 var UPLOAD_PHOTO_RETRY_DELAYS_MS = [400, 1000];
 var AUDIT_LOG_SHEET_NAME = "AUDIT_LOG";
-var AUDIT_LOG_HEADERS = ["Timestamp", "Login", "Name", "Role", "Action", "EntityType", "EntityId", "Details", "Device", "Result"];
+var AUDIT_LOG_HEADERS = [
+  "Timestamp", "RequestId", "SessionId", "Login", "Name", "Role",
+  "Action", "EntityType", "EntityId", "SheetName", "SheetDate", "RowNumber",
+  "ContainerNo", "LotNo", "WS", "Zone", "PhotoType",
+  "OldValue", "NewValue", "OldRowSnapshot", "NewRowSnapshot", "Details",
+  "Device", "UserAgent", "ClientInfo", "Result", "Error"
+];
+var AUDIT_JSON_CELL_MAX_LEN = 12000;
 
 // TV displays use a static API key instead of user tokens.
 // Value stored in Apps Script Project Settings → Script Properties → TV_API_KEY
@@ -109,6 +117,7 @@ var ROUTES = {
   "upload_photo":          { handler: handleUploadPhoto,        auth: true,  lock: false },
   "update_accounting":     { handler: handleUpdateAccounting,   auth: true,  lock: true  },
   "subscribe_notification":{ handler: handleSubscribeNotification, auth: true, lock: true },
+  "audit_event":           { handler: handleAuditEvent,         auth: true,  lock: false },
 
   // ── Admin (user token + ADMIN role) ──
   "get_pending":           { handler: handleGetPending,         auth: true,  lock: false, admin: true },
@@ -137,26 +146,67 @@ function doPost(e) {
 function dispatch(params) {
   var mode  = (params.mode || "").toString().trim();
   var route = ROUTES[mode];
+  var ss = null;
 
   if (!route) {
+    try {
+      ss = SpreadsheetApp.getActiveSpreadsheet();
+      appendAuditEvent_(ss, {
+        params: params,
+        action: "UNKNOWN_MODE",
+        entityType: "route",
+        entityId: mode,
+        details: { mode: mode },
+        result: "failed",
+        error: "UNKNOWN_MODE"
+      });
+    } catch (_auditErr) {}
     return jsonOut({ error: "UNKNOWN_MODE", mode: mode });
   }
 
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    ss = SpreadsheetApp.getActiveSpreadsheet();
 
     // ── Auth check ──
     if (route.auth === "tv") {
       var providedKey = (params.key || "").toString().trim();
       if (providedKey !== TV_API_KEY) {
+        appendAuditEvent_(ss, {
+          params: params,
+          action: "TV_KEY_INVALID",
+          entityType: "auth",
+          entityId: mode,
+          details: { mode: mode },
+          result: "failed",
+          error: "INVALID_TV_KEY"
+        });
         return jsonOut({ error: "INVALID_TV_KEY" });
       }
     } else if (route.auth === true) {
       var caller = verifyToken(params.token);
       if (!caller) {
+        appendAuditEvent_(ss, {
+          params: params,
+          action: "INVALID_TOKEN",
+          entityType: "auth",
+          entityId: mode,
+          details: { mode: mode },
+          result: "failed",
+          error: "AUTH_REQUIRED"
+        });
         return jsonOut({ error: "AUTH_REQUIRED" });
       }
       if (route.admin && caller.role !== "ADMIN") {
+        appendAuditEvent_(ss, {
+          params: params,
+          caller: caller,
+          action: "PERMISSION_DENIED",
+          entityType: "auth",
+          entityId: mode,
+          details: { mode: mode, requiredRole: "ADMIN" },
+          result: "failed",
+          error: "ADMIN_REQUIRED"
+        });
         return jsonOut({ error: "ADMIN_REQUIRED" });
       }
       params._caller = caller;
@@ -166,6 +216,16 @@ function dispatch(params) {
     if (route.lock) {
       var lock = LockService.getScriptLock();
       if (!lock.tryLock(12000)) {
+        appendAuditEvent_(ss, {
+          params: params,
+          caller: params._caller,
+          action: "LOCK_BUSY",
+          entityType: "route",
+          entityId: mode,
+          details: { mode: mode },
+          result: "failed",
+          error: "BUSY"
+        });
         return textOut("BUSY");
       }
       try {
@@ -178,6 +238,16 @@ function dispatch(params) {
     }
 
   } catch (err) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: params._caller,
+      action: "ROUTE_EXCEPTION",
+      entityType: "route",
+      entityId: mode,
+      details: { mode: mode },
+      result: "failed",
+      error: err && err.stack ? err.stack : err.toString()
+    });
     return jsonOut({ error: "SERVER_ERROR", detail: err.toString() });
   }
 }
@@ -558,38 +628,162 @@ function getOrCreateAuditLogSheet(ss) {
     }
   }
 
-  if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, AUDIT_LOG_HEADERS.length)
-      .setValues([AUDIT_LOG_HEADERS])
-      .setFontWeight("bold");
-    sheet.setFrozenRows(1);
-  }
+  ensureAuditLogHeaders_(sheet);
 
   return sheet;
 }
 
-function appendAuditLog(ss, entry) {
+function ensureSheetWidth_(sheet, width) {
+  var maxColumns = sheet.getMaxColumns();
+  if (maxColumns < width) {
+    sheet.insertColumnsAfter(maxColumns, width - maxColumns);
+  }
+}
+
+function ensureAuditLogHeaders_(sheet) {
+  if (!sheet) return AUDIT_LOG_HEADERS.slice();
+
+  if (sheet.getLastRow() === 0 || sheet.getLastColumn() === 0) {
+    ensureSheetWidth_(sheet, AUDIT_LOG_HEADERS.length);
+    sheet.getRange(1, 1, 1, AUDIT_LOG_HEADERS.length)
+      .setValues([AUDIT_LOG_HEADERS])
+      .setFontWeight("bold");
+    sheet.setFrozenRows(1);
+    return AUDIT_LOG_HEADERS.slice();
+  }
+
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var headers = sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
+  var seen = {};
+  var normalized = [];
+  var changed = false;
+
+  for (var i = 0; i < headers.length; i++) {
+    var header = (headers[i] || "").toString().trim();
+    normalized.push(header);
+    if (header) seen[header] = true;
+  }
+
+  for (var h = 0; h < AUDIT_LOG_HEADERS.length; h++) {
+    var desired = AUDIT_LOG_HEADERS[h];
+    if (!seen[desired]) {
+      normalized.push(desired);
+      seen[desired] = true;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    ensureSheetWidth_(sheet, normalized.length);
+    sheet.getRange(1, 1, 1, normalized.length)
+      .setValues([normalized])
+      .setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  }
+
+  return normalized;
+}
+
+function getAuditFieldMaxLen_(header) {
+  if (header === "OldRowSnapshot" || header === "NewRowSnapshot") return AUDIT_JSON_CELL_MAX_LEN;
+  if (header === "OldValue" || header === "NewValue") return 6000;
+  if (header === "Details" || header === "ClientInfo") return 4000;
+  if (header === "Error") return 2500;
+  if (header === "UserAgent") return 800;
+  return 500;
+}
+
+function safeAuditJson_(value, maxLen) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return normalizeAuditCell(value, maxLen);
+  try {
+    return normalizeAuditCell(JSON.stringify(value), maxLen);
+  } catch (e) {
+    return normalizeAuditCell(String(value), maxLen);
+  }
+}
+
+function extractAuditClientInfo_(params, entry) {
+  params = params || {};
+  entry = entry || {};
+  var rawInfo = entry.clientInfo || params.clientInfo || {};
+  var info = {};
+
+  if (rawInfo && typeof rawInfo === "object") {
+    info = rawInfo;
+  } else if (rawInfo) {
+    info = { raw: rawInfo.toString() };
+  }
+
+  if (params.clientTimestamp) info.clientTimestamp = params.clientTimestamp;
+  if (params.path) info.path = params.path;
+  if (params.page) info.page = params.page;
+  if (params.actionSource) info.actionSource = params.actionSource;
+
+  return {
+    requestId: entry.requestId || params.requestId || Utilities.getUuid(),
+    sessionId: entry.sessionId || params.sessionId || "",
+    device: normalizeDeviceType(entry.device || params.device || info.device || "unknown"),
+    userAgent: entry.userAgent || params.userAgent || "",
+    clientInfo: info
+  };
+}
+
+function appendAuditEvent_(ss, entry) {
   try {
     if (!ss || !entry) return;
 
-    var caller = entry.caller || {};
-    var row = [
-      Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd HH:mm:ss"),
-      normalizeAuditCell(entry.login || caller.login || "", 80),
-      normalizeAuditCell(entry.name || caller.name || "", 120),
-      normalizeAuditCell(entry.role || caller.role || "", 40),
-      normalizeAuditCell(entry.action || "", 80),
-      normalizeAuditCell(entry.entityType || "", 40),
-      normalizeAuditCell(entry.entityId || "", 120),
-      normalizeAuditCell(entry.details || "", 300),
-      normalizeDeviceType(entry.device || "unknown"),
-      normalizeAuditCell(entry.result || "", 20)
-    ];
+    var params = entry.params || {};
+    var caller = entry.caller || params._caller || {};
+    var client = extractAuditClientInfo_(params, entry);
+    var sheet = getOrCreateAuditLogSheet(ss);
+    var headers = ensureAuditLogHeaders_(sheet);
 
-    getOrCreateAuditLogSheet(ss).appendRow(row);
+    var values = {
+      Timestamp: Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd HH:mm:ss"),
+      RequestId: client.requestId,
+      SessionId: client.sessionId,
+      Login: entry.login || caller.login || "",
+      Name: entry.name || caller.name || "",
+      Role: entry.role || caller.role || "",
+      Action: entry.action || "",
+      EntityType: entry.entityType || "",
+      EntityId: entry.entityId || "",
+      SheetName: entry.sheetName || entry.sheetDate || "",
+      SheetDate: entry.sheetDate || entry.sheetName || "",
+      RowNumber: entry.rowNumber || "",
+      ContainerNo: entry.containerNo || "",
+      LotNo: entry.lotNo || "",
+      WS: entry.ws || "",
+      Zone: entry.zone || "",
+      PhotoType: entry.photoType || "",
+      OldValue: safeAuditJson_(entry.oldValue, getAuditFieldMaxLen_("OldValue")),
+      NewValue: safeAuditJson_(entry.newValue, getAuditFieldMaxLen_("NewValue")),
+      OldRowSnapshot: safeAuditJson_(entry.oldRowSnapshot, getAuditFieldMaxLen_("OldRowSnapshot")),
+      NewRowSnapshot: safeAuditJson_(entry.newRowSnapshot, getAuditFieldMaxLen_("NewRowSnapshot")),
+      Details: safeAuditJson_(entry.details || "", getAuditFieldMaxLen_("Details")),
+      Device: client.device,
+      UserAgent: client.userAgent,
+      ClientInfo: safeAuditJson_(client.clientInfo, getAuditFieldMaxLen_("ClientInfo")),
+      Result: entry.result || "",
+      Error: safeAuditJson_(entry.error || "", getAuditFieldMaxLen_("Error"))
+    };
+
+    var row = [];
+    for (var i = 0; i < headers.length; i++) {
+      var header = headers[i];
+      var maxLen = getAuditFieldMaxLen_(header);
+      row.push(normalizeAuditCell(values[header] || "", maxLen));
+    }
+
+    sheet.appendRow(row);
   } catch (e) {
-    try { Logger.log("AUDIT_LOG_APPEND_FAILED: " + e); } catch (_err) {}
+    try { Logger.log("AUDIT_EVENT_APPEND_FAILED: " + e); } catch (_err) {}
   }
+}
+
+function appendAuditLog(ss, entry) {
+  appendAuditEvent_(ss, entry);
 }
 
 function escapeHtml(str) {
@@ -627,7 +821,9 @@ function getOperationalDateInfo(now) {
   var current = now || new Date();
   var hour = parseInt(Utilities.formatDate(current, TIMEZONE, "H"), 10) || 0;
   var minute = parseInt(Utilities.formatDate(current, TIMEZONE, "m"), 10) || 0;
-  var isBeforeOperationalCutoff = hour < OPERATIONAL_DAY_START_HOUR;
+  var nowMinutes = hour * 60 + minute;
+  var cutoffMinutes = OPERATIONAL_DAY_START_HOUR * 60 + OPERATIONAL_DAY_START_MINUTE;
+  var isBeforeOperationalCutoff = nowMinutes < cutoffMinutes;
   var operationalBase = isBeforeOperationalCutoff
     ? new Date(current.getTime() - 24 * 60 * 60 * 1000)
     : new Date(current.getTime());
@@ -642,6 +838,8 @@ function getOperationalDateInfo(now) {
     hour: hour,
     minute: minute,
     cutoffHour: OPERATIONAL_DAY_START_HOUR,
+    cutoffMinute: OPERATIONAL_DAY_START_MINUTE,
+    cutoffMinutes: cutoffMinutes,
     isBeforeOperationalCutoff: isBeforeOperationalCutoff
   };
 }
@@ -668,6 +866,173 @@ function isNightCarryover(now) {
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || "");
+}
+
+function padRow_(row, width) {
+  row = row || [];
+  while (row.length < width) row.push("");
+  return row;
+}
+
+function buildContainerRowSnapshot_(sheet, rowNumber) {
+  if (!sheet || !rowNumber) return null;
+  var row = sheet.getRange(rowNumber, 1, 1, 18).getDisplayValues()[0];
+  padRow_(row, 18);
+  return {
+    sheetName: sheet.getName(),
+    sheetDate: sheet.getName(),
+    rowNumber: rowNumber,
+    index: row[0] || "",
+    lotNo: row[1] || "",
+    ws: row[2] || "",
+    pallets: row[3] || "",
+    containerNo: row[4] || "",
+    driverPhone: row[5] || "",
+    eta: row[6] || "",
+    start_time: row[7] || "",
+    end_time: row[8] || "",
+    unload_duration: row[9] || "",
+    zone: row[10] || "",
+    worker: row[11] || "",
+    photo_container: row[12] || "",
+    photo_seal: row[13] || "",
+    photo_unloaded: row[14] || "",
+    arrival_time: row[15] || "",
+    sap_status: row[16] || "",
+    les_status: row[17] || ""
+  };
+}
+
+function diffContainerSnapshots_(oldSnapshot, newSnapshot) {
+  var changes = {};
+  if (!oldSnapshot || !newSnapshot) return changes;
+  var fields = [
+    "lotNo", "ws", "pallets", "containerNo", "driverPhone", "eta",
+    "start_time", "end_time", "unload_duration", "zone", "worker",
+    "photo_container", "photo_seal", "photo_unloaded", "arrival_time",
+    "sap_status", "les_status"
+  ];
+  for (var i = 0; i < fields.length; i++) {
+    var field = fields[i];
+    var oldValue = oldSnapshot[field] || "";
+    var newValue = newSnapshot[field] || "";
+    if (oldValue !== newValue) {
+      changes[field] = { old: oldValue, "new": newValue };
+    }
+  }
+  return changes;
+}
+
+function extractChangeSide_(changes, side) {
+  var values = {};
+  changes = changes || {};
+  for (var field in changes) {
+    values[field] = changes[field] && changes[field][side] !== undefined ? changes[field][side] : "";
+  }
+  return values;
+}
+
+function buildContainerAuditBase_(params, caller, sheetName, rowNumber, snapshot) {
+  snapshot = snapshot || {};
+  return {
+    params: params,
+    caller: caller,
+    sheetName: sheetName || snapshot.sheetName || "",
+    sheetDate: sheetName || snapshot.sheetDate || "",
+    rowNumber: rowNumber || snapshot.rowNumber || "",
+    containerNo: snapshot.containerNo || (params && params.id) || "",
+    lotNo: snapshot.lotNo || "",
+    ws: snapshot.ws || "",
+    zone: snapshot.zone || ""
+  };
+}
+
+function pushContainerFieldEvent_(events, base, action, field, oldValue, newValue, oldSnapshot, newSnapshot, details) {
+  var event = {};
+  for (var key in base) event[key] = base[key];
+  event.action = action;
+  event.entityType = field.indexOf("photo_") === 0 ? "photo" : "container";
+  event.entityId = base.containerNo || "";
+  event.oldValue = { field: field, value: oldValue || "" };
+  event.newValue = { field: field, value: newValue || "" };
+  event.oldRowSnapshot = oldSnapshot;
+  event.newRowSnapshot = newSnapshot;
+  event.details = details || { field: field };
+  event.result = "success";
+  events.push(event);
+}
+
+function photoTypeFromSnapshotField_(field) {
+  if (field === "photo_container") return "container";
+  if (field === "photo_seal") return "seal";
+  if (field === "photo_unloaded") return "unloaded";
+  return "";
+}
+
+function buildContainerChangeAuditEvents_(params, caller, sheetName, rowNumber, act, oldSnapshot, newSnapshot) {
+  var events = [];
+  var changes = diffContainerSnapshots_(oldSnapshot, newSnapshot);
+  var base = buildContainerAuditBase_(params, caller, sheetName, rowNumber, newSnapshot || oldSnapshot);
+  var detailsBase = { act: act, changes: changes };
+
+  if (changes.start_time) {
+    var oldStart = changes.start_time.old;
+    var newStart = changes.start_time["new"];
+    var startAction = newStart ? (oldStart ? "UNLOAD_START_REPLACE" : "UNLOAD_START_SET") : "UNLOAD_START_CLEAR";
+    pushContainerFieldEvent_(events, base, startAction, "start_time", oldStart, newStart, oldSnapshot, newSnapshot, detailsBase);
+  }
+
+  if (changes.end_time) {
+    var oldEnd = changes.end_time.old;
+    var newEnd = changes.end_time["new"];
+    var endAction = newEnd ? (oldEnd ? "UNLOAD_END_REPLACE" : "UNLOAD_END_SET") : "UNLOAD_END_CLEAR";
+    pushContainerFieldEvent_(events, base, endAction, "end_time", oldEnd, newEnd, oldSnapshot, newSnapshot, detailsBase);
+  }
+
+  if (changes.zone) {
+    var oldZone = changes.zone.old;
+    var newZone = changes.zone["new"];
+    var zoneAction = newZone ? (oldZone ? "ZONE_CHANGE" : "ZONE_SET") : "ZONE_CLEAR";
+    pushContainerFieldEvent_(events, base, zoneAction, "zone", oldZone, newZone, oldSnapshot, newSnapshot, detailsBase);
+  }
+
+  if (changes.worker) {
+    var oldWorker = changes.worker.old;
+    var newWorker = changes.worker["new"];
+    var workerAction = newWorker ? (oldWorker ? "WORKER_CHANGE" : "WORKER_SET") : "WORKER_CLEAR";
+    pushContainerFieldEvent_(events, base, workerAction, "worker", oldWorker, newWorker, oldSnapshot, newSnapshot, detailsBase);
+  }
+
+  var photoFields = ["photo_container", "photo_seal", "photo_unloaded"];
+  for (var i = 0; i < photoFields.length; i++) {
+    var field = photoFields[i];
+    if (!changes[field]) continue;
+    var oldPhoto = changes[field].old;
+    var newPhoto = changes[field]["new"];
+    var photoAction = newPhoto ? (oldPhoto ? "PHOTO_REPLACE" : "PHOTO_UPLOAD") : "PHOTO_DELETE";
+    var photoDetails = {
+      act: act,
+      field: field,
+      photoType: photoTypeFromSnapshotField_(field),
+      oldDriveFileId: extractDriveFileId_(oldPhoto),
+      newDriveFileId: extractDriveFileId_(newPhoto)
+    };
+    pushContainerFieldEvent_(events, base, photoAction, field, oldPhoto, newPhoto, oldSnapshot, newSnapshot, photoDetails);
+    events[events.length - 1].photoType = photoDetails.photoType;
+  }
+
+  if (events.length === 0 && Object.keys(changes).length > 0) {
+    pushContainerFieldEvent_(events, base, "CONTAINER_ROW_UPDATE", "row", changes, changes, oldSnapshot, newSnapshot, detailsBase);
+  }
+
+  return events;
+}
+
+function extractDriveFileId_(url) {
+  var text = (url || "").toString();
+  if (!text) return "";
+  var match = text.match(/\/d\/([a-zA-Z0-9_-]+)/) || text.match(/[?&]id=([a-zA-Z0-9_-]+)/) || text.match(/[-\w]{25,}/);
+  return match ? match[1] || match[0] : "";
 }
 
 
@@ -791,6 +1156,7 @@ function handleLogin(params, ss) {
   var device = normalizeDeviceType(params.device);
   var logLogin = function(action, result, details, name, role) {
     appendAuditLog(ss, {
+      params: params,
       login: user,
       name: name || "",
       role: role || "",
@@ -805,7 +1171,7 @@ function handleLogin(params, ss) {
 
   if (!user || !hash) {
     Utilities.sleep(LOGIN_FAIL_DELAY_MS);
-    logLogin("login_failed", "failed", "reason=INVALID_INPUT");
+    logLogin("LOGIN_FAILED", "failed", "reason=INVALID_INPUT");
     return textOut("WRONG");
   }
 
@@ -814,21 +1180,21 @@ function handleLogin(params, ss) {
   var attempts = parseInt(cache.get(cacheKey) || "0", 10);
   if (attempts >= LOGIN_MAX_ATTEMPTS) {
     Utilities.sleep(3000);
-    logLogin("login_failed", "failed", "reason=RATE_LIMITED");
+    logLogin("LOGIN_FAILED", "failed", "reason=RATE_LIMITED");
     return jsonOut({ error: "RATE_LIMITED", retry_after_seconds: LOGIN_WINDOW_SECONDS });
   }
 
   var authSheet = getAuthSheet();
   if (!authSheet) {
     Utilities.sleep(LOGIN_FAIL_DELAY_MS);
-    logLogin("login_failed", "failed", "reason=AUTH_SHEET_UNAVAILABLE");
+    logLogin("LOGIN_FAILED", "failed", "reason=AUTH_SHEET_UNAVAILABLE");
     return textOut("WRONG");
   }
 
   var lr = authSheet.getLastRow();
   if (lr < 2) {
     Utilities.sleep(LOGIN_FAIL_DELAY_MS);
-    logLogin("login_failed", "failed", "reason=EMPTY_AUTH_DB");
+    logLogin("LOGIN_FAILED", "failed", "reason=EMPTY_AUTH_DB");
     return textOut("WRONG");
   }
 
@@ -851,19 +1217,19 @@ function handleLogin(params, ss) {
         migrateLegacyTokenToSessionSlot(authSheet, rowNumber, row, now);
         writeSessionSlot(authSheet, rowNumber, row, chooseSessionSlot(row, now), token, device, now);
         mirrorLegacyToken(authSheet, rowNumber, row, token);
-        logLogin("login_success", "success", "", row[COL_NAME], row[COL_ROLE]);
+        logLogin("LOGIN_SUCCESS", "success", "", row[COL_NAME], row[COL_ROLE]);
         return textOut("CORRECT|" + row[COL_NAME] + "|" + row[COL_ROLE] + "|" + token);
       }
       else if (status === "PENDING") {
-        logLogin("login_failed", "failed", "reason=PENDING", data[i][COL_NAME], data[i][COL_ROLE]);
+        logLogin("LOGIN_FAILED", "failed", "reason=PENDING", data[i][COL_NAME], data[i][COL_ROLE]);
         return jsonOut({ error: "PENDING" });
       } 
       else if (status === "REJECTED") {
-        logLogin("login_failed", "failed", "reason=REJECTED", data[i][COL_NAME], data[i][COL_ROLE]);
+        logLogin("LOGIN_FAILED", "failed", "reason=REJECTED", data[i][COL_NAME], data[i][COL_ROLE]);
         return jsonOut({ error: "REJECTED" });
       } 
       else {
-        logLogin("login_failed", "failed", "reason=NOT_APPROVED", data[i][COL_NAME], data[i][COL_ROLE]);
+        logLogin("LOGIN_FAILED", "failed", "reason=NOT_APPROVED", data[i][COL_NAME], data[i][COL_ROLE]);
         return jsonOut({ error: "NOT_APPROVED" });
       }
     }
@@ -875,10 +1241,10 @@ function handleLogin(params, ss) {
   Utilities.sleep(LOGIN_FAIL_DELAY_MS);
 
   if (attempts >= LOGIN_MAX_ATTEMPTS) {
-    logLogin("login_failed", "failed", "reason=RATE_LIMITED");
+    logLogin("LOGIN_FAILED", "failed", "reason=RATE_LIMITED");
     return jsonOut({ error: "RATE_LIMITED", retry_after_seconds: LOGIN_WINDOW_SECONDS });
   }
-  logLogin("login_failed", "failed", "reason=WRONG_PASSWORD");
+  logLogin("LOGIN_FAILED", "failed", "reason=WRONG_PASSWORD");
   return textOut("WRONG");
 }
 
@@ -886,9 +1252,36 @@ function handleRegister(params, ss) {
   var login = (params.user || "").toLowerCase().trim();
   var hash  = (params.hash || "").trim();
   var name  = (params.name || "").trim();
+  var device = normalizeDeviceType(params.device);
 
-  if (!login || !hash || !name) return textOut("INVALID_INPUT");
-  if (login.length > 50 || name.length > 100) return textOut("INPUT_TOO_LONG");
+  if (!login || !hash || !name) {
+    appendAuditEvent_(ss, {
+      params: params,
+      login: login,
+      action: "REGISTER_REQUEST_FAILED",
+      entityType: "auth",
+      entityId: login,
+      details: { reason: "INVALID_INPUT" },
+      device: device,
+      result: "failed",
+      error: "INVALID_INPUT"
+    });
+    return textOut("INVALID_INPUT");
+  }
+  if (login.length > 50 || name.length > 100) {
+    appendAuditEvent_(ss, {
+      params: params,
+      login: login,
+      action: "REGISTER_REQUEST_FAILED",
+      entityType: "auth",
+      entityId: login,
+      details: { reason: "INPUT_TOO_LONG" },
+      device: device,
+      result: "failed",
+      error: "INPUT_TOO_LONG"
+    });
+    return textOut("INPUT_TOO_LONG");
+  }
 
   var authSheet;
   try {
@@ -908,6 +1301,18 @@ function handleRegister(params, ss) {
     var existing = authSheet.getRange(2, USER_COL_START, lr - 1, 1).getDisplayValues();
     for (var i = 0; i < existing.length; i++) {
       if (existing[i][0].toLowerCase().trim() === login) {
+        appendAuditEvent_(ss, {
+          params: params,
+          login: login,
+          name: name,
+          action: "REGISTER_REQUEST_FAILED",
+          entityType: "auth",
+          entityId: login,
+          details: { reason: "DUPLICATE_LOGIN" },
+          device: device,
+          result: "failed",
+          error: "DUPLICATE_LOGIN"
+        });
         return textOut("DUPLICATE_LOGIN");
       }
     }
@@ -917,6 +1322,20 @@ function handleRegister(params, ss) {
   authSheet.getRange(newRow, USER_COL_START, 1, USER_COL_COUNT)
     .setValues([[login, hash, name, "OPERATOR", "PENDING", ""]]);
 
+  appendAuditEvent_(ss, {
+    params: params,
+    login: login,
+    name: name,
+    role: "OPERATOR",
+    action: "REGISTER_REQUEST",
+    entityType: "auth",
+    entityId: login,
+    rowNumber: newRow,
+    details: { status: "PENDING" },
+    device: device,
+    result: "success"
+  });
+
   return textOut("REGISTERED");
 }
 
@@ -924,6 +1343,35 @@ function handleRegister(params, ss) {
 // ══════════════════════════════════════════════════════════════════════════════
 // 6. AUTH-PROTECTED READS
 // ══════════════════════════════════════════════════════════════════════════════
+
+function handleAuditEvent(params, ss) {
+  var caller = params._caller || {};
+  var action = (params.action || "").toString().trim();
+  if (!action) return jsonOut({ error: "INVALID_ACTION" });
+
+  appendAuditEvent_(ss, {
+    params: params,
+    caller: caller,
+    action: action,
+    entityType: (params.entityType || "ui").toString().trim(),
+    entityId: (params.entityId || "").toString().trim(),
+    sheetName: (params.sheetName || params.sheetDate || "").toString().trim(),
+    sheetDate: (params.sheetDate || params.sheetName || "").toString().trim(),
+    rowNumber: params.rowNumber || "",
+    containerNo: (params.containerNo || params.id || "").toString().trim(),
+    lotNo: (params.lotNo || "").toString().trim(),
+    ws: (params.ws || "").toString().trim(),
+    zone: (params.zone || "").toString().trim(),
+    photoType: (params.photoType || "").toString().trim(),
+    oldValue: params.oldValue || "",
+    newValue: params.newValue || "",
+    details: params.details || {},
+    result: (params.result || "success").toString().trim(),
+    error: params.error || ""
+  });
+
+  return jsonOut({ status: "OK" });
+}
 
 function handleReadComplex(params, ss) {
   var cache = CacheService.getScriptCache();
@@ -1122,35 +1570,139 @@ function handleUpdateAccounting(params, ss) {
   var system = (params.system || "").toString().trim();
   var status = (params.status || "").toString().trim();
   var requestedDate = (params.date || "").toString().trim();
+  var caller = params._caller || null;
 
   if (!id || (system !== "SAP" && system !== "LES")) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "ACCOUNTING_STATUS_FAILED",
+      entityType: "container",
+      entityId: id,
+      containerNo: id,
+      details: { system: system, status: status, reason: "INVALID_PARAMS" },
+      result: "failed",
+      error: "INVALID_PARAMS"
+    });
     return jsonOut({ error: "INVALID_PARAMS" });
   }
   if (requestedDate && !isValidDateFormat(requestedDate)) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "ACCOUNTING_STATUS_FAILED",
+      entityType: "container",
+      entityId: id,
+      containerNo: id,
+      sheetName: requestedDate,
+      sheetDate: requestedDate,
+      details: { system: system, status: status, reason: "INVALID_DATE" },
+      result: "failed",
+      error: "INVALID_DATE"
+    });
     return jsonOut({ error: "INVALID_DATE" });
   }
   if (status !== "WAIT" && status !== "ACCEPTED" && status !== "REJECTED") {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "ACCOUNTING_STATUS_FAILED",
+      entityType: "container",
+      entityId: id,
+      containerNo: id,
+      details: { system: system, status: status, reason: "INVALID_STATUS" },
+      result: "failed",
+      error: "INVALID_STATUS"
+    });
     return jsonOut({ error: "INVALID_STATUS" });
   }
 
   var sheetName = requestedDate || getTodaySheetName();
   var sheet = ss.getSheetByName(sheetName);
-  if (!sheet) return jsonOut({ error: "SHEET_NOT_FOUND" });
+  if (!sheet) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "ACCOUNTING_STATUS_FAILED",
+      entityType: "container",
+      entityId: id,
+      containerNo: id,
+      sheetName: sheetName,
+      sheetDate: sheetName,
+      details: { system: system, status: status, reason: "SHEET_NOT_FOUND" },
+      result: "failed",
+      error: "SHEET_NOT_FOUND"
+    });
+    return jsonOut({ error: "SHEET_NOT_FOUND" });
+  }
 
   var lr = sheet.getLastRow();
-  if (lr < 5) return jsonOut({ error: "NO_DATA" });
+  if (lr < 5) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "ACCOUNTING_STATUS_FAILED",
+      entityType: "container",
+      entityId: id,
+      containerNo: id,
+      sheetName: sheetName,
+      sheetDate: sheetName,
+      details: { system: system, status: status, reason: "NO_DATA" },
+      result: "failed",
+      error: "NO_DATA"
+    });
+    return jsonOut({ error: "NO_DATA" });
+  }
 
   var ids = sheet.getRange(5, 5, lr - 4, 1).getDisplayValues();
   var col = (system === "SAP") ? 17 : 18; // Q=17, R=18
 
   for (var i = 0; i < ids.length; i++) {
     if (ids[i][0] === id) {
+      var rowNumber = i + 5;
+      var oldSnapshot = buildContainerRowSnapshot_(sheet, rowNumber);
+      var oldStatus = (system === "SAP") ? oldSnapshot.sap_status : oldSnapshot.les_status;
       sheet.getRange(i + 5, col).setValue(mapAccountingToSheet(status));
+      SpreadsheetApp.flush();
+      var newSnapshot = buildContainerRowSnapshot_(sheet, rowNumber);
       invalidateDateReadCache(sheetName);
       if (sheetName === getTodaySheetName()) invalidateTodayReadCache();
+      appendAuditEvent_(ss, {
+        params: params,
+        caller: caller,
+        action: "ACCOUNTING_STATUS_CHANGE",
+        entityType: "container",
+        entityId: id,
+        sheetName: sheetName,
+        sheetDate: sheetName,
+        rowNumber: rowNumber,
+        containerNo: id,
+        lotNo: newSnapshot.lotNo,
+        ws: newSnapshot.ws,
+        zone: newSnapshot.zone,
+        oldValue: { system: system, status: oldStatus },
+        newValue: { system: system, status: mapAccountingToSheet(status) },
+        oldRowSnapshot: oldSnapshot,
+        newRowSnapshot: newSnapshot,
+        details: { system: system, requestedStatus: status },
+        result: "success"
+      });
       return jsonOut({ status: "OK" });
     }
   }
+  appendAuditEvent_(ss, {
+    params: params,
+    caller: caller,
+    action: "ACCOUNTING_STATUS_FAILED",
+    entityType: "container",
+    entityId: id,
+    containerNo: id,
+    sheetName: sheetName,
+    sheetDate: sheetName,
+    details: { system: system, status: status, reason: "NOT_FOUND" },
+    result: "failed",
+    error: "NOT_FOUND"
+  });
   return jsonOut({ error: "NOT_FOUND" });
 }
 
@@ -1279,32 +1831,35 @@ function handleTaskAction(params, ss) {
   var act = (params.act || "").trim();
   var requestedDate = (params.date || "").toString().trim();
   var caller = params._caller || null;
-  var successAuditAction = null;
-  var failedAuditAction = null;
-
-  if (act === "start" || act.indexOf("start_manual_") === 0) {
-    successAuditAction = "container_start_success";
-    failedAuditAction = "container_start_failed";
-  } else if (act === "finish" || act.indexOf("finish_manual_") === 0) {
-    successAuditAction = "container_finish_success";
-    failedAuditAction = "container_finish_failed";
-  }
 
   if (!id || !act) {
-    if (failedAuditAction) {
-      appendAuditLog(ss, {
-        caller: caller,
-        action: failedAuditAction,
-        entityType: "container",
-        entityId: id,
-        details: "reason=INVALID_INPUT",
-        device: "unknown",
-        result: "failed"
-      });
-    }
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "TASK_ACTION_FAILED",
+      entityType: "container",
+      entityId: id,
+      containerNo: id,
+      details: { act: act, reason: "INVALID_INPUT" },
+      result: "failed",
+      error: "INVALID_INPUT"
+    });
     return textOut("INVALID_INPUT");
   }
   if (requestedDate && !isValidDateFormat(requestedDate)) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "TASK_ACTION_FAILED",
+      entityType: "container",
+      entityId: id,
+      containerNo: id,
+      sheetName: requestedDate,
+      sheetDate: requestedDate,
+      details: { act: act, reason: "INVALID_DATE" },
+      result: "failed",
+      error: "INVALID_DATE"
+    });
     return textOut("INVALID_DATE");
   }
 
@@ -1312,50 +1867,75 @@ function handleTaskAction(params, ss) {
   var sheetName = requestedDate || getTodaySheetName();
   try {
     var sheet = ss.getSheetByName(sheetName);
-    if (sheet) {
-      var result = applyTaskAction(sheet, id, act, time, params);
-      if (result) {
-        invalidateDateReadCache(sheetName);
-        if (sheetName === getTodaySheetName()) invalidateTodayReadCache();
-        if (successAuditAction) {
-          appendAuditLog(ss, {
-            caller: caller,
-            action: successAuditAction,
-            entityType: "container",
-            entityId: id,
-            details: buildAuditDetails(["act=" + act, "sheet=" + sheetName]),
-            device: "unknown",
-            result: "success"
-          });
-        }
-        return result;
-      }
+    if (!sheet) {
+      appendAuditEvent_(ss, {
+        params: params,
+        caller: caller,
+        action: "TASK_ACTION_FAILED",
+        entityType: "container",
+        entityId: id,
+        containerNo: id,
+        sheetName: sheetName,
+        sheetDate: sheetName,
+        details: { act: act, reason: "SHEET_NOT_FOUND" },
+        result: "failed",
+        error: "SHEET_NOT_FOUND"
+      });
+      return textOut("ID_NOT_FOUND");
     }
 
-    if (failedAuditAction) {
-      appendAuditLog(ss, {
-        caller: caller,
-        action: failedAuditAction,
-        entityType: "container",
-        entityId: id,
-        details: buildAuditDetails(["act=" + act, "reason=ID_NOT_FOUND"]),
-        device: "unknown",
-        result: "failed"
-      });
+    var result = applyTaskAction(sheet, id, act, time, params);
+    if (result) {
+      invalidateDateReadCache(sheetName);
+      if (sheetName === getTodaySheetName()) invalidateTodayReadCache();
+
+      var auditEvents = buildContainerChangeAuditEvents_(params, caller, sheetName, result.rowNumber, act, result.oldSnapshot, result.newSnapshot);
+      if (auditEvents.length === 0) {
+        var base = buildContainerAuditBase_(params, caller, sheetName, result.rowNumber, result.newSnapshot || result.oldSnapshot);
+        base.action = "TASK_ACTION_NO_CHANGE";
+        base.entityType = "container";
+        base.entityId = id;
+        base.oldRowSnapshot = result.oldSnapshot;
+        base.newRowSnapshot = result.newSnapshot;
+        base.details = { act: act };
+        base.result = "success";
+        auditEvents.push(base);
+      }
+
+      for (var i = 0; i < auditEvents.length; i++) {
+        appendAuditEvent_(ss, auditEvents[i]);
+      }
+      return textOut("UPDATED");
     }
+
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "TASK_ACTION_FAILED",
+      entityType: "container",
+      entityId: id,
+      containerNo: id,
+      sheetName: sheetName,
+      sheetDate: sheetName,
+      details: { act: act, reason: "ID_NOT_FOUND" },
+      result: "failed",
+      error: "ID_NOT_FOUND"
+    });
     return textOut("ID_NOT_FOUND");
   } catch (e) {
-    if (failedAuditAction) {
-      appendAuditLog(ss, {
-        caller: caller,
-        action: failedAuditAction,
-        entityType: "container",
-        entityId: id,
-        details: buildAuditDetails(["act=" + act, "error=" + e]),
-        device: "unknown",
-        result: "failed"
-      });
-    }
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "TASK_ACTION_FAILED",
+      entityType: "container",
+      entityId: id,
+      containerNo: id,
+      sheetName: sheetName,
+      sheetDate: sheetName,
+      details: { act: act },
+      result: "failed",
+      error: e && e.stack ? e.stack : e.toString()
+    });
     throw e;
   }
 }
@@ -1369,13 +1949,14 @@ function applyTaskAction(sheet, id, act, time, params) {
   for (var i = 0; i < data.length; i++) {
     if (data[i][0] && data[i][0].toString() === id) {
       var r = i + 5;
+      var oldSnapshot = buildContainerRowSnapshot_(sheet, r);
       if (act === "start" || act.indexOf("start_manual") === 0) {
-        var vals = sheet.getRange(r, 8, 1, 7).getValues()[0]; 
+        var vals = sheet.getRange(r, 8, 1, 7).getValues()[0];
         vals[0] = actionTime;
-        vals[3] = params.zone || vals[3];         
-        vals[4] = params.op   || vals[4];         
-        vals[5] = params.pGen  || vals[5];        
-        vals[6] = params.pSeal || vals[6];        
+        vals[3] = params.zone || vals[3];
+        vals[4] = params.op   || vals[4];
+        vals[5] = params.pGen  || vals[5];
+        vals[6] = params.pSeal || vals[6];
         sheet.getRange(r, 8, 1, 7).setValues([vals]);
       } else if (act === "undo_start") {
         sheet.getRange(r, 8, 1, 7).setValues([["", "", "", "", "", "", ""]]);
@@ -1389,7 +1970,12 @@ function applyTaskAction(sheet, id, act, time, params) {
         sheet.getRange(r, 9).setValue(actionTime);
         if (params.pEmpty) sheet.getRange(r, 15).setValue(params.pEmpty);
       }
-      return textOut("UPDATED");
+      SpreadsheetApp.flush();
+      return {
+        rowNumber: r,
+        oldSnapshot: oldSnapshot,
+        newSnapshot: buildContainerRowSnapshot_(sheet, r)
+      };
     }
   }
   return null;
@@ -1399,8 +1985,22 @@ function handleReportIssue(params, ss) {
   var containerId = (params.id || "").trim();
   var desc        = (params.desc || "").trim();
   var author      = (params.author || "Anonymous").trim();
+  var caller      = params._caller || null;
 
-  if (!containerId || !desc) return textOut("INVALID_INPUT");
+  if (!containerId || !desc) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "ISSUE_REPORT_FAILED",
+      entityType: "issue",
+      entityId: containerId,
+      containerNo: containerId,
+      details: { reason: "INVALID_INPUT", author: author },
+      result: "failed",
+      error: "INVALID_INPUT"
+    });
+    return textOut("INVALID_INPUT");
+  }
 
   var s = ss.getSheetByName("PROBLEMS");
   if (!s) {
@@ -1443,6 +2043,22 @@ function handleReportIssue(params, ss) {
   }
 
   s.appendRow([containerId, time, desc, params.p1 || "", params.p2 || "", params.p3 || "", author, emailStatus]);
+  appendAuditEvent_(ss, {
+    params: params,
+    caller: caller,
+    action: "ISSUE_REPORT_CREATE",
+    entityType: "issue",
+    entityId: containerId,
+    containerNo: containerId,
+    details: {
+      description: desc,
+      author: author,
+      photos: [params.p1 || "", params.p2 || "", params.p3 || ""].filter(function(url) { return url; }),
+      emailStatus: emailStatus
+    },
+    result: emailStatus.indexOf("РћС€РёР±РєР°") === 0 ? "partial" : "success",
+    error: emailStatus.indexOf("РћС€РёР±РєР°") === 0 ? emailStatus : ""
+  });
   return textOut("REPORTED");
 }
 
@@ -1451,83 +2067,218 @@ function handleUploadPhoto(params, ss) {
   var mimeType  = (params.mimeType || "");
   var filename  = (params.filename || "upload.jpg");
   var caller = params._caller || null;
-  var logPhoto = function(action, result, entityId, details) {
+  var containerId = (params.containerId || params.id || "").toString().trim();
+  var photoType = (params.photoType || "").toString().trim();
+  var sheetName = (params.sheetDate || params.date || "").toString().trim();
+  var logPhoto = function(action, result, entityId, details, newValue, error) {
     appendAuditLog(ss, {
+      params: params,
       caller: caller,
       action: action,
       entityType: "photo",
-      entityId: entityId || "",
+      entityId: entityId || containerId || "",
+      containerNo: containerId,
+      sheetName: sheetName,
+      sheetDate: sheetName,
+      photoType: photoType,
+      newValue: newValue || "",
       details: details || "",
-      device: "unknown",
-      result: result
+      result: result,
+      error: error || ""
     });
   };
 
   if (ALLOWED_MIME.indexOf(mimeType) === -1) {
-    logPhoto("photo_upload_failed", "failed", "", buildAuditDetails(["filename=" + filename, "reason=INVALID_MIME_TYPE", "mime=" + mimeType]));
+    logPhoto("PHOTO_FILE_UPLOAD_FAILED", "failed", "", { filename: filename, reason: "INVALID_MIME_TYPE", mime: mimeType }, "", "INVALID_MIME_TYPE");
     return jsonOut({ status: "ERROR", message: "INVALID_MIME_TYPE" });
   }
   if (imageData.length > MAX_PHOTO_BASE64_LEN) {
-    logPhoto("photo_upload_failed", "failed", "", buildAuditDetails(["filename=" + filename, "reason=FILE_TOO_LARGE"]));
+    logPhoto("PHOTO_FILE_UPLOAD_FAILED", "failed", "", { filename: filename, reason: "FILE_TOO_LARGE" }, "", "FILE_TOO_LARGE");
     return jsonOut({ status: "ERROR", message: "FILE_TOO_LARGE" });
   }
   if (imageData.indexOf(",") === -1) {
-    logPhoto("photo_upload_failed", "failed", "", buildAuditDetails(["filename=" + filename, "reason=INVALID_IMAGE_DATA"]));
+    logPhoto("PHOTO_FILE_UPLOAD_FAILED", "failed", "", { filename: filename, reason: "INVALID_IMAGE_DATA" }, "", "INVALID_IMAGE_DATA");
     return jsonOut({ status: "ERROR", message: "INVALID_IMAGE_DATA" });
   }
 
   try {
     var base64Part = imageData.split(",")[1];
     if (!base64Part) {
-      logPhoto("photo_upload_failed", "failed", "", buildAuditDetails(["filename=" + filename, "reason=EMPTY_IMAGE_DATA"]));
+      logPhoto("PHOTO_FILE_UPLOAD_FAILED", "failed", "", { filename: filename, reason: "EMPTY_IMAGE_DATA" }, "", "EMPTY_IMAGE_DATA");
       return jsonOut({ status: "ERROR", message: "EMPTY_IMAGE_DATA" });
     }
 
     var blob = Utilities.newBlob(Utilities.base64Decode(base64Part), mimeType, filename);
     var uploadResult = createSharedUploadFileWithRetry(blob);
     var file = uploadResult.file;
-    var details = ["filename=" + filename, "mime=" + mimeType];
-    if (uploadResult.attempts > 1) details.push("attempts=" + uploadResult.attempts);
-    logPhoto("photo_upload_success", "success", file.getId(), buildAuditDetails(details));
+    var fileUrl = file.getUrl();
+    var details = {
+      filename: filename,
+      mime: mimeType,
+      photoType: photoType,
+      containerNo: containerId,
+      driveFileId: file.getId(),
+      url: fileUrl
+    };
+    if (uploadResult.attempts > 1) details.attempts = uploadResult.attempts;
+    logPhoto("PHOTO_FILE_UPLOAD", "success", file.getId(), details, { driveFileId: file.getId(), url: fileUrl });
 
-    return jsonOut({ status: "SUCCESS", url: file.getUrl() });
+    return jsonOut({ status: "SUCCESS", url: fileUrl });
   } catch (e) {
-    var failedDetails = ["filename=" + filename, "error=" + e];
-    if (e && e.uploadAttempts) failedDetails.push("attempts=" + e.uploadAttempts);
-    logPhoto("photo_upload_failed", "failed", "", buildAuditDetails(failedDetails));
+    var failedDetails = { filename: filename, photoType: photoType, containerNo: containerId, error: e.toString() };
+    if (e && e.uploadAttempts) failedDetails.attempts = e.uploadAttempts;
+    logPhoto("PHOTO_FILE_UPLOAD_FAILED", "failed", "", failedDetails, "", e && e.stack ? e.stack : e.toString());
     return jsonOut({ status: "ERROR", message: "UPLOAD_FAILED: " + e.toString() });
   }
 }
 
 function handleUpdateContainerRow(params, ss) {
   var dateStr = (params.date || "").trim();
-  if (!isValidDateFormat(dateStr)) return textOut("INVALID_DATE");
+  var caller = params._caller || null;
+  if (!isValidDateFormat(dateStr)) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "PLAN_ROW_UPDATE_FAILED",
+      entityType: "container",
+      sheetName: dateStr,
+      sheetDate: dateStr,
+      details: { reason: "INVALID_DATE" },
+      result: "failed",
+      error: "INVALID_DATE"
+    });
+    return textOut("INVALID_DATE");
+  }
 
   var sheet = ss.getSheetByName(dateStr);
-  if (!sheet) return textOut("NO_SHEET");
+  if (!sheet) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "PLAN_ROW_UPDATE_FAILED",
+      entityType: "container",
+      sheetName: dateStr,
+      sheetDate: dateStr,
+      details: { reason: "NO_SHEET" },
+      result: "failed",
+      error: "NO_SHEET"
+    });
+    return textOut("NO_SHEET");
+  }
 
   var rowIndex = parseInt(params.row, 10);
-  if (!rowIndex || rowIndex < 5 || rowIndex > sheet.getLastRow()) return textOut("INVALID_ROW");
+  if (!rowIndex || rowIndex < 5 || rowIndex > sheet.getLastRow()) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "PLAN_ROW_UPDATE_FAILED",
+      entityType: "container",
+      sheetName: dateStr,
+      sheetDate: dateStr,
+      rowNumber: rowIndex || "",
+      details: { reason: "INVALID_ROW" },
+      result: "failed",
+      error: "INVALID_ROW"
+    });
+    return textOut("INVALID_ROW");
+  }
 
+  var oldSnapshot = buildContainerRowSnapshot_(sheet, rowIndex);
   var vals = [[(params.lot || ""), (params.ws || ""), (params.pallets || ""), (params.id || ""), (params.phone || ""), (params.eta || "")]];
   sheet.getRange(rowIndex, 2, 1, 6).setValues(vals);
+  SpreadsheetApp.flush();
+  var newSnapshot = buildContainerRowSnapshot_(sheet, rowIndex);
+  var changes = diffContainerSnapshots_(oldSnapshot, newSnapshot);
   invalidateDateReadCache(dateStr);
   if (dateStr === getTodaySheetName()) invalidateTodayReadCache();
+  appendAuditEvent_(ss, {
+    params: params,
+    caller: caller,
+    action: "PLAN_ROW_UPDATE",
+    entityType: "container",
+    entityId: newSnapshot.containerNo || oldSnapshot.containerNo,
+    sheetName: dateStr,
+    sheetDate: dateStr,
+    rowNumber: rowIndex,
+    containerNo: newSnapshot.containerNo || oldSnapshot.containerNo,
+    lotNo: newSnapshot.lotNo,
+    ws: newSnapshot.ws,
+    zone: newSnapshot.zone,
+    oldValue: extractChangeSide_(changes, "old"),
+    newValue: extractChangeSide_(changes, "new"),
+    oldRowSnapshot: oldSnapshot,
+    newRowSnapshot: newSnapshot,
+    details: { changes: changes },
+    result: "success"
+  });
   return textOut("UPDATED");
 }
 
 function handleCreatePlan(params, ss) {
   var dateStr = (params.date || "").trim();
-  if (!isValidDateFormat(dateStr)) return textOut("INVALID_DATE");
+  var caller = params._caller || null;
+  if (!isValidDateFormat(dateStr)) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "PLAN_CREATE_FAILED",
+      entityType: "plan",
+      sheetName: dateStr,
+      sheetDate: dateStr,
+      details: { reason: "INVALID_DATE" },
+      result: "failed",
+      error: "INVALID_DATE"
+    });
+    return textOut("INVALID_DATE");
+  }
 
   var tasksJson = params.tasks;
-  if (!tasksJson) return textOut("NO_TASKS");
+  if (!tasksJson) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "PLAN_CREATE_FAILED",
+      entityType: "plan",
+      sheetName: dateStr,
+      sheetDate: dateStr,
+      details: { reason: "NO_TASKS" },
+      result: "failed",
+      error: "NO_TASKS"
+    });
+    return textOut("NO_TASKS");
+  }
 
   var tasks;
   try {
     tasks = JSON.parse(tasksJson);
-    if (!Array.isArray(tasks) || tasks.length === 0) return textOut("INVALID_TASKS");
-  } catch (e) { return textOut("INVALID_JSON"); }
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+      appendAuditEvent_(ss, {
+        params: params,
+        caller: caller,
+        action: "PLAN_CREATE_FAILED",
+        entityType: "plan",
+        sheetName: dateStr,
+        sheetDate: dateStr,
+        details: { reason: "INVALID_TASKS" },
+        result: "failed",
+        error: "INVALID_TASKS"
+      });
+      return textOut("INVALID_TASKS");
+    }
+  } catch (e) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "PLAN_CREATE_FAILED",
+      entityType: "plan",
+      sheetName: dateStr,
+      sheetDate: dateStr,
+      details: { reason: "INVALID_JSON" },
+      result: "failed",
+      error: e.toString()
+    });
+    return textOut("INVALID_JSON");
+  }
 
   var sheet = ss.getSheetByName(dateStr);
   if (!sheet) {
@@ -1550,23 +2301,89 @@ function handleCreatePlan(params, ss) {
   }
   invalidateDateReadCache(dateStr);
   if (dateStr === getTodaySheetName()) invalidateTodayReadCache();
+  appendAuditEvent_(ss, {
+    params: params,
+    caller: caller,
+    action: "PLAN_CREATE",
+    entityType: "plan",
+    entityId: dateStr,
+    sheetName: dateStr,
+    sheetDate: dateStr,
+    rowNumber: lastRow + 1,
+    details: {
+      rowsAdded: rows.length,
+      containers: tasks.map(function(t) { return t.id || ""; }).filter(function(id) { return id; })
+    },
+    result: "success"
+  });
   return textOut("CREATED");
 }
 
 function handleSetPriorityLot(params, ss) {
   var ds = ss.getSheetByName("DASHBOARD"); // Работает с публичной таблицей
-  if (!ds) return textOut("NO_SHEET");
+  var caller = params._caller || null;
+  if (!ds) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "PRIORITY_LOT_SET_FAILED",
+      entityType: "lot",
+      details: { reason: "NO_SHEET" },
+      result: "failed",
+      error: "NO_SHEET"
+    });
+    return textOut("NO_SHEET");
+  }
   var lotVal = (params.lot || "").trim();
+  var oldLot = ds.getRange("A1").getDisplayValue();
   ds.getRange("A1").setValue(lotVal);
+  appendAuditEvent_(ss, {
+    params: params,
+    caller: caller,
+    action: "PRIORITY_LOT_SET",
+    entityType: "lot",
+    entityId: lotVal,
+    oldValue: oldLot,
+    newValue: lotVal,
+    details: { sheetName: "DASHBOARD", cell: "A1" },
+    result: "success"
+  });
   return textOut("OK");
 }
 
 function handleSubscribeNotification(params, ss) {
   var containerId = (params.id || "").trim();
   var email       = (params.email || "").trim();
+  var caller      = params._caller || null;
 
-  if (!containerId) return textOut("INVALID_INPUT");
-  if (!isValidEmail(email)) return textOut("INVALID_EMAIL");
+  if (!containerId) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "SUBSCRIPTION_CREATE_FAILED",
+      entityType: "subscription",
+      entityId: containerId,
+      containerNo: containerId,
+      details: { reason: "INVALID_INPUT" },
+      result: "failed",
+      error: "INVALID_INPUT"
+    });
+    return textOut("INVALID_INPUT");
+  }
+  if (!isValidEmail(email)) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "SUBSCRIPTION_CREATE_FAILED",
+      entityType: "subscription",
+      entityId: containerId,
+      containerNo: containerId,
+      details: { email: email, reason: "INVALID_EMAIL" },
+      result: "failed",
+      error: "INVALID_EMAIL"
+    });
+    return textOut("INVALID_EMAIL");
+  }
 
   var sheet = ss.getSheetByName("SUBSCRIPTIONS");
   if (!sheet) {
@@ -1577,6 +2394,16 @@ function handleSubscribeNotification(params, ss) {
 
   var time = Utilities.formatDate(new Date(), TIMEZONE, "dd.MM.yyyy HH:mm:ss");
   sheet.appendRow([time, containerId, email, "PENDING"]);
+  appendAuditEvent_(ss, {
+    params: params,
+    caller: caller,
+    action: "SUBSCRIPTION_CREATE",
+    entityType: "subscription",
+    entityId: containerId,
+    containerNo: containerId,
+    details: { email: email, status: "PENDING" },
+    result: "success"
+  });
   return textOut("SUBSCRIBED");
 }
 
@@ -1612,51 +2439,168 @@ function handleGetPending(params, ss) {
 
 function handleApproveUser(params, ss) {
   var authSheet = getAuthSheet();
-  if (!authSheet) return textOut("ERROR");
+  var caller = params._caller || null;
+  if (!authSheet) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "USER_APPROVE_FAILED",
+      entityType: "user",
+      details: { reason: "AUTH_SHEET_UNAVAILABLE" },
+      result: "failed",
+      error: "AUTH_SHEET_UNAVAILABLE"
+    });
+    return textOut("ERROR");
+  }
 
   var login = (params.login || "").toLowerCase().trim();
   var role  = (params.role || "OPERATOR").toUpperCase().trim();
   var validRoles = ["OPERATOR", "LOGISTIC", "AGRL", "ADMIN"];
   if (validRoles.indexOf(role) === -1) role = "OPERATOR";
 
-  if (!login) return textOut("INVALID_INPUT");
+  if (!login) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "USER_APPROVE_FAILED",
+      entityType: "user",
+      details: { reason: "INVALID_INPUT" },
+      result: "failed",
+      error: "INVALID_INPUT"
+    });
+    return textOut("INVALID_INPUT");
+  }
 
   var lr = authSheet.getLastRow();
-  if (lr < 2) return textOut("NOT_FOUND");
+  if (lr < 2) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "USER_APPROVE_FAILED",
+      entityType: "user",
+      entityId: login,
+      details: { reason: "NOT_FOUND" },
+      result: "failed",
+      error: "NOT_FOUND"
+    });
+    return textOut("NOT_FOUND");
+  }
 
   // Row-level read so we can also grab the stored token for cache invalidation.
   var data = readUserAuthRows(authSheet, lr - 1);
   for (var i = 0; i < data.length; i++) {
     if ((data[i][COL_LOGIN] || "").toString().toLowerCase().trim() === login) {
+      var oldRole = data[i][COL_ROLE] || "";
+      var oldStatus = data[i][COL_STATUS] || "";
       authSheet.getRange(i + 2, USER_COL_START + COL_ROLE).setValue(role);
       authSheet.getRange(i + 2, USER_COL_START + COL_STATUS).setValue("APPROVED");
       invalidateUserRowTokenCaches(data[i]);
+      appendAuditEvent_(ss, {
+        params: params,
+        caller: caller,
+        action: "USER_APPROVE",
+        entityType: "user",
+        entityId: login,
+        rowNumber: i + 2,
+        oldValue: { role: oldRole, status: oldStatus },
+        newValue: { role: role, status: "APPROVED" },
+        details: { login: login },
+        result: "success"
+      });
       return textOut("APPROVED");
     }
   }
+  appendAuditEvent_(ss, {
+    params: params,
+    caller: caller,
+    action: "USER_APPROVE_FAILED",
+    entityType: "user",
+    entityId: login,
+    details: { reason: "NOT_FOUND" },
+    result: "failed",
+    error: "NOT_FOUND"
+  });
   return textOut("NOT_FOUND");
 }
 
 function handleRejectUser(params, ss) {
   var authSheet = getAuthSheet();
-  if (!authSheet) return textOut("ERROR");
+  var caller = params._caller || null;
+  if (!authSheet) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "USER_REJECT_FAILED",
+      entityType: "user",
+      details: { reason: "AUTH_SHEET_UNAVAILABLE" },
+      result: "failed",
+      error: "AUTH_SHEET_UNAVAILABLE"
+    });
+    return textOut("ERROR");
+  }
 
   var login = (params.login || "").toLowerCase().trim();
-  if (!login) return textOut("INVALID_INPUT");
+  if (!login) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "USER_REJECT_FAILED",
+      entityType: "user",
+      details: { reason: "INVALID_INPUT" },
+      result: "failed",
+      error: "INVALID_INPUT"
+    });
+    return textOut("INVALID_INPUT");
+  }
 
   var lr = authSheet.getLastRow();
-  if (lr < 2) return textOut("NOT_FOUND");
+  if (lr < 2) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "USER_REJECT_FAILED",
+      entityType: "user",
+      entityId: login,
+      details: { reason: "NOT_FOUND" },
+      result: "failed",
+      error: "NOT_FOUND"
+    });
+    return textOut("NOT_FOUND");
+  }
 
   // Row-level read so we can invalidate the cached token for the rejected user.
   var data = readUserAuthRows(authSheet, lr - 1);
   for (var i = 0; i < data.length; i++) {
     if ((data[i][COL_LOGIN] || "").toString().toLowerCase().trim() === login) {
       // 🚀 Вместо удаления строки, просто меняем её статус на REJECTED
+      var oldStatus = data[i][COL_STATUS] || "";
       authSheet.getRange(i + 2, USER_COL_START + COL_STATUS).setValue("REJECTED");
       invalidateUserRowTokenCaches(data[i]);
+      appendAuditEvent_(ss, {
+        params: params,
+        caller: caller,
+        action: "USER_REJECT",
+        entityType: "user",
+        entityId: login,
+        rowNumber: i + 2,
+        oldValue: { status: oldStatus },
+        newValue: { status: "REJECTED" },
+        details: { login: login },
+        result: "success"
+      });
       return textOut("REJECTED");
     }
   }
+  appendAuditEvent_(ss, {
+    params: params,
+    caller: caller,
+    action: "USER_REJECT_FAILED",
+    entityType: "user",
+    entityId: login,
+    details: { reason: "NOT_FOUND" },
+    result: "failed",
+    error: "NOT_FOUND"
+  });
   return textOut("NOT_FOUND");
 }
 

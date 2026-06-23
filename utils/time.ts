@@ -7,7 +7,8 @@ export function parseHHMM(s: string | undefined): number | null {
 }
 
 export const MOSCOW_TIME_ZONE = 'Europe/Moscow';
-export const OPERATIONAL_DAY_START_HOUR = 6;
+export const OPERATIONAL_DAY_START_HOUR = 7;
+export const OPERATIONAL_DAY_START_MINUTE = 50;
 
 export interface OperationalDateInfo {
   calendarDate: string;
@@ -19,6 +20,7 @@ export interface OperationalDateInfo {
   minute: number;
   second: number;
   cutoffHour: number;
+  cutoffMinute: number;
   isBeforeOperationalCutoff: boolean;
 }
 
@@ -79,8 +81,11 @@ export function getOperationalDateInfo(now: Date = new Date()): OperationalDateI
   const moscowParts = getMoscowDateParts(now);
   const calendarUtc = buildUtcDateFromMoscowParts(moscowParts);
   const operationalUtc = new Date(calendarUtc.getTime());
+  const nowMinutes = moscowParts.hour * 60 + moscowParts.minute;
+  const cutoffMinutes = OPERATIONAL_DAY_START_HOUR * 60 + OPERATIONAL_DAY_START_MINUTE;
+  const isBeforeOperationalCutoff = nowMinutes < cutoffMinutes;
 
-  if (moscowParts.hour < OPERATIONAL_DAY_START_HOUR) {
+  if (isBeforeOperationalCutoff) {
     operationalUtc.setUTCDate(operationalUtc.getUTCDate() - 1);
   }
 
@@ -97,7 +102,8 @@ export function getOperationalDateInfo(now: Date = new Date()): OperationalDateI
     minute: moscowParts.minute,
     second: moscowParts.second,
     cutoffHour: OPERATIONAL_DAY_START_HOUR,
-    isBeforeOperationalCutoff: moscowParts.hour < OPERATIONAL_DAY_START_HOUR,
+    cutoffMinute: OPERATIONAL_DAY_START_MINUTE,
+    isBeforeOperationalCutoff,
   };
 }
 
@@ -112,9 +118,11 @@ export function getOperationalSheetName(now: Date = new Date()): string {
 export function getMillisecondsUntilNextOperationalBoundary(now: Date = new Date()): number {
   const parts = getMoscowDateParts(now);
   const currentUtc = buildUtcDateFromMoscowParts(parts);
-  const nextBoundaryUtc = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, OPERATIONAL_DAY_START_HOUR, 0, 0));
+  const nextBoundaryUtc = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, OPERATIONAL_DAY_START_HOUR, OPERATIONAL_DAY_START_MINUTE, 0));
+  const nowMinutes = parts.hour * 60 + parts.minute;
+  const cutoffMinutes = OPERATIONAL_DAY_START_HOUR * 60 + OPERATIONAL_DAY_START_MINUTE;
 
-  if (parts.hour >= OPERATIONAL_DAY_START_HOUR) {
+  if (nowMinutes >= cutoffMinutes) {
     nextBoundaryUtc.setUTCDate(nextBoundaryUtc.getUTCDate() + 1);
   }
 
@@ -176,7 +184,7 @@ export function calcDuration(start?: string, end?: string): string {
   return formatDuration(diff);
 }
 
-/** Текущая операционная дата в формате "DD.MM" (Москва, смена в 06:00). */
+/** Текущая операционная дата в формате "DD.MM" (Москва, смена в 07:50). */
 export function todayDDMM(): string {
   return getOperationalSheetName();
 }

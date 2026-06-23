@@ -5,7 +5,7 @@
  * v2: All POST requests now include the auth token from localStorage.
  */
 
-import { getToken } from './api';
+import { getAuditClientPayload, getToken } from './api';
 
 const FLUSH_TIMEOUT_MS = 30000;
 function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
@@ -177,6 +177,9 @@ export const offlineQueue = {
                 image: payload.image,
                 mimeType: payload.mimeType,
                 filename: payload.filename,
+                containerId: payload.taskId || '',
+                photoType: payload.photoField === 'pGen' ? 'container' : payload.photoField === 'pSeal' ? 'seal' : payload.photoField === 'pEmpty' ? 'unloaded' : '',
+                ...getAuditClientPayload(),
               }),
             });
             const data = await res.json();
@@ -192,6 +195,9 @@ export const offlineQueue = {
                     id: payload.taskId,
                     act: 'update_photo',
                     [payload.photoField]: data.url,
+                    containerId: payload.taskId,
+                    photoType: payload.photoField === 'pGen' ? 'container' : payload.photoField === 'pSeal' ? 'seal' : 'unloaded',
+                    ...getAuditClientPayload(),
                   }),
                 });
               }
@@ -209,6 +215,7 @@ export const offlineQueue = {
                 mode: 'task_action',
                 token,
                 ...payload,
+                ...getAuditClientPayload(),
               }),
             });
             const txt = await res.text();

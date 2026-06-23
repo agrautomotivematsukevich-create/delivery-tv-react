@@ -301,10 +301,27 @@ function App() {
   }, [isArrivalView, isAnyTV]);
 
   const handleSetView = (view: string) => {
+    api.auditEvent('VIEW_SWITCH', {
+      entityType: 'page',
+      entityId: view,
+      details: { from: currentView, to: view },
+    }, `view-switch:${currentView}:${view}`, 2000);
     navigate(view === 'dashboard' ? '/' : `/${view}`);
   };
 
   const isUpdateBannerBlocked = showAuth || showTerminal || showStats || showIssue || showIssueHistory || showAdmin || Boolean(currentAction);
+
+  useEffect(() => {
+    if (!user) return;
+    api.auditEvent('PAGE_OPEN', {
+      entityType: 'page',
+      entityId: currentView,
+      details: {
+        path: location.pathname,
+        tvMode: isTV ? 'tv1' : isTV2 ? 'tv2' : isTV3 ? 'tv3' : 'desktop',
+      },
+    }, `page-open:${location.pathname}:${isTV ? 'tv1' : isTV2 ? 'tv2' : isTV3 ? 'tv3' : 'desktop'}`, 30000);
+  }, [currentView, isTV, isTV2, isTV3, location.pathname, user]);
 
   const lazyRoutes = (
     <Suspense fallback={<ViewFallback />}>
@@ -375,12 +392,31 @@ function App() {
                 title={t.title}
                 onToggleLang={() => setLang(lang === 'RU' ? 'EN_CN' : 'RU')}
                 onLoginClick={() => setShowAuth(true)}
-                onLogoutClick={() => { logout(); setShowTerminal(false); }}
-                onTerminalClick={() => setShowTerminal(true)}
-                onStatsClick={() => setShowStats(true)}
-                onIssueClick={() => setShowIssue(true)}
-                onHistoryClick={() => setShowIssueHistory(true)}
-                onAdminClick={() => setShowAdmin(true)}
+                onLogoutClick={() => {
+                  api.auditEvent('LOGOUT', { entityType: 'auth', details: { path: location.pathname } }, 'logout', 1000);
+                  logout();
+                  setShowTerminal(false);
+                }}
+                onTerminalClick={() => {
+                  api.auditEvent('TERMINAL_OPEN', { entityType: 'page', entityId: 'terminal' }, 'terminal-open', 5000);
+                  setShowTerminal(true);
+                }}
+                onStatsClick={() => {
+                  api.auditEvent('STATS_OPEN', { entityType: 'page', entityId: 'stats' }, 'stats-open', 5000);
+                  setShowStats(true);
+                }}
+                onIssueClick={() => {
+                  api.auditEvent('ISSUE_MODAL_OPEN', { entityType: 'page', entityId: 'issue' }, 'issue-open', 5000);
+                  setShowIssue(true);
+                }}
+                onHistoryClick={() => {
+                  api.auditEvent('ISSUE_HISTORY_OPEN', { entityType: 'page', entityId: 'issue_history' }, 'issue-history-open', 5000);
+                  setShowIssueHistory(true);
+                }}
+                onAdminClick={() => {
+                  api.auditEvent('ADMIN_PANEL_OPEN', { entityType: 'page', entityId: 'admin' }, 'admin-open', 5000);
+                  setShowAdmin(true);
+                }}
               />
             </div>
 

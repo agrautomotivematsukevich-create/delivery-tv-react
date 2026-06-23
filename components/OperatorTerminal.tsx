@@ -143,6 +143,13 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     setUndoingId(task.id);
     stopPolling();
     try {
+      api.auditEvent('UNLOAD_START_CLEAR_CLICK', {
+        entityType: 'container',
+        entityId: task.id,
+        containerNo: task.id,
+        sheetDate: task.sheet_date || '',
+        details: { startTime: task.start_time || '', zone: task.zone || '' },
+      }, `undo-start:${task.id}`, 2000);
       await api.taskAction(task.id, 'undo_start', '', '', '', '', '', task.sheet_date || '');
       vibrate([50, 30, 50]);
       await fetchQueue();
@@ -173,6 +180,18 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
     return { visible: vis, sorted: srt };
   }, [tasks, search]);
+
+  useEffect(() => {
+    const query = search.trim();
+    if (!query) return;
+    const id = setTimeout(() => {
+      api.auditEvent('TERMINAL_SEARCH', {
+        entityType: 'container',
+        details: { query, visibleCount: visible.length, totalCount: tasks.length },
+      }, `terminal-search:${query}`, 5000);
+    }, 800);
+    return () => clearTimeout(id);
+  }, [search, tasks.length, visible.length]);
 
   const firstActiveIdx = sorted.findIndex(t => t.status === 'ACTIVE');
   const hasActive = firstActiveIdx !== -1;

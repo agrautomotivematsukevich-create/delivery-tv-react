@@ -44,6 +44,39 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
     fetchData(date);
   }, [date]);
 
+  const handleDateChange = (nextDate: string) => {
+    api.auditEvent('HISTORY_DATE_CHANGE', {
+      entityType: 'history',
+      oldValue: date,
+      newValue: nextDate,
+      details: { from: date, to: nextDate },
+    }, `history-date:${nextDate}`, 2000);
+    setDate(nextDate);
+  };
+
+  const handleTaskOpen = (task: Task) => {
+    api.auditEvent('CONTAINER_CARD_OPEN', {
+      entityType: 'container',
+      entityId: task.id,
+      containerNo: task.id,
+      sheetDate: task.sheet_date || '',
+      details: { source: 'history', status: task.status },
+    }, `history-card:${task.sheet_date || ''}:${task.id}`, 5000);
+    setSelectedTask(task);
+  };
+
+  const handlePhotoOpen = (task: Task, url: string, index: number) => {
+    api.auditEvent('PHOTO_VIEW_OPEN', {
+      entityType: 'photo',
+      entityId: task.id,
+      containerNo: task.id,
+      sheetDate: task.sheet_date || '',
+      photoType: index === 0 ? 'container' : index === 1 ? 'seal' : 'unloaded',
+      details: { source: 'history', url },
+    }, `history-photo:${task.sheet_date || ''}:${task.id}:${index}`, 5000);
+    setLightboxImg(getDriveImgSrc(url, 'w2000'));
+  };
+
   const getDriveImgSrc = (url: string | undefined, size?: string) => {
     if (!url) return '';
     let id = "";
@@ -70,7 +103,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
         <input 
           type="date" 
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => handleDateChange(e.target.value)}
           className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white font-mono text-lg outline-none focus:border-accent-blue transition-colors [color-scheme:dark]"
         />
       </div>
@@ -89,7 +122,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
              {tasks.map(task => (
                <div 
                  key={task.id} 
-                 onClick={() => setSelectedTask(task)}
+                 onClick={() => handleTaskOpen(task)}
                  className="bg-white/5 border border-white/5 rounded-2xl p-4 flex items-center gap-4 hover:bg-white/10 cursor-pointer transition-all active:scale-[0.99]"
                >
                  <div className={`w-2 self-stretch rounded-full shrink-0 ${task.status === 'DONE' ? 'bg-accent-green' : 'bg-white/20'}`}></div>
@@ -152,7 +185,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
                                 <div 
                                   key={i} 
                                   className="aspect-square bg-black rounded-xl overflow-hidden border border-white/10 cursor-pointer"
-                                  onClick={() => setLightboxImg(getDriveImgSrc(url, 'w2000'))}
+                                  onClick={() => handlePhotoOpen(selectedTask, url, i)}
                                 >
                                    <img src={getDriveImgSrc(url, 'w300')} className="w-full h-full object-cover" />
                                 </div>

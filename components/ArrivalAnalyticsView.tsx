@@ -328,6 +328,13 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = () => {
   const liveCards = live.slice().sort((a, b) => (b.downtime ?? 0) - (a.downtime ?? 0));
 
   const handleSort = (key: SortKey) => {
+    api.auditEvent('ARRIVAL_SORT_CHANGE', {
+      entityType: 'page',
+      entityId: 'arrival',
+      oldValue: { sortKey, sortDir },
+      newValue: { sortKey: key, sortDir: sortKey === key ? (sortDir === 'asc' ? 'desc' : 'asc') : 'desc' },
+      details: { period, wsFilter },
+    }, `arrival-sort:${key}`, 2000);
     if (sortKey === key) setSortDir((current) => current === 'asc' ? 'desc' : 'asc');
     else {
       setSortKey(key);
@@ -341,9 +348,52 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = () => {
   };
 
   const setPresetPeriod = (next: PeriodMode) => {
+    api.auditEvent('ARRIVAL_PERIOD_CHANGE', {
+      entityType: 'page',
+      entityId: 'arrival',
+      oldValue: period,
+      newValue: next,
+      details: { customFrom, customTo },
+    }, `arrival-period:${next}`, 2000);
     setPeriod(next);
     if (next === 'week') setCustomFrom(shiftIso(customTo, -6));
     if (next === 'month') setCustomFrom(shiftIso(customTo, -29));
+  };
+
+  const handleCustomFromChange = (nextFrom: string) => {
+    api.auditEvent('ARRIVAL_DATE_RANGE_CHANGE', {
+      entityType: 'page',
+      entityId: 'arrival',
+      oldValue: { from: customFrom, to: customTo },
+      newValue: { from: nextFrom, to: customTo },
+      details: { field: 'from' },
+    }, `arrival-from:${nextFrom}`, 2000);
+    setCustomFrom(nextFrom);
+    setPeriod('custom');
+  };
+
+  const handleCustomToChange = (nextTo: string) => {
+    const nextFrom = period !== 'custom' ? shiftIso(nextTo, period === 'week' ? -6 : -29) : customFrom;
+    api.auditEvent('ARRIVAL_DATE_RANGE_CHANGE', {
+      entityType: 'page',
+      entityId: 'arrival',
+      oldValue: { from: customFrom, to: customTo },
+      newValue: { from: nextFrom, to: nextTo },
+      details: { field: 'to', period },
+    }, `arrival-to:${nextTo}`, 2000);
+    setCustomTo(nextTo);
+    if (period !== 'custom') setCustomFrom(nextFrom);
+  };
+
+  const handleWsFilterChange = (nextWs: string) => {
+    api.auditEvent('ARRIVAL_WS_FILTER_CHANGE', {
+      entityType: 'page',
+      entityId: 'arrival',
+      oldValue: wsFilter,
+      newValue: nextWs,
+      details: { period, customFrom, customTo },
+    }, `arrival-ws:${nextWs}`, 2000);
+    setWsFilter(nextWs);
   };
 
   const segmentClass = (value: PeriodMode) => value === period ? 'arrival-segment arrival-segment-active' : 'arrival-segment';
@@ -373,19 +423,13 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = () => {
                 <input
                   type="date"
                   value={customFrom}
-                  onChange={(event) => {
-                    setCustomFrom(event.target.value);
-                    setPeriod('custom');
-                  }}
+                  onChange={(event) => handleCustomFromChange(event.target.value)}
                 />
                 <span>—</span>
                 <input
                   type="date"
                   value={customTo}
-                  onChange={(event) => {
-                    setCustomTo(event.target.value);
-                    if (period !== 'custom') setCustomFrom(shiftIso(event.target.value, period === 'week' ? -6 : -29));
-                  }}
+                  onChange={(event) => handleCustomToChange(event.target.value)}
                 />
               </div>
             </div>
@@ -395,7 +439,7 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = () => {
             <span>КАТЕГОРИЯ W/S</span>
             <div className="arrival-chip-list">
               {wsOptions.map((ws) => (
-                <button key={ws} onClick={() => setWsFilter(ws)} className={chipClass(ws)}>
+                <button key={ws} onClick={() => handleWsFilterChange(ws)} className={chipClass(ws)}>
                   {ws === 'ALL' ? 'Все W/S' : ws}
                 </button>
               ))}

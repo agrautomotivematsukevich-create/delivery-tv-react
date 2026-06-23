@@ -126,6 +126,20 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   const handleSubmit = async () => {
     if (!isFormValid()) return;
+    const attemptedActionType = isLocalManual ? `${action.type}_manual_${manualTime}` : action.type;
+    api.auditEvent(action.type === 'start' ? 'UNLOAD_START_CLICK' : 'UNLOAD_END_CLICK', {
+      entityType: 'container',
+      entityId: action.id,
+      containerNo: action.id,
+      sheetDate: action.sheetDate || '',
+      details: {
+        actionType: attemptedActionType,
+        manual: isLocalManual,
+        zone: zone || '',
+        hasPhoto1: Boolean(photo1),
+        hasPhoto2: Boolean(photo2),
+      },
+    }, `action-submit:${action.id}:${attemptedActionType}`, 2000);
 
     if (!isOnline) {
       if (!isLocalManual) {
@@ -135,7 +149,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         return;
       }
 
-      const actionType = isLocalManual ? `${action.type}_manual_${manualTime}` : action.type;
+      const actionType = attemptedActionType;
       const selectedZone = zone || '';
       await offlineQueue.enqueueTaskAction({ id: action.id, act: actionType, op: user.name, zone: selectedZone, date: action.sheetDate });
       setUploadStatus({ state: 'queued' });
@@ -148,18 +162,33 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       setUploadStatus({ state: 'uploading', step: 'Отправка фото...', progress: 10 });
       let urlGen = '', urlSeal = '', urlEmpty = '';
 
-      const actionType = isLocalManual ? `${action.type}_manual_${manualTime}` : action.type;
+      const actionType = attemptedActionType;
       const selectedZone = zone || '';
 
       if (!isLocalManual) {
         if (isStart) {
           setUploadStatus({ state: 'uploading', step: 'Загрузка фото 1 из 2...', progress: 30 });
-          urlGen = photo1 ? await api.uploadPhoto(photo1.data, photo1.mime, photo1.name) : '';
+          urlGen = photo1 ? await api.uploadPhoto(photo1.data, photo1.mime, photo1.name, {
+            containerId: action.id,
+            photoType: 'container',
+            sheetDate: action.sheetDate || '',
+            actionType,
+          }) : '';
           setUploadStatus({ state: 'uploading', step: 'Загрузка фото 2 из 2...', progress: 60 });
-          urlSeal = photo2 ? await api.uploadPhoto(photo2.data, photo2.mime, photo2.name) : '';
+          urlSeal = photo2 ? await api.uploadPhoto(photo2.data, photo2.mime, photo2.name, {
+            containerId: action.id,
+            photoType: 'seal',
+            sheetDate: action.sheetDate || '',
+            actionType,
+          }) : '';
         } else {
           setUploadStatus({ state: 'uploading', step: 'Загрузка фото...', progress: 40 });
-          if (photo1) urlEmpty = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name);
+          if (photo1) urlEmpty = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name, {
+            containerId: action.id,
+            photoType: 'unloaded',
+            sheetDate: action.sheetDate || '',
+            actionType,
+          });
         }
       }
 

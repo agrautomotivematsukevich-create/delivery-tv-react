@@ -115,7 +115,10 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
       const p = photos[i];
       if (p) {
         setUploadStatus(`${t.msg_uploading} (${i + 1}/${photos.filter(x => x).length})`);
-        const url = await api.uploadPhoto(p.data, p.mime, p.name);
+        const url = await api.uploadPhoto(p.data, p.mime, p.name, {
+          containerId: selectedId,
+          photoType: 'issue',
+        });
         uploadedUrls.push(url);
       } else {
         uploadedUrls.push("");

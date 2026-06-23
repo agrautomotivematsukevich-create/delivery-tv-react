@@ -224,7 +224,36 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
     return Math.round(getTotalDowntime() / zoneStats.length);
   };
 
+  const handleDateChange = (nextDate: string) => {
+    api.auditEvent('DOWNTIME_DATE_CHANGE', {
+      entityType: 'page',
+      entityId: 'downtime',
+      oldValue: date,
+      newValue: nextDate,
+      details: { from: date, to: nextDate },
+    }, `downtime-date:${nextDate}`, 2000);
+    setDate(nextDate);
+  };
+
+  const handleZoneToggle = (zone: string) => {
+    const nextZone = selectedZone === zone ? null : zone;
+    api.auditEvent('DOWNTIME_ZONE_TOGGLE', {
+      entityType: 'zone',
+      entityId: zone,
+      oldValue: selectedZone || '',
+      newValue: nextZone || '',
+      details: { selected: Boolean(nextZone) },
+    }, `downtime-zone:${zone}:${Boolean(nextZone)}`, 2000);
+    setSelectedZone(nextZone);
+  };
+
   const exportToCSV = () => {
+    api.auditEvent('DOWNTIME_EXPORT_CSV', {
+      entityType: 'page',
+      entityId: 'downtime',
+      sheetDate: date,
+      details: { zones: zoneStats.length, activeIdles: activeIdles.length },
+    }, `downtime-export:${date}`, 5000);
     let csv = 'Зона,Контейнер (окончание),Время окончания,Следующий контейнер,Время начала,Простой (мин)\n';
     
     zoneStats.forEach(stat => {
@@ -270,7 +299,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
               <input 
                 type="date" 
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => handleDateChange(e.target.value)}
                 className="bg-transparent text-white font-mono text-lg outline-none border-none [color-scheme:dark]"
               />
             </div>
@@ -483,7 +512,7 @@ const ZoneDowntimeView: React.FC<ZoneDowntimeViewProps> = ({ t }) => {
                 >
                   <div 
                     className="p-5 flex items-center justify-between cursor-pointer"
-                    onClick={() => setSelectedZone(selectedZone === stat.zone ? null : stat.zone)}
+                    onClick={() => handleZoneToggle(stat.zone)}
                   >
                     <div className="flex items-center gap-4">
                       <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-xl ${
