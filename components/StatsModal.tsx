@@ -45,6 +45,8 @@ const StatsModal: React.FC<StatsModalProps> = ({ onClose, t }) => {
           {/* Кнопка закрытия: увеличена зона клика и исправлено положение */}
           <button 
             onClick={onClose} 
+            aria-label="Закрыть статистику"
+            title="Закрыть"
             className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center transition-all active:scale-90"
           >
             <X size={24} className="text-white" />

@@ -175,6 +175,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
                   placeholder="Введите имя"
                   value={firstName}
                   onChange={e => setFirstName(e.target.value)}
+                  aria-label="Имя"
                   className={inputClass}
                   autoComplete="given-name"
                 />
@@ -188,6 +189,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
                   placeholder="Введите фамилию"
                   value={lastName}
                   onChange={e => setLastName(e.target.value)}
+                  aria-label="Фамилия"
                   className={inputClass}
                   autoComplete="family-name"
                 />
@@ -206,6 +208,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
               value={tabNumber}
               // Просто сохраняем введенное значение без фильтрации цифр
               onChange={(e) => setTabNumber(e.target.value)}
+              aria-label="Табельный номер или логин"
               className={inputClass}
               autoComplete="username"
             />
@@ -221,6 +224,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
               placeholder="Введите пароль"
               value={password}
               onChange={e => setPassword(e.target.value)}
+              aria-label="Пароль"
               className={inputClass}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             />

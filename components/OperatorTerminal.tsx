@@ -232,12 +232,14 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
           </div>
           <div className="flex items-center gap-2">
             {hasActive && (
-              <button onClick={scrollToActive} title="Перейти к активному"
+              <button onClick={scrollToActive} title="Перейти к активному" aria-label="Перейти к активному заданию"
                 className="w-10 h-10 rounded-full bg-accent-green/15 border border-accent-green/30 hover:bg-accent-green/25 flex items-center justify-center transition-colors">
                 <ChevronUp size={16} className="text-accent-green" />
               </button>
             )}
             <button onClick={onClose}
+              aria-label="Закрыть терминал"
+              title="Закрыть"
               className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/20 flex items-center justify-center transition-colors">
               <X size={18} className="text-white/60" />
             </button>
@@ -250,9 +252,10 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
             <Search size={16} className="text-white/50 shrink-0" />
             <input type="text" value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Поиск по ID или типу..."
+              aria-label="Поиск по ID или типу"
               className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-white/50" />
             {search && (
-              <button onClick={() => setSearch('')} className="text-white/50 hover:text-white transition-colors">
+              <button onClick={() => setSearch('')} aria-label="Очистить поиск" title="Очистить" className="text-white/50 hover:text-white transition-colors">
                 <X size={14} />
               </button>
             )}
@@ -346,6 +349,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
 
                       {task.phone && (
                         <a href={`tel:${task.phone}`}
+                          aria-label={`Позвонить ${task.phone}`}
                           className="w-11 h-11 flex items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors">
                           <Phone size={16} className="text-accent-green" />
                         </a>

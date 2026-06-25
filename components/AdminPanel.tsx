@@ -62,7 +62,7 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[200] flex flex-col items-center p-6 bg-[#191B25] overflow-y-auto w-full">
       <div className="w-full max-w-3xl flex flex-col gap-6 relative mt-10">
-        <button onClick={onClose} className="absolute right-0 top-0 text-white/40 hover:text-white transition-colors">
+        <button onClick={onClose} aria-label="Закрыть панель администратора" title="Закрыть" className="absolute right-0 top-0 text-white/40 hover:text-white transition-colors">
           <XCircle className="w-8 h-8" />
         </button>
 
@@ -103,6 +103,7 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                     <select 
                       value={roles[u.login] || u.role || 'OPERATOR'}
                       onChange={(e) => handleRoleChange(u.login, e.target.value)}
+                      aria-label={`Роль пользователя ${u.login}`}
                       className="bg-[#191B25] border border-white/20 rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:border-accent-blue outline-none"
                     >
                       <option value="OPERATOR">OPERATOR</option>

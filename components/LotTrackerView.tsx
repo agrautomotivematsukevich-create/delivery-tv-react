@@ -93,6 +93,7 @@ const LotTrackerView: React.FC<Props> = ({ user, t }) => {
                 value={searchLot}
                 onChange={e => setSearchLot(e.target.value.toUpperCase())}
                 onKeyDown={e => e.key === 'Enter' && doSearch(searchLot)}
+                aria-label="Номер лота"
                 placeholder="Введите номер лота..."
                 className="bg-transparent text-white text-sm font-bold outline-none w-full placeholder:text-white/50"
               />

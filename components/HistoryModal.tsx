@@ -68,6 +68,8 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
             {selectedIssue && (
               <button 
                 onClick={handleBack}
+                aria-label="Вернуться к списку"
+                title="Назад"
                 className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors border border-white/5"
               >
                 <ArrowLeft className="w-5 h-5 text-white" />
@@ -79,6 +81,8 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
           </div>
           <button 
             onClick={onClose}
+            aria-label="Закрыть историю"
+            title="Закрыть"
             className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/20 flex items-center justify-center transition-colors text-white"
           >
             <X size={24} />
@@ -202,7 +206,12 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ onClose, t }) => {
             className="max-w-full max-h-full rounded-lg shadow-2xl object-contain cursor-default" 
             onClick={(e) => e.stopPropagation()} 
           />
-          <button className="absolute top-4 right-4 text-white/50 hover:text-white p-2 transition-colors">
+          <button
+            onClick={() => setLightboxImg(null)}
+            aria-label="Закрыть просмотр фото"
+            title="Закрыть"
+            className="absolute top-4 right-4 text-white/50 hover:text-white p-2 transition-colors"
+          >
             <X size={32} />
           </button>
         </div>

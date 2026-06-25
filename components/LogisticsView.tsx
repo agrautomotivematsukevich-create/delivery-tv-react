@@ -147,6 +147,7 @@ const LogisticsView: React.FC<LogisticsViewProps> = ({ t }) => {
               <input 
                 type="date" 
                 value={date}
+                aria-label="Дата плана"
                 onChange={(e) => handleDateChange(e.target.value)}
                 className="bg-transparent text-white font-mono text-lg outline-none border-none [color-scheme:dark] p-2 w-full lg:w-auto"
               />

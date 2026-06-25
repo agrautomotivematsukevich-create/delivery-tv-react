@@ -40,6 +40,15 @@ const Header: React.FC<HeaderProps> = ({
       <div className="flex justify-between items-center w-full md:w-auto min-w-0">
         <div 
           onClick={onStatsClick}
+          role="button"
+          tabIndex={0}
+          aria-label="Открыть статистику"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onStatsClick();
+            }
+          }}
           className="flex items-center gap-3 cursor-pointer group min-w-0"
         >
           <img src="/agr-logo-white.svg" alt="AGR" className="h-7 md:h-8 opacity-80 group-hover:opacity-100 transition-opacity" />
@@ -61,6 +70,7 @@ const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/5 overflow-x-auto no-scrollbar max-w-full w-full md:w-auto">
              <button 
                onClick={() => setView('dashboard')}
+               aria-label={t.nav_dashboard}
                className={`flex min-h-10 items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'dashboard' ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
              >
                <LayoutDashboard size={14} />
@@ -68,6 +78,7 @@ const Header: React.FC<HeaderProps> = ({
              </button>
              <button 
                onClick={() => setView('history')}
+               aria-label={t.nav_history}
                className={`flex min-h-10 items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'history' ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
              >
                <Archive size={14} />
@@ -77,6 +88,7 @@ const Header: React.FC<HeaderProps> = ({
              {(user.role === 'LOGISTIC' || user.role === 'ADMIN') && (
                <button 
                  onClick={() => setView('downtime')}
+                 aria-label={t.nav_downtime}
                  className={`flex min-h-10 items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'downtime' ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
                >
                  <TrendingDown size={14} />
@@ -86,6 +98,7 @@ const Header: React.FC<HeaderProps> = ({
              {(user.role === 'LOGISTIC' || user.role === 'ADMIN') && (
                <button 
                  onClick={() => setView('arrival')}
+                 aria-label={t.nav_arrival}
                  className={`flex min-h-10 items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'arrival' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/20' : 'text-white/60 hover:text-white'}`}
                >
                  <Timer size={14} />
@@ -96,6 +109,7 @@ const Header: React.FC<HeaderProps> = ({
              {(user.role === 'LOGISTIC' || user.role === 'ADMIN') && (
                <button 
                  onClick={() => setView('logistics')}
+                 aria-label={t.nav_plan}
                  className={`flex min-h-10 items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'logistics' ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
                >
                  <Truck size={14} />
@@ -109,6 +123,7 @@ const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-2 ml-auto md:ml-0">
            <button 
              onClick={onToggleLang}
+             aria-label="Сменить язык"
              className="flex min-h-10 items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white/60 hover:text-white bg-white/5 md:bg-transparent"
            >
              <Globe size={16} />
@@ -119,6 +134,7 @@ const Header: React.FC<HeaderProps> = ({
              <>
                <button 
                   onClick={onTerminalClick}
+                  aria-label={t.drv_title}
                   className="flex min-h-10 items-center gap-2 px-4 py-2 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-wider text-accent-blue bg-accent-blue/10 border border-accent-blue/20"
                >
                  <ScanBarcode size={16} />
@@ -127,6 +143,8 @@ const Header: React.FC<HeaderProps> = ({
 
                <button 
                   onClick={onIssueClick}
+                  aria-label={t.issue_title}
+                  title={t.issue_title}
                   className="min-h-10 min-w-10 p-2 rounded-xl text-accent-red bg-accent-red/10 md:bg-transparent border border-accent-red/20 md:border-transparent"
                >
                  <AlertTriangle size={18} />
@@ -140,6 +158,8 @@ const Header: React.FC<HeaderProps> = ({
           {user ? (
              <button 
                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+               aria-label="Открыть меню пользователя"
+               aria-expanded={isDropdownOpen}
                className="flex min-h-10 items-center gap-2 pl-1 pr-3 py-1.5 rounded-xl border border-white/10 bg-white/5"
              >
                <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center text-white">
