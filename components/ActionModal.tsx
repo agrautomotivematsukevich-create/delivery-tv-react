@@ -331,7 +331,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
         {isStart && (
           <div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {AVAILABLE_ZONES.map(z => (
                 <button key={z} onClick={() => setZone(z)} className={`min-h-11 py-3 rounded-xl font-black text-xs border transition-all ${zone === z ? 'bg-[#1E7D7D] text-white' : 'bg-white/5 text-white/40 border-transparent'}`}>{z}</button>
               ))}
