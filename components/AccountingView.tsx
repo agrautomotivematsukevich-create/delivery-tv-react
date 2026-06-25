@@ -45,6 +45,7 @@ const StatusBadge: React.FC<{
       <button
         type="button"
         onClick={onClick}
+        aria-label={`${system ? `${system}: ` : ''}${currentConfig.label}`}
         className={`flex min-h-[42px] w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-[11px] font-bold transition-all hover:opacity-90 active:scale-[0.98] ${currentConfig.bg} ${currentConfig.text} ${currentConfig.border}`}
       >
         {currentConfig.icon}

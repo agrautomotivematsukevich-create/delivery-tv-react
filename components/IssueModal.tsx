@@ -145,7 +145,7 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
         
         <div className="flex items-center justify-between">
           <h2 className="text-xl sm:text-2xl font-extrabold text-white uppercase tracking-wider">{t.issue_title}</h2>
-          <button onClick={onClose} className="min-h-10 min-w-10 rounded-xl bg-white/5 text-white/40 hover:text-white transition-colors flex items-center justify-center">
+          <button onClick={onClose} aria-label="Закрыть форму проблемы" title="Закрыть" className="min-h-10 min-w-10 rounded-xl bg-white/5 text-white/40 hover:text-white transition-colors flex items-center justify-center">
             <X size={24} />
           </button>
         </div>
@@ -156,6 +156,7 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
           <select 
             value={selectedId}
             onChange={(e) => setSelectedId(e.target.value)}
+            aria-label="Container ID"
             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all appearance-none"
             disabled={loadingIds}
           >
@@ -173,6 +174,7 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
              value={description}
              onChange={e => setDescription(e.target.value)}
              placeholder={t.issue_desc_ph}
+             aria-label="Description"
              className="w-full h-32 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-white/30 focus:bg-accent-blue/5 focus:border-accent-blue outline-none transition-all resize-none"
            />
         </div>
@@ -185,6 +187,15 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
                 <div 
                   key={idx}
                   onClick={() => !processingPhoto && triggerFile(idx)}
+                  role="button"
+                  tabIndex={processingPhoto ? -1 : 0}
+                  aria-label={`Добавить фото ${idx + 1}`}
+                  onKeyDown={(e) => {
+                    if (!processingPhoto && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault();
+                      triggerFile(idx);
+                    }
+                  }}
                   className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer relative overflow-hidden transition-all ${
                     p ? 'border-accent-green bg-black' : 'border-white/20 hover:bg-white/5 hover:border-accent-blue'
                   } ${processingPhoto ? 'opacity-60 cursor-wait' : ''}`}
@@ -195,6 +206,8 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
                        <CheckCircle className="relative z-10 text-accent-green w-8 h-8 drop-shadow-lg" />
                        <button 
                          onClick={(e) => removePhoto(idx, e)}
+                         aria-label={`Удалить фото ${idx + 1}`}
+                         title="Удалить фото"
                          className="absolute top-1 right-1 bg-black/50 rounded-full p-1 hover:bg-red-500/80 transition-colors z-20"
                        >
                          <X size={12} className="text-white" />
@@ -214,6 +227,7 @@ const IssueModal: React.FC<IssueModalProps> = ({ onClose, user, t }) => {
              hidden 
              accept="image/*" 
              capture="environment" 
+             aria-label="Загрузить фото проблемы"
              onChange={handleFileChange} 
            />
         </div>

@@ -87,6 +87,7 @@ const TVLoginScreen: React.FC<TVLoginScreenProps> = ({ onSuccess }) => {
                 value={login}
                 onChange={(e) => setLogin(e.target.value)}
                 onKeyDown={handleKeyDown}
+                aria-label="Логин"
                 placeholder="Логин"
                 autoFocus
                 className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white placeholder-white/25 text-sm outline-none focus:border-blue-500/40 focus:bg-white/[0.06] transition-all duration-200"
@@ -98,6 +99,7 @@ const TVLoginScreen: React.FC<TVLoginScreenProps> = ({ onSuccess }) => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={handleKeyDown}
+                aria-label="Пароль"
                 placeholder="Пароль"
                 className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white placeholder-white/25 text-sm outline-none focus:border-blue-500/40 focus:bg-white/[0.06] transition-all duration-200"
               />

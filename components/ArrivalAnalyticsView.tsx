@@ -423,12 +423,14 @@ const ArrivalAnalyticsView: React.FC<ArrivalAnalyticsViewProps> = () => {
                 <input
                   type="date"
                   value={customFrom}
+                  aria-label="Дата начала периода"
                   onChange={(event) => handleCustomFromChange(event.target.value)}
                 />
                 <span>—</span>
                 <input
                   type="date"
                   value={customTo}
+                  aria-label="Дата окончания периода"
                   onChange={(event) => handleCustomToChange(event.target.value)}
                 />
               </div>

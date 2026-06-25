@@ -103,6 +103,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
         <input 
           type="date" 
           value={date}
+          aria-label={t.hist_select_date}
           onChange={(e) => handleDateChange(e.target.value)}
           className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white font-mono text-lg outline-none focus:border-accent-blue transition-colors [color-scheme:dark]"
         />
@@ -186,6 +187,15 @@ const HistoryView: React.FC<HistoryViewProps> = ({ t }) => {
                                   key={i} 
                                   className="aspect-square bg-black rounded-xl overflow-hidden border border-white/10 cursor-pointer"
                                   onClick={() => handlePhotoOpen(selectedTask, url, i)}
+                                  role="button"
+                                  tabIndex={0}
+                                  aria-label={`Открыть фото ${i + 1}`}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      handlePhotoOpen(selectedTask, url, i);
+                                    }
+                                  }}
                                 >
                                    <img src={getDriveImgSrc(url, 'w300')} className="w-full h-full object-cover" />
                                 </div>

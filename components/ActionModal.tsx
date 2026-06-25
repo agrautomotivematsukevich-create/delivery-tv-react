@@ -218,6 +218,15 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   const PhotoPreview: React.FC<{ src: string | null; label: string; onTap: () => void; icon: React.ReactNode }> = ({ src, label, onTap, icon }) => (
     <div
       onClick={() => !isSubmitting && !processingPhoto && onTap()}
+      role="button"
+      tabIndex={isSubmitting || processingPhoto ? -1 : 0}
+      aria-label={label}
+      onKeyDown={(e) => {
+        if (!isSubmitting && !processingPhoto && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onTap();
+        }
+      }}
       className={`relative border-2 border-dashed rounded-2xl overflow-hidden transition-all cursor-pointer group ${
         src ? 'border-emerald-500 bg-black' : 'border-white/10 hover:border-accent-blue bg-white/3'
       } ${(isSubmitting || processingPhoto) ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -225,7 +234,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
     >
       {src ? (
         <>
-          <img src={src} alt="" className="w-full h-full object-cover" />
+          <img src={src} alt={label} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
             <CheckCircle className="text-emerald-400 w-8 h-8 opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
           </div>
@@ -332,7 +341,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
         {isLocalManual ? (
           <div className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-6 flex flex-col items-center">
-            <input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)} className="bg-transparent text-white text-4xl sm:text-5xl font-mono text-center outline-none" />
+            <input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)} aria-label="Время действия" className="bg-transparent text-white text-4xl sm:text-5xl font-mono text-center outline-none" />
           </div>
         ) : (
           <div className={`grid gap-3 ${isStart ? 'grid-cols-2' : 'grid-cols-1'}`}>
@@ -348,8 +357,8 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           <button onClick={onClose} className="text-white/30 py-3 text-[9px] font-black uppercase">Отмена</button>
         </div>
 
-        <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleFileChange} />
-        <input type="file" ref={cameraInputRef} hidden accept="image/*" capture="environment" onChange={handleFileChange} />
+        <input type="file" ref={fileInputRef} hidden accept="image/*" aria-label="Выбрать фото из галереи" onChange={handleFileChange} />
+        <input type="file" ref={cameraInputRef} hidden accept="image/*" capture="environment" aria-label="Сделать фото камерой" onChange={handleFileChange} />
       </div>
 
       {showPhotoMenu && (
