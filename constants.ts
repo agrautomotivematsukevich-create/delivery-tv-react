@@ -1,7 +1,13 @@
 import { Lang, TranslationSet } from "./types";
 
+function isDevTvPreviewWithoutBackend(): boolean {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  return params.get('tv') === '1' && params.get('preview') === '1';
+}
+
 export const SCRIPT_URL: string = import.meta.env.VITE_SCRIPT_URL || (() => {
-  if (import.meta.env.DEV) console.error('[config] VITE_SCRIPT_URL is not set or empty — all API calls will fail');
+  if (import.meta.env.DEV && !isDevTvPreviewWithoutBackend()) console.error('[config] VITE_SCRIPT_URL is not set or empty — all API calls will fail');
   return '';
 })();
 

@@ -19,6 +19,7 @@ export interface PendingUser {
 
 export interface Task {
   id: string;
+  lotNo?: string;
   type?: string;
   pallets?: string;
   phone?: string;
