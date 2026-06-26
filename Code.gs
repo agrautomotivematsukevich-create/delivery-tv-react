@@ -96,6 +96,9 @@ var ROUTES = {
   "tv_dashboard":          { handler: handleTvDashboard,        auth: "tv",  lock: false },
   "tv_lot_tracker":        { handler: handleTvLotTracker,       auth: "tv",  lock: false },
 
+  // ── Public read-only TV data, no user session and no mutations ──
+  "tv_lot_progress":       { handler: handleTvLotProgress,      auth: false, lock: false },
+
   // ── Authenticated reads (user token required) ──
   "":                      { handler: handleReadComplex,        auth: false, lock: false },
   "get_operator_tasks":    { handler: handleGetStats,           auth: true,  lock: false },
@@ -1090,6 +1093,98 @@ function handleTvDashboard(params, ss) {
     shiftCounts: { morning: shiftMorning, evening: shiftEvening, night: shiftNight },
     onTerritory: onTerritory, activeList: activeList
   });
+}
+
+var TV_LOT_PROGRESS_DEFAULT_DAYS = 7;
+var TV_LOT_PROGRESS_MAX_DAYS = 14;
+var TV_LOT_NO_PATTERN = /^43115-[A-Z0-9]+$/;
+
+function getRecentOperationalSheetNames_(days) {
+  var info = getOperationalDateInfo();
+  var parts = info.operationalDate.split("-");
+  var base = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  var result = [];
+
+  for (var i = 0; i < days; i++) {
+    var d = new Date(base.getTime());
+    d.setDate(base.getDate() - i);
+    result.push(Utilities.formatDate(d, TIMEZONE, "dd.MM"));
+  }
+
+  return result;
+}
+
+function handleTvLotProgress(params, ss) {
+  var days = parseInt(params.days, 10);
+  if (!isFinite(days) || days <= 0) days = TV_LOT_PROGRESS_DEFAULT_DAYS;
+  days = Math.min(Math.max(days, 1), TV_LOT_PROGRESS_MAX_DAYS);
+
+  var cacheKey = "tv_lot_progress_" + getTodaySheetName() + "_" + days;
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(cacheKey);
+  if (cached) {
+    return ContentService.createTextOutput(cached)
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var sheetNames = getRecentOperationalSheetNames_(days);
+  var planRows = [];
+  var tasks = [];
+
+  for (var dayIndex = 0; dayIndex < sheetNames.length; dayIndex++) {
+    var sheetName = sheetNames[dayIndex];
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) continue;
+
+    var lr = sheet.getLastRow();
+    if (lr < 5) continue;
+
+    var rowCount = lr - 4;
+    var rows = sheet.getRange(5, 1, rowCount, 16).getDisplayValues();
+    var dayRank = sheetNames.length - dayIndex;
+
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var lot = (row[1] || "").toString().trim().toUpperCase();
+      var id = (row[4] || "").toString().trim();
+      if (!id || !TV_LOT_NO_PATTERN.test(lot)) continue;
+
+      var rowIndex = i + 5;
+      var status = deriveStatus(row[7], row[8]);
+      var timeDisplay = row[8] || row[7] || row[6] || "";
+
+      planRows.push({
+        rowIndex: rowIndex,
+        index: row[0],
+        lot: lot,
+        ws: row[2],
+        pallets: row[3],
+        id: id,
+        phone: "",
+        eta: row[6],
+        sheetDate: sheetName,
+        sequence: dayRank * 100000 + rowIndex
+      });
+
+      tasks.push({
+        id: id,
+        type: row[2],
+        pallets: row[3],
+        eta: row[6],
+        status: status,
+        time: timeDisplay,
+        start_time: row[7],
+        end_time: row[8],
+        zone: row[10] || "",
+        sheet_date: sheetName
+      });
+    }
+  }
+
+  var payload = JSON.stringify({ planRows: planRows, tasks: tasks });
+  try { cache.put(cacheKey, payload, 60); } catch (e) {}
+  return ContentService.createTextOutput(payload)
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 var LOT_TRACKER_MAX_RESULTS = 100;

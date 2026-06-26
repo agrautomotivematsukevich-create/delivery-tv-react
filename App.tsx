@@ -96,21 +96,25 @@ function App() {
   const navigate = useNavigate();
 
   // Мемоизируем URL-параметры — читаем один раз, не пересоздаём на каждый рендер
-  const { isTV, isTV2, isTV3, tv2Lot, tv1ScreenOverride, tv1RotateMs, isTv1Preview } = useMemo(() => {
+  const { isTV, isTV2, isTV3, tv2Lot, tv1ScreenOverride, tv1RotateMs, isTv1Preview, isTv1ReadOnlyScreen } = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     const tvMode = params.get('tv');
+    const screenParam = params.get('screen');
+    const tv1Screen = readTv1ScreenOverride(screenParam);
     return {
       isTV: tvMode === '1',
       isTV2: tvMode === '2',
       isTV3: tvMode === '3',
       tv2Lot: params.get('lot') || '',
-      tv1ScreenOverride: readTv1ScreenOverride(params.get('screen')),
+      tv1ScreenOverride: tv1Screen,
       tv1RotateMs: readTv1RotateMs(params.get('rotateMs')),
       isTv1Preview: import.meta.env.DEV && tvMode === '1' && params.get('preview') === '1',
+      isTv1ReadOnlyScreen: tvMode === '1' && (!screenParam || tv1Screen !== null),
     };
   }, []);
   const isAnyTV = isTV || isTV2 || isTV3;
-  const needsTvLogin = isAnyTV && !user && !isTv1Preview;
+  const isTv1ReadOnlyAccess = isTv1ReadOnlyScreen && !isTv1Preview;
+  const needsTvLogin = isAnyTV && !user && !isTv1Preview && !isTv1ReadOnlyScreen;
 
   const [isAppReady, setIsAppReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -177,7 +181,9 @@ function App() {
 
       // Single HTTP call: bundle auto-falls back to 2 parallel calls if backend
       // route is not deployed yet (api.fetchDashboardBundle handles that).
-      const bundle = await api.fetchDashboardBundle(todayStr).catch(() => null);
+      const bundle = isTv1ReadOnlyAccess
+        ? { dashboard: await api.fetchDashboard().catch(() => null), tasks: [] as Task[] }
+        : await api.fetchDashboardBundle(todayStr).catch(() => null);
       const data = bundle?.dashboard ?? null;
       const tasks = bundle?.tasks ?? null;
       const carryoverDashboard = data ? getNightCarryoverDashboard(lastDashboardRef.current, data) : null;
@@ -226,7 +232,7 @@ function App() {
       setIsLoading(false);
       setIsTasksLoading(false);
     }
-  }, [setDashboardData, setIsOffline]);
+  }, [isTv1ReadOnlyAccess, setDashboardData, setIsOffline]);
 
   // 🚀 GATE 1: Первичная загрузка
   useEffect(() => {
@@ -259,7 +265,7 @@ function App() {
   useEffect(() => {
     if (location.pathname !== '/' || isTV2) return;
     if (isTv1Preview) return;
-    if ((isTV || isTV3) && !user) return;
+    if (((isTV && !isTv1ReadOnlyAccess) || isTV3) && !user) return;
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
@@ -281,12 +287,12 @@ function App() {
       stopPolling();
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [refreshDashboard, location.pathname, isTV2, isTV, isTV3, user, isTv1Preview]);
+  }, [refreshDashboard, location.pathname, isTV2, isTV, isTV3, user, isTv1Preview, isTv1ReadOnlyAccess]);
 
   useEffect(() => {
     if (isTV2) return;
     if (isTv1Preview) return;
-    if ((isTV || isTV3) && !user) return;
+    if (((isTV && !isTv1ReadOnlyAccess) || isTV3) && !user) return;
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const scheduleBoundaryRefresh = () => {
@@ -301,7 +307,7 @@ function App() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [refreshDashboard, isTV2, isTV, isTV3, user, isTv1Preview]);
+  }, [refreshDashboard, isTV2, isTV, isTV3, user, isTv1Preview, isTv1ReadOnlyAccess]);
 
   const handleTaskActionRequest = (task: Task, actionType: 'start' | 'finish') => {
     return new Promise<TaskActionResult>((resolve, reject) => {
@@ -384,7 +390,7 @@ function App() {
 
   const tv1Content = tv1Screen === 'lots' ? (
     <Suspense fallback={<ViewFallback />}>
-      <TvLotProgressView allTasks={allTasks} isTasksLoading={isTasksLoading} preview={isTv1Preview} />
+      <TvLotProgressView allTasks={allTasks} isTasksLoading={isTasksLoading} preview={isTv1Preview} readOnly={isTv1ReadOnlyAccess} />
     </Suspense>
   ) : lazyRoutes;
 

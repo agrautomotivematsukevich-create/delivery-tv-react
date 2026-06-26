@@ -433,6 +433,23 @@ export const api = {
     });
   },
 
+  fetchTvLotProgress: async (days = 7): Promise<{ planRows: Array<PlanRow & { sheetDate?: string; sequence?: number }>; tasks: Task[] }> => {
+    return cachedFetch(`tv_lot_progress_${days}`, 60000, async () => {
+      const res = await fetchWithTimeout(SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ mode: "tv_lot_progress", days, ...getAuditClientPayload() }),
+        timeout: 60000,
+      });
+      const data = await res.json();
+      if (data?.error) throw new Error(data.error);
+      return {
+        planRows: Array.isArray(data?.planRows) ? data.planRows : [],
+        tasks: Array.isArray(data?.tasks) ? data.tasks : [],
+      };
+    });
+  },
+
   fetchFullPlan: async (dateStr: string): Promise<PlanRow[]> => {
     const res = await authRead("get_full_plan", { date: dateStr });
     if (!res) return [];

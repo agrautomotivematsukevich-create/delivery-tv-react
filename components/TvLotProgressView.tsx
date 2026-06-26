@@ -8,6 +8,7 @@ interface Props {
   allTasks: Task[];
   isTasksLoading: boolean;
   preview?: boolean;
+  readOnly?: boolean;
 }
 
 type LotStatus = 'not_started' | 'low' | 'progress' | 'done';
@@ -352,7 +353,7 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
     });
 };
 
-const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
+const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false }) => {
   const [planRows, setPlanRows] = useState<LotPlanRow[]>([]);
   const [taskRows, setTaskRows] = useState<Task[]>([]);
   const [loading, setLoading] = useState(!preview);
@@ -384,6 +385,18 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
     if (preview) return;
     if (showLoader) setLoading(true);
     try {
+      if (readOnly) {
+        const data = await api.fetchTvLotProgress(LOT_LOOKBACK_DAYS);
+        setPlanRows(data.planRows.map((row, rowOrder) => ({
+          ...row,
+          sheetDate: row.sheetDate || '',
+          sequence: Number(row.sequence) || rowOrder,
+        })));
+        setTaskRows(data.tasks);
+        setError(false);
+        return;
+      }
+
       const sheetNames = getRecentOperationalSheetNames();
       const [planResults, taskResults] = await Promise.all([
         Promise.all(sheetNames.map((sheetDate) => api.fetchFullPlan(sheetDate).catch(() => [] as PlanRow[]))),
@@ -413,7 +426,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
     } finally {
       setLoading(false);
     }
-  }, [preview]);
+  }, [preview, readOnly]);
 
   useEffect(() => {
     if (preview) {
