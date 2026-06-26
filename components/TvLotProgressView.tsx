@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 import { PlanRow, Task } from '../types';
-import { getOperationalSheetName } from '../utils/time';
+import { getOperationalDateInfo } from '../utils/time';
 
 interface Props {
   allTasks: Task[];
@@ -12,6 +12,11 @@ interface Props {
 
 type LotStatus = 'not_started' | 'low' | 'progress' | 'done';
 
+interface LotPlanRow extends PlanRow {
+  sheetDate: string;
+  sequence: number;
+}
+
 interface LotProgress {
   lot: string;
   ws: string[];
@@ -19,14 +24,15 @@ interface LotProgress {
   total: number;
   inProgress: number;
   notStarted: number;
+  unfinished: number;
   percent: number;
+  lastSequence: number;
   status: LotStatus;
 }
 
 type RowTone = {
   accent: string;
   color: string;
-  mutedColor: string;
   bg: string;
   border: string;
   badgeBg: string;
@@ -42,70 +48,30 @@ type PreviewLotFixture = {
   total: number;
   done: number;
   active?: number;
+  dayOffset?: number;
 };
 
 const LOT_PLAN_REFRESH_MS = 180000;
-const MIN_ROWS_PER_LOT = 4;
-const MAX_VISIBLE_ACTIVE_LOTS = 8;
+const LOT_LOOKBACK_DAYS = 7;
+const MIN_ROWS_PER_LOT = 3;
+const MAX_DESKTOP_ACTIVE_LOTS = 6;
+const MAX_COMPACT_ACTIVE_LOTS = 5;
 const MAX_DONE_LOTS = 3;
 const LOT_NO_PATTERN = /^43115-[A-Z0-9]+$/;
 
 const PREVIEW_LOT_FIXTURES: PreviewLotFixture[] = [
-  { lot: '43115-CT13J20260410', ws: ['Welding', 'Assembly'], total: 12, done: 5, active: 3 },
-  { lot: '43115-CT13J20260408', ws: 'Assembly', total: 13, done: 9, active: 2 },
-  { lot: '43115-CM32T20260306', ws: ['Paint', 'Welding'], total: 19, done: 14, active: 3 },
-  { lot: '43115-CT13J20260412', ws: 'Assembly', total: 17, done: 14, active: 1 },
-  { lot: '43115-CT13J20260413', ws: 'Paint', total: 11, done: 10, active: 1 },
-  { lot: '43115-CT13J20260414', ws: 'Welding', total: 14, done: 0 },
-  { lot: '43115-CM32T20260401', ws: 'Assembly', total: 8, done: 8 },
-  { lot: '43115-CM32T20260402', ws: 'Paint', total: 9, done: 9 },
-  { lot: '43115-CM32T20260403', ws: 'Welding', total: 10, done: 10 },
-  { lot: '43115-CM32T20260404', ws: 'Assembly', total: 7, done: 7 },
-  { lot: '43115-CT13J20260405', ws: 'Paint', total: 3, done: 1, active: 1 },
+  { lot: '43115-CT13J20260410', ws: ['Welding', 'Assembly'], total: 3, done: 1, active: 1, dayOffset: 0 },
+  { lot: '43115-CT13J20260408', ws: 'Assembly', total: 13, done: 9, active: 2, dayOffset: 0 },
+  { lot: '43115-CM32T20260306', ws: ['Paint', 'Welding'], total: 19, done: 14, active: 3, dayOffset: 1 },
+  { lot: '43115-CT13J20260412', ws: 'Assembly', total: 17, done: 14, active: 1, dayOffset: 2 },
+  { lot: '43115-CT13J20260413', ws: 'Paint', total: 11, done: 10, active: 1, dayOffset: 3 },
+  { lot: '43115-CT13J20260414', ws: 'Welding', total: 14, done: 0, dayOffset: 4 },
+  { lot: '43115-CM32T20260401', ws: 'Assembly', total: 8, done: 8, dayOffset: 0 },
+  { lot: '43115-CM32T20260402', ws: 'Paint', total: 9, done: 9, dayOffset: 1 },
+  { lot: '43115-CM32T20260403', ws: 'Welding', total: 10, done: 10, dayOffset: 2 },
+  { lot: '43115-CM32T20260404', ws: 'Assembly', total: 7, done: 7, dayOffset: 3 },
+  { lot: '43115-CT13J20260405', ws: 'Paint', total: 2, done: 1, active: 1, dayOffset: 0 },
 ];
-
-const PREVIEW_NOISE_ROWS: PlanRow[] = [
-  { rowIndex: 900, index: 900, lot: '4800169078 / 182402105', ws: 'Welding', pallets: '12/24', id: 'PREVIEW-NOISE-001', phone: '', eta: '15:00' },
-  { rowIndex: 901, index: 901, lot: '4800169078', ws: 'Assembly', pallets: '0/14', id: 'PREVIEW-NOISE-002', phone: '', eta: '15:10' },
-  { rowIndex: 902, index: 902, lot: '182402105', ws: 'Paint', pallets: '5/20', id: 'PREVIEW-NOISE-003', phone: '', eta: '15:20' },
-  { rowIndex: 903, index: 903, lot: '', ws: 'Paint', pallets: '5/20', id: 'PREVIEW-NOISE-004', phone: '', eta: '15:30' },
-];
-
-const makePreviewPlanRows = (): PlanRow[] => {
-  let rowIndex = 5;
-  let index = 1;
-  const rows = PREVIEW_LOT_FIXTURES.flatMap((fixture, lotIndex) => {
-    const wsList = Array.isArray(fixture.ws) ? fixture.ws : [fixture.ws];
-    return Array.from({ length: fixture.total }, (_, rowInLot) => ({
-      rowIndex: rowIndex++,
-      index: index++,
-      lot: fixture.lot,
-      ws: wsList[rowInLot % wsList.length],
-      pallets: '',
-      id: `PREVIEW-${String(lotIndex + 1).padStart(2, '0')}-${String(rowInLot + 1).padStart(3, '0')}`,
-      phone: '',
-      eta: `${String(8 + (lotIndex % 7)).padStart(2, '0')}:${String((rowInLot * 5) % 60).padStart(2, '0')}`,
-    }));
-  });
-  return [...rows, ...PREVIEW_NOISE_ROWS];
-};
-
-const makePreviewTasks = (): Task[] => (
-  PREVIEW_LOT_FIXTURES.flatMap((fixture, lotIndex) => Array.from({ length: fixture.total }, (_, rowInLot) => {
-    const id = `PREVIEW-${String(lotIndex + 1).padStart(2, '0')}-${String(rowInLot + 1).padStart(3, '0')}`;
-    const activeLimit = fixture.done + (fixture.active || 0);
-    if (rowInLot < fixture.done) {
-      return { id, status: 'DONE', time: '09:00', start_time: '08:18', end_time: '08:44', zone: 'G3' };
-    }
-    if (rowInLot < activeLimit) {
-      return { id, status: 'ACTIVE', time: '09:35', start_time: '09:35', zone: 'G4' };
-    }
-    return { id, status: 'WAIT', time: '10:05' };
-  }))
-);
-
-const PREVIEW_PLAN_ROWS: PlanRow[] = makePreviewPlanRows();
-const PREVIEW_TASKS: Task[] = makePreviewTasks();
 
 const fontUrl = 'https://fonts.googleapis.com/css2?family=Saira:wght@600;700;800;900&family=Manrope:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap';
 
@@ -116,7 +82,7 @@ const normalizeLotNo = (value: string | undefined): string => {
   return LOT_NO_PATTERN.test(lot) ? lot : '';
 };
 
-const formatWs = (ws: string[]): string => (ws.length > 0 ? ws.join(' / ') : '-');
+const formatWs = (ws: string[]): string => (ws.length > 0 ? ws.join(' / ') : 'W/S не указан');
 
 const middleEllipsis = (value: string, maxLength = 26): string => {
   if (value.length <= maxLength) return value;
@@ -125,17 +91,27 @@ const middleEllipsis = (value: string, maxLength = 26): string => {
   return `${value.slice(0, head)}...${value.slice(-tail)}`;
 };
 
+const formatSheetName = (date: Date): string => {
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${day}.${month}`;
+};
+
+const getRecentOperationalSheetNames = (days = LOT_LOOKBACK_DAYS): string[] => {
+  const { operationalDate } = getOperationalDateInfo();
+  const [year, month, day] = operationalDate.split('-').map(Number);
+  const base = new Date(Date.UTC(year, month - 1, day));
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(base.getTime());
+    date.setUTCDate(base.getUTCDate() - index);
+    return formatSheetName(date);
+  });
+};
+
 const getStatus = (done: number, total: number, inProgress: number): LotStatus => {
   if (done >= total) return 'done';
   if (done === 0 && inProgress === 0) return 'not_started';
   return done / total < 0.5 ? 'low' : 'progress';
-};
-
-const activeStatusRank: Record<LotStatus, number> = {
-  not_started: 0,
-  low: 1,
-  progress: 2,
-  done: 3,
 };
 
 const getTone = (status: LotStatus, percent: number): RowTone => {
@@ -143,7 +119,6 @@ const getTone = (status: LotStatus, percent: number): RowTone => {
     return {
       accent: '#00E676',
       color: '#00E676',
-      mutedColor: '#78f5ad',
       bg: 'rgba(0,230,118,.08)',
       border: 'rgba(0,230,118,.22)',
       badgeBg: 'rgba(0,230,118,.14)',
@@ -158,7 +133,6 @@ const getTone = (status: LotStatus, percent: number): RowTone => {
     return {
       accent: '#778293',
       color: 'rgba(255,255,255,.58)',
-      mutedColor: 'rgba(255,255,255,.52)',
       bg: 'rgba(255,255,255,.035)',
       border: 'rgba(255,255,255,.12)',
       badgeBg: 'rgba(255,255,255,.06)',
@@ -173,7 +147,6 @@ const getTone = (status: LotStatus, percent: number): RowTone => {
     return {
       accent: '#FBBF24',
       color: '#FBBF24',
-      mutedColor: '#f5cd6b',
       bg: 'rgba(251,191,36,.08)',
       border: 'rgba(251,191,36,.26)',
       badgeBg: 'rgba(251,191,36,.15)',
@@ -188,7 +161,6 @@ const getTone = (status: LotStatus, percent: number): RowTone => {
     return {
       accent: '#22D3C5',
       color: '#22D3C5',
-      mutedColor: '#72eee6',
       bg: 'rgba(34,211,197,.075)',
       border: 'rgba(34,211,197,.26)',
       badgeBg: 'rgba(34,211,197,.14)',
@@ -202,7 +174,6 @@ const getTone = (status: LotStatus, percent: number): RowTone => {
   return {
     accent: '#4DA8FF',
     color: '#4DA8FF',
-    mutedColor: '#9ec5ff',
     bg: 'rgba(77,168,255,.075)',
     border: 'rgba(77,168,255,.26)',
     badgeBg: 'rgba(77,168,255,.14)',
@@ -219,11 +190,66 @@ const statusLabel = (status: LotStatus): string => {
   return 'В работе';
 };
 
-const buildLotProgress = (rows: PlanRow[], allTasks: Task[]): LotProgress[] => {
-  const taskById = new Map<string, Task>();
-  allTasks.forEach((task) => {
+const makeTaskKey = (sheetDate: string | undefined, id: string | undefined): string => `${(sheetDate || '').trim()}|${normalizeId(id)}`;
+
+const makePreviewData = (): { planRows: LotPlanRow[]; tasks: Task[] } => {
+  const sheetNames = getRecentOperationalSheetNames();
+  let index = 1;
+  const planRows: LotPlanRow[] = [];
+  const tasks: Task[] = [];
+
+  PREVIEW_LOT_FIXTURES.forEach((fixture, fixtureIndex) => {
+    const wsList = Array.isArray(fixture.ws) ? fixture.ws : [fixture.ws];
+    const sheetDate = sheetNames[Math.min(fixture.dayOffset || 0, sheetNames.length - 1)] || sheetNames[0] || '';
+    const dayRank = LOT_LOOKBACK_DAYS - (fixture.dayOffset || 0);
+
+    Array.from({ length: fixture.total }, (_, rowInLot) => {
+      const id = `PREVIEW-${String(fixtureIndex + 1).padStart(2, '0')}-${String(rowInLot + 1).padStart(3, '0')}`;
+      const rowIndex = 5 + rowInLot;
+      planRows.push({
+        rowIndex,
+        index: index++,
+        lot: fixture.lot,
+        ws: wsList[rowInLot % wsList.length],
+        pallets: '',
+        id,
+        phone: '',
+        eta: `${String(8 + (fixtureIndex % 7)).padStart(2, '0')}:${String((rowInLot * 5) % 60).padStart(2, '0')}`,
+        sheetDate,
+        sequence: dayRank * 100000 + rowIndex,
+      });
+
+      const activeLimit = fixture.done + (fixture.active || 0);
+      const status = rowInLot < fixture.done ? 'DONE' : rowInLot < activeLimit ? 'ACTIVE' : 'WAIT';
+      tasks.push({
+        id,
+        status,
+        time: status === 'DONE' ? '09:00' : status === 'ACTIVE' ? '09:35' : '10:05',
+        start_time: status !== 'WAIT' ? '08:18' : undefined,
+        end_time: status === 'DONE' ? '08:44' : undefined,
+        zone: status !== 'WAIT' ? 'G3' : undefined,
+        sheet_date: sheetDate,
+      });
+    });
+  });
+
+  planRows.push(
+    { rowIndex: 900, index: 900, lot: '4800169078 / 182402105', ws: 'Welding', pallets: '12/24', id: 'PREVIEW-NOISE-001', phone: '', eta: '15:00', sheetDate: sheetNames[0] || '', sequence: 999999 },
+    { rowIndex: 901, index: 901, lot: '4800169078', ws: 'Assembly', pallets: '0/14', id: 'PREVIEW-NOISE-002', phone: '', eta: '15:10', sheetDate: sheetNames[0] || '', sequence: 999998 },
+    { rowIndex: 902, index: 902, lot: '182402105', ws: 'Paint', pallets: '5/20', id: 'PREVIEW-NOISE-003', phone: '', eta: '15:20', sheetDate: sheetNames[0] || '', sequence: 999997 },
+    { rowIndex: 903, index: 903, lot: '', ws: 'Paint', pallets: '5/20', id: 'PREVIEW-NOISE-004', phone: '', eta: '15:30', sheetDate: sheetNames[0] || '', sequence: 999996 },
+  );
+
+  return { planRows, tasks };
+};
+
+const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
+  const taskByKey = new Map<string, Task>();
+  tasks.forEach((task) => {
     const id = normalizeId(task.id);
-    if (id) taskById.set(id, task);
+    if (!id) return;
+    const sheetDate = task.sheet_date || '';
+    taskByKey.set(makeTaskKey(sheetDate, id), task);
   });
 
   const groups = new Map<string, {
@@ -233,6 +259,7 @@ const buildLotProgress = (rows: PlanRow[], allTasks: Task[]): LotProgress[] => {
     done: number;
     inProgress: number;
     notStarted: number;
+    lastSequence: number;
   }>();
 
   rows.forEach((row) => {
@@ -246,38 +273,42 @@ const buildLotProgress = (rows: PlanRow[], allTasks: Task[]): LotProgress[] => {
       done: 0,
       inProgress: 0,
       notStarted: 0,
+      lastSequence: 0,
     };
 
     const ws = row.ws.trim();
     if (ws && !group.ws.includes(ws)) group.ws.push(ws);
 
-    const task = taskById.get(normalizeId(row.id));
+    const task = taskByKey.get(makeTaskKey(row.sheetDate, row.id));
     if (task?.status === 'DONE') group.done += 1;
     else if (task?.status === 'ACTIVE') group.inProgress += 1;
     else group.notStarted += 1;
 
     group.total += 1;
+    group.lastSequence = Math.max(group.lastSequence, row.sequence);
     groups.set(lot, group);
   });
 
   return Array.from(groups.values())
-    .filter((lot) => lot.total > MIN_ROWS_PER_LOT - 1)
+    .filter((lot) => lot.total >= MIN_ROWS_PER_LOT)
     .map((lot) => {
       const percent = Math.round((lot.done / lot.total) * 100);
       const status = getStatus(lot.done, lot.total, lot.inProgress);
       return {
         ...lot,
+        unfinished: lot.total - lot.done,
         percent,
         status,
       };
     });
 };
 
-const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview = false }) => {
-  const [planRows, setPlanRows] = useState<PlanRow[]>([]);
+const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
+  const [planRows, setPlanRows] = useState<LotPlanRow[]>([]);
+  const [taskRows, setTaskRows] = useState<Task[]>([]);
   const [loading, setLoading] = useState(!preview);
   const [error, setError] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [viewportHeight, setViewportHeight] = useState(() => (typeof window === 'undefined' ? 1080 : window.innerHeight));
 
   useEffect(() => {
     const existing = document.querySelector<HTMLLinkElement>(`link[href="${fontUrl}"]`);
@@ -292,13 +323,41 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
     document.head.append(preconnectFonts, fontLink);
   }, []);
 
-  const fetchPlan = useCallback(async (showLoader: boolean) => {
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onResize = () => setViewportHeight(window.innerHeight);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const fetchLotData = useCallback(async (showLoader: boolean) => {
     if (preview) return;
     if (showLoader) setLoading(true);
     try {
-      const data = await api.fetchFullPlan(getOperationalSheetName());
-      setPlanRows(data);
-      setLastUpdated(new Date());
+      const sheetNames = getRecentOperationalSheetNames();
+      const [planResults, taskResults] = await Promise.all([
+        Promise.all(sheetNames.map((sheetDate) => api.fetchFullPlan(sheetDate).catch(() => [] as PlanRow[]))),
+        Promise.all(sheetNames.map((sheetDate) => api.fetchHistory(sheetDate).catch(() => [] as Task[]))),
+      ]);
+
+      const nextPlanRows = planResults.flatMap((rows, dayIndex) => {
+        const sheetDate = sheetNames[dayIndex];
+        const dayRank = sheetNames.length - dayIndex;
+        return rows.map((row, rowOrder) => ({
+          ...row,
+          sheetDate,
+          sequence: dayRank * 100000 + (Number(row.rowIndex) || rowOrder),
+        }));
+      });
+
+      const nextTasks = taskResults.flatMap((tasks, dayIndex) => {
+        const sheetDate = sheetNames[dayIndex];
+        return tasks.map((task) => ({ ...task, sheet_date: task.sheet_date || sheetDate }));
+      });
+
+      setPlanRows(nextPlanRows);
+      setTaskRows(nextTasks);
       setError(false);
     } catch {
       setError(true);
@@ -309,8 +368,9 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
 
   useEffect(() => {
     if (preview) {
-      setPlanRows(PREVIEW_PLAN_ROWS);
-      setLastUpdated(new Date());
+      const data = makePreviewData();
+      setPlanRows(data.planRows);
+      setTaskRows(data.tasks);
       setError(false);
       setLoading(false);
       return;
@@ -318,7 +378,7 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const start = () => {
-      if (!intervalId) intervalId = setInterval(() => fetchPlan(false), LOT_PLAN_REFRESH_MS);
+      if (!intervalId) intervalId = setInterval(() => fetchLotData(false), LOT_PLAN_REFRESH_MS);
     };
     const stop = () => {
       if (intervalId) {
@@ -329,12 +389,12 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
     const onVisibility = () => {
       if (document.hidden) stop();
       else {
-        fetchPlan(false);
+        fetchLotData(false);
         start();
       }
     };
 
-    fetchPlan(true);
+    fetchLotData(true);
     start();
     document.addEventListener('visibilitychange', onVisibility);
 
@@ -342,41 +402,33 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
       stop();
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [fetchPlan, preview]);
+  }, [fetchLotData, preview]);
 
-  const sourceTasks = preview ? PREVIEW_TASKS : allTasks;
-  const lots = useMemo(() => buildLotProgress(planRows, sourceTasks), [planRows, sourceTasks]);
+  const lots = useMemo(() => buildLotProgress(planRows, taskRows), [planRows, taskRows]);
   const activeLots = useMemo(() => (
     lots
       .filter((lot) => lot.status !== 'done')
       .sort((a, b) => {
-        const rankDiff = activeStatusRank[a.status] - activeStatusRank[b.status];
-        if (rankDiff !== 0) return rankDiff;
-        if (a.percent !== b.percent) return a.percent - b.percent;
-        return a.lot.localeCompare(b.lot);
+        const aInWork = a.inProgress > 0;
+        const bInWork = b.inProgress > 0;
+        if (aInWork !== bInWork) return aInWork ? -1 : 1;
+        if (a.unfinished !== b.unfinished) return b.unfinished - a.unfinished;
+        return b.lastSequence - a.lastSequence;
       })
   ), [lots]);
   const closedLots = useMemo(() => (
     lots
       .filter((lot) => lot.status === 'done')
-      .sort((a, b) => a.lot.localeCompare(b.lot))
+      .sort((a, b) => b.lastSequence - a.lastSequence)
   ), [lots]);
 
-  const visibleActiveLots = activeLots.slice(0, MAX_VISIBLE_ACTIVE_LOTS);
+  const maxVisibleActiveLots = viewportHeight >= 900 ? MAX_DESKTOP_ACTIVE_LOTS : MAX_COMPACT_ACTIVE_LOTS;
+  const visibleActiveLots = activeLots.slice(0, maxVisibleActiveLots);
   const visibleClosedLots = closedLots.slice(0, MAX_DONE_LOTS);
-  const notStartedLots = activeLots.filter((lot) => lot.status === 'not_started').length;
-  const inWorkLots = activeLots.filter((lot) => lot.status !== 'not_started').length;
-  const updatedTime = (lastUpdated || new Date()).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   const totalHiddenActive = Math.max(0, activeLots.length - visibleActiveLots.length);
-  const headerStats: Array<{ label: string; value: number; color: string }> = [
-    { label: 'Всего', value: lots.length, color: '#fff' },
-    { label: 'В работе', value: inWorkLots, color: '#4DA8FF' },
-    { label: 'Не начато', value: notStartedLots, color: '#FBBF24' },
-    { label: 'Закрыто', value: closedLots.length, color: '#00E676' },
-  ];
 
   const renderProgressBar = (lot: LotProgress, tone: RowTone) => (
-    <div style={{ height: 28, borderRadius: 10, background: 'rgba(255,255,255,.08)', overflow: 'hidden', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.04)' }}>
+    <div style={{ height: 'clamp(22px, 3.4vh, 30px)', borderRadius: 10, background: 'rgba(255,255,255,.08)', overflow: 'hidden', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.04)' }}>
       {lot.percent > 0 && (
         <div
           style={{
@@ -396,34 +448,35 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
     return (
       <div
         key={lot.lot}
+        data-lot-row="active"
         style={{
           display: 'grid',
-          gridTemplateColumns: '430px 250px 1fr 150px 120px 150px',
+          gridTemplateColumns: 'minmax(300px,1.55fr) minmax(130px,.7fr) minmax(180px,2fr) clamp(82px,8vw,150px) clamp(76px,7vw,128px) clamp(108px,9vw,150px)',
           alignItems: 'center',
-          gap: 18,
-          minHeight: 88,
-          padding: '12px 22px',
-          borderRadius: 14,
+          gap: 'clamp(10px,1.25vw,22px)',
+          minHeight: 'clamp(78px,9.5vh,122px)',
+          padding: 'clamp(9px,1.1vw,18px) clamp(14px,1.35vw,26px)',
+          borderRadius: 'clamp(12px,1vw,16px)',
           background: tone.bg,
           border: `1px solid ${tone.border}`,
           borderLeft: `7px solid ${tone.accent}`,
           overflow: 'hidden',
         }}
       >
-        <div title={lot.lot} style={{ font: "800 37px/1 'JetBrains Mono'", color: '#fff', letterSpacing: -1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <div title={lot.lot} style={{ font: "800 clamp(28px,2.15vw,39px)/1 'JetBrains Mono'", color: '#fff', letterSpacing: -1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {middleEllipsis(lot.lot, 24)}
         </div>
-        <div title={formatWs(lot.ws)} style={{ font: "800 21px/1.1 'Manrope'", color: 'rgba(255,255,255,.72)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div title={formatWs(lot.ws)} style={{ font: "800 clamp(16px,1.35vw,23px)/1.1 'Manrope'", color: 'rgba(255,255,255,.72)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {formatWs(lot.ws)}
         </div>
         {renderProgressBar(lot, tone)}
-        <div style={{ font: "900 34px/1 'Saira'", color: '#fff', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+        <div style={{ font: "900 clamp(26px,2.15vw,36px)/1 'Saira'", color: '#fff', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
           {lot.done} / {lot.total}
         </div>
-        <div style={{ font: "900 50px/1 'Saira'", color: tone.color, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+        <div style={{ font: "900 clamp(36px,3.8vw,52px)/1 'Saira'", color: tone.color, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
           {lot.percent}%
         </div>
-        <div style={{ justifySelf: 'end', padding: '10px 14px', minWidth: 126, borderRadius: 10, background: tone.badgeBg, border: `1px solid ${tone.badgeBorder}`, color: tone.badgeColor, font: "900 16px/1 'Manrope'", textAlign: 'center', textTransform: 'uppercase', letterSpacing: .8, whiteSpace: 'nowrap' }}>
+        <div style={{ justifySelf: 'end', padding: 'clamp(8px,1vh,11px) clamp(10px,1vw,15px)', minWidth: 'clamp(104px,8.5vw,132px)', borderRadius: 10, background: tone.badgeBg, border: `1px solid ${tone.badgeBorder}`, color: tone.badgeColor, font: "900 clamp(13px,1.05vw,16px)/1 'Manrope'", textAlign: 'center', textTransform: 'uppercase', letterSpacing: .8, whiteSpace: 'nowrap' }}>
           {statusLabel(lot.status)}
         </div>
       </div>
@@ -435,30 +488,31 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
     return (
       <div
         key={lot.lot}
+        data-lot-row="closed"
         style={{
           display: 'grid',
-          gridTemplateColumns: '380px 200px 1fr 116px 96px',
+          gridTemplateColumns: 'minmax(260px,1.25fr) minmax(110px,.55fr) minmax(220px,2fr) clamp(82px,7vw,116px) clamp(72px,6vw,96px)',
           alignItems: 'center',
-          gap: 14,
-          minHeight: 56,
-          padding: '7px 16px',
+          gap: 'clamp(10px,1vw,16px)',
+          minHeight: 'clamp(44px,5.4vh,58px)',
+          padding: 'clamp(5px,.8vh,8px) clamp(12px,1.1vw,18px)',
           borderRadius: 12,
           background: tone.bg,
           border: `1px solid ${tone.border}`,
           overflow: 'hidden',
         }}
       >
-        <div title={lot.lot} style={{ font: "800 28px/1 'JetBrains Mono'", color: '#dff7e8', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <div title={lot.lot} style={{ font: "800 clamp(22px,1.65vw,30px)/1 'JetBrains Mono'", color: '#dff7e8', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {middleEllipsis(lot.lot, 22)}
         </div>
-        <div title={formatWs(lot.ws)} style={{ font: "800 16px/1 'Manrope'", color: 'rgba(255,255,255,.54)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div title={formatWs(lot.ws)} style={{ font: "800 clamp(13px,1vw,17px)/1 'Manrope'", color: 'rgba(255,255,255,.54)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {formatWs(lot.ws)}
         </div>
         {renderProgressBar(lot, tone)}
-        <div style={{ font: "900 24px/1 'Saira'", color: '#fff', textAlign: 'right', whiteSpace: 'nowrap' }}>
+        <div style={{ font: "900 clamp(20px,1.45vw,25px)/1 'Saira'", color: '#fff', textAlign: 'right', whiteSpace: 'nowrap' }}>
           {lot.done} / {lot.total}
         </div>
-        <div style={{ font: "900 30px/1 'Saira'", color: tone.color, textAlign: 'right', whiteSpace: 'nowrap' }}>
+        <div style={{ font: "900 clamp(24px,1.8vw,32px)/1 'Saira'", color: tone.color, textAlign: 'right', whiteSpace: 'nowrap' }}>
           {lot.percent}%
         </div>
       </div>
@@ -466,7 +520,7 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
   };
 
   const renderEmptyState = () => (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 18, border: '1px dashed rgba(255,255,255,.12)', background: 'rgba(255,255,255,.03)', color: 'rgba(255,255,255,.58)', font: "900 34px/1 'Saira'", letterSpacing: .5, textTransform: 'uppercase' }}>
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 18, border: '1px dashed rgba(255,255,255,.12)', background: 'rgba(255,255,255,.03)', color: 'rgba(255,255,255,.58)', font: "900 clamp(24px,2.2vw,36px)/1 'Saira'", letterSpacing: .5, textTransform: 'uppercase' }}>
       Нет активных Lot No для отображения
     </div>
   );
@@ -474,74 +528,49 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
   return (
     <div
       style={{
-        width: '100%',
-        height: '100%',
+        width: '100vw',
+        height: '100vh',
+        boxSizing: 'border-box',
         overflow: 'hidden',
         background: 'radial-gradient(1250px 720px at 88% -12%,rgba(0,230,118,.06),transparent 56%),radial-gradient(980px 620px at 0% 118%,rgba(77,168,255,.05),transparent 55%),linear-gradient(168deg,#1b2230 0%,#0f121b 78%)',
-        padding: '18px 24px',
+        padding: 'clamp(12px,1.25vw,28px)',
         display: 'flex',
         flexDirection: 'column',
-        gap: 12,
+        gap: 'clamp(8px,1vh,14px)',
         color: '#eaf0f7',
         fontFamily: "'Manrope',system-ui,sans-serif",
       }}
     >
-      <div
-        style={{
-          height: 58,
-          maxHeight: 70,
-          flex: 'none',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 18,
-          padding: '0 22px',
-          borderRadius: 15,
-          background: 'rgba(255,255,255,.055)',
-          border: '1px solid rgba(255,255,255,.1)',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{ font: "900 30px/1 'Saira'", color: '#fff', letterSpacing: 1, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-          Отработка Lot No
-        </div>
-        <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,.16)', flex: 'none' }} />
-        {headerStats.map(({ label, value, color }) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 8, whiteSpace: 'nowrap' }}>
-            <span style={{ font: "800 16px/1 'Manrope'", color: 'rgba(255,255,255,.56)' }}>{label}:</span>
-            <span style={{ font: "900 32px/1 'Saira'", color }}>{value}</span>
-          </div>
-        ))}
-        <div style={{ marginLeft: 'auto', font: "800 17px/1 'JetBrains Mono'", color: 'rgba(255,255,255,.55)', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
-          обновлено {updatedTime}
-        </div>
-      </div>
-
-      {loading || (!preview && isTasksLoading) ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', font: "900 34px/1 'Saira'", color: 'rgba(255,255,255,.55)', textTransform: 'uppercase' }}>
+      {loading ? (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', font: "900 clamp(24px,2.2vw,36px)/1 'Saira'", color: 'rgba(255,255,255,.55)', textTransform: 'uppercase' }}>
           Загрузка Lot No...
         </div>
       ) : error ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-          <AlertTriangle style={{ width: 72, height: 72, color: '#fca5a5' }} />
-          <div style={{ marginTop: 18, font: "900 40px/1 'Saira'", color: '#fff' }}>Не удалось загрузить план</div>
-          <div style={{ marginTop: 8, font: "800 18px/1 'Manrope'", color: 'rgba(255,255,255,.48)' }}>Используется текущий план операционного дня</div>
+          <AlertTriangle style={{ width: 'clamp(56px,5vw,76px)', height: 'clamp(56px,5vw,76px)', color: '#fca5a5' }} />
+          <div style={{ marginTop: 18, font: "900 clamp(28px,2.5vw,42px)/1 'Saira'", color: '#fff' }}>Не удалось загрузить план</div>
+          <div style={{ marginTop: 8, font: "800 clamp(15px,1.2vw,19px)/1 'Manrope'", color: 'rgba(255,255,255,.48)' }}>Экран читает последние 7 операционных дней</div>
         </div>
       ) : (
         <>
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ height: 'clamp(28px,3.8vh,40px)', display: 'flex', alignItems: 'center', gap: 'clamp(10px,1vw,16px)', color: '#9ec5ff', font: "900 clamp(15px,1.25vw,20px)/1 'JetBrains Mono'", letterSpacing: 2, textTransform: 'uppercase', flex: 'none' }}>
+            <span style={{ width: 5, height: 'clamp(18px,2.5vh,24px)', borderRadius: 3, background: '#4DA8FF' }} />
+            Активные Lot No
+            {totalHiddenActive > 0 && (
+              <span style={{ color: 'rgba(158,197,255,.72)', letterSpacing: 1 }}>
+                показано {visibleActiveLots.length} из {activeLots.length}
+              </span>
+            )}
+          </div>
+
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 'clamp(8px,1vh,14px)' }}>
             {visibleActiveLots.length > 0 ? visibleActiveLots.map(renderLotRow) : renderEmptyState()}
           </div>
 
-          {totalHiddenActive > 0 && (
-            <div style={{ flex: 'none', height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,.48)', font: "800 15px/1 'JetBrains Mono'", letterSpacing: 1, textTransform: 'uppercase' }}>
-              Показано {visibleActiveLots.length} из {activeLots.length} активных Lot No
-            </div>
-          )}
-
           {closedLots.length > 0 && (
-            <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ height: 28, display: 'flex', alignItems: 'center', gap: 12, color: '#5ff0a6', font: "900 16px/1 'JetBrains Mono'", letterSpacing: 2, textTransform: 'uppercase' }}>
-                <span style={{ width: 5, height: 20, borderRadius: 3, background: '#00E676' }} />
+            <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 'clamp(6px,.75vh,9px)' }}>
+              <div style={{ height: 'clamp(24px,3.2vh,32px)', display: 'flex', alignItems: 'center', gap: 'clamp(10px,1vw,16px)', color: '#5ff0a6', font: "900 clamp(14px,1.1vw,17px)/1 'JetBrains Mono'", letterSpacing: 2, textTransform: 'uppercase' }}>
+                <span style={{ width: 5, height: 'clamp(17px,2.3vh,22px)', borderRadius: 3, background: '#00E676' }} />
                 Закрытые Lot No
                 {closedLots.length > MAX_DONE_LOTS && (
                   <span style={{ color: 'rgba(95,240,166,.72)', letterSpacing: 1 }}>
@@ -549,7 +578,7 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
                   </span>
                 )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(5px,.75vh,8px)' }}>
                 {visibleClosedLots.map(renderClosedRow)}
               </div>
             </div>
