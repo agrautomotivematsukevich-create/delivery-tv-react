@@ -700,11 +700,6 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
               <div style={{ height: 'clamp(24px,3.2vh,32px)', display: 'flex', alignItems: 'center', gap: 'clamp(10px,1vw,16px)', color: '#5ff0a6', font: "900 clamp(14px,1.1vw,17px)/1 'JetBrains Mono'", letterSpacing: 2, textTransform: 'uppercase' }}>
                 <span style={{ width: 5, height: 'clamp(17px,2.3vh,22px)', borderRadius: 3, background: '#00E676' }} />
                 Закрытые Lot No
-                {closedLots.length > MAX_DONE_LOTS && (
-                  <span style={{ color: 'rgba(95,240,166,.72)', letterSpacing: 1 }}>
-                    показано {visibleClosedLots.length} из {closedLots.length}
-                  </span>
-                )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(5px,.75vh,8px)' }}>
                 {visibleClosedLots.map(renderClosedRow)}
