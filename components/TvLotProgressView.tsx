@@ -490,6 +490,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
     return (
       <div
         aria-label={segments.map((segment) => `${segment.label} ${segment.count}`).join(', ')}
+        className="tv-lot-progress-track"
         style={{
           height: 'clamp(22px, 3.4vh, 30px)',
           borderRadius: 10,
@@ -543,6 +544,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
     return (
       <div
         key={lot.lot}
+        className="tv-lot-active-row"
         data-lot-row="active"
         style={{
           display: 'grid',
@@ -568,7 +570,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
         <div style={{ font: "900 clamp(36px,3.8vw,52px)/1 'Saira'", color: tone.color, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
           {lot.percent}%
         </div>
-        <div style={{ justifySelf: 'end', padding: 'clamp(8px,1vh,11px) clamp(10px,1vw,15px)', minWidth: 'clamp(104px,8.5vw,132px)', borderRadius: 10, background: tone.badgeBg, border: `1px solid ${tone.badgeBorder}`, color: tone.badgeColor, font: "900 clamp(13px,1.05vw,16px)/1 'Manrope'", textAlign: 'center', textTransform: 'uppercase', letterSpacing: .8, whiteSpace: 'nowrap' }}>
+        <div className="tv-lot-status-badge" style={{ justifySelf: 'end', padding: 'clamp(8px,1vh,11px) clamp(10px,1vw,15px)', minWidth: 'clamp(104px,8.5vw,132px)', borderRadius: 10, background: tone.badgeBg, border: `1px solid ${tone.badgeBorder}`, color: tone.badgeColor, font: "900 clamp(13px,1.05vw,16px)/1 'Manrope'", textAlign: 'center', textTransform: 'uppercase', letterSpacing: .8, whiteSpace: 'nowrap' }}>
           {statusLabel(lot.status)}
         </div>
       </div>
@@ -580,6 +582,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
     return (
       <div
         key={lot.lot}
+        className="tv-lot-closed-row"
         data-lot-row="closed"
         style={{
           display: 'grid',
@@ -616,6 +619,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
 
   const renderWsLegend = () => (
     <div
+      className="tv-lot-ws-legend"
       aria-label="W/S группы"
       style={{
         marginLeft: 'auto',
@@ -654,6 +658,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
 
   return (
     <div
+      className="tv-lot-screen"
       style={{
         width: '100vw',
         height: '100vh',
@@ -668,6 +673,72 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
         fontFamily: "'Manrope',system-ui,sans-serif",
       }}
     >
+      <style>
+        {`
+          @media (max-height: 760px) {
+            .tv-lot-screen {
+              padding: 14px 16px !important;
+              gap: 10px !important;
+            }
+
+            .tv-lot-active-title {
+              height: auto !important;
+              min-height: 32px !important;
+              margin-bottom: 10px !important;
+            }
+
+            .tv-lot-ws-legend {
+              padding: 6px 10px !important;
+              gap: 10px !important;
+              margin-top: 2px !important;
+            }
+
+            .tv-lot-active-list {
+              gap: 10px !important;
+            }
+
+            .tv-lot-active-row {
+              min-height: 74px !important;
+              padding: 10px 14px !important;
+              gap: 12px !important;
+            }
+
+            .tv-lot-active-row .tv-lot-progress-track {
+              height: 24px !important;
+            }
+
+            .tv-lot-status-badge {
+              margin-left: 2px !important;
+              min-width: 104px !important;
+            }
+
+            .tv-lot-closed-section {
+              margin-top: 18px !important;
+              gap: 0 !important;
+            }
+
+            .tv-lot-closed-title {
+              height: auto !important;
+              min-height: 28px !important;
+              margin-bottom: 8px !important;
+            }
+
+            .tv-lot-closed-list {
+              gap: 6px !important;
+            }
+
+            .tv-lot-closed-row {
+              min-height: 36px !important;
+              padding: 6px 12px !important;
+              gap: 10px !important;
+            }
+
+            .tv-lot-closed-row .tv-lot-progress-track {
+              height: 22px !important;
+            }
+          }
+        `}
+      </style>
       {loading ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', font: "900 clamp(24px,2.2vw,36px)/1 'Saira'", color: 'rgba(255,255,255,.55)', textTransform: 'uppercase' }}>
           Загрузка Lot No...
@@ -680,7 +751,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
         </div>
       ) : (
         <>
-          <div style={{ height: 'clamp(28px,3.8vh,40px)', display: 'flex', alignItems: 'center', gap: 'clamp(10px,1vw,16px)', color: '#9ec5ff', font: "900 clamp(15px,1.25vw,20px)/1 'JetBrains Mono'", letterSpacing: 2, textTransform: 'uppercase', flex: 'none' }}>
+          <div className="tv-lot-active-title" style={{ height: 'clamp(28px,3.8vh,40px)', display: 'flex', alignItems: 'center', gap: 'clamp(10px,1vw,16px)', color: '#9ec5ff', font: "900 clamp(15px,1.25vw,20px)/1 'JetBrains Mono'", letterSpacing: 2, textTransform: 'uppercase', flex: 'none' }}>
             <span style={{ width: 5, height: 'clamp(18px,2.5vh,24px)', borderRadius: 3, background: '#4DA8FF' }} />
             Активные Lot No
             {totalHiddenActive > 0 && (
@@ -691,17 +762,17 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
             {renderWsLegend()}
           </div>
 
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 'clamp(8px,1vh,14px)' }}>
+          <div className="tv-lot-active-list" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 'clamp(8px,1vh,14px)' }}>
             {visibleActiveLots.length > 0 ? visibleActiveLots.map(renderLotRow) : renderEmptyState()}
           </div>
 
           {closedLots.length > 0 && (
-            <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 'clamp(6px,.75vh,9px)' }}>
-              <div style={{ height: 'clamp(24px,3.2vh,32px)', display: 'flex', alignItems: 'center', gap: 'clamp(10px,1vw,16px)', color: '#5ff0a6', font: "900 clamp(14px,1.1vw,17px)/1 'JetBrains Mono'", letterSpacing: 2, textTransform: 'uppercase' }}>
+            <div className="tv-lot-closed-section" style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 'clamp(6px,.75vh,9px)' }}>
+              <div className="tv-lot-closed-title" style={{ height: 'clamp(24px,3.2vh,32px)', display: 'flex', alignItems: 'center', gap: 'clamp(10px,1vw,16px)', color: '#5ff0a6', font: "900 clamp(14px,1.1vw,17px)/1 'JetBrains Mono'", letterSpacing: 2, textTransform: 'uppercase' }}>
                 <span style={{ width: 5, height: 'clamp(17px,2.3vh,22px)', borderRadius: 3, background: '#00E676' }} />
                 Закрытые Lot No
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(5px,.75vh,8px)' }}>
+              <div className="tv-lot-closed-list" style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(5px,.75vh,8px)' }}>
                 {visibleClosedLots.map(renderClosedRow)}
               </div>
             </div>
