@@ -11,6 +11,7 @@ interface Props {
 }
 
 type LotStatus = 'not_started' | 'low' | 'progress' | 'done';
+type WsGroupKey = 'welding' | 'assembly' | 'paint' | 'other';
 
 interface LotPlanRow extends PlanRow {
   sheetDate: string;
@@ -20,6 +21,7 @@ interface LotPlanRow extends PlanRow {
 interface LotProgress {
   lot: string;
   ws: string[];
+  wsSegments: WsSegment[];
   done: number;
   total: number;
   inProgress: number;
@@ -28,6 +30,14 @@ interface LotProgress {
   percent: number;
   lastSequence: number;
   status: LotStatus;
+}
+
+interface WsSegment {
+  key: WsGroupKey;
+  label: string;
+  count: number;
+  percent: number;
+  color: string;
 }
 
 type RowTone = {
@@ -90,6 +100,40 @@ const middleEllipsis = (value: string, maxLength = 26): string => {
   const tail = maxLength - 3 - head;
   return `${value.slice(0, head)}...${value.slice(-tail)}`;
 };
+
+const normalizeWsGroup = (value: string | undefined): WsGroupKey => {
+  const ws = (value || '').trim().toUpperCase();
+  if (ws.includes('WELD')) return 'welding';
+  if (ws.includes('ASSY') || ws.includes('ASSEMB')) return 'assembly';
+  if (ws.includes('PAINT')) return 'paint';
+  return 'other';
+};
+
+const WS_SEGMENT_META: Record<WsGroupKey, { label: string; color: string }> = {
+  welding: { label: 'Welding', color: '#4DA8FF' },
+  assembly: { label: 'Assembly', color: '#FBBF24' },
+  paint: { label: 'Paint', color: '#C084FC' },
+  other: { label: 'Other', color: 'rgba(255,255,255,.34)' },
+};
+
+const createEmptyWsCounts = (): Record<WsGroupKey, number> => ({
+  welding: 0,
+  assembly: 0,
+  paint: 0,
+  other: 0,
+});
+
+const buildWsSegments = (wsCounts: Record<WsGroupKey, number>, total: number): WsSegment[] => (
+  (['welding', 'assembly', 'paint', 'other'] as WsGroupKey[])
+    .map((key) => ({
+      key,
+      label: WS_SEGMENT_META[key].label,
+      count: wsCounts[key],
+      percent: total > 0 ? (wsCounts[key] / total) * 100 : 0,
+      color: WS_SEGMENT_META[key].color,
+    }))
+    .filter((segment) => segment.count > 0)
+);
 
 const formatSheetName = (date: Date): string => {
   const day = String(date.getUTCDate()).padStart(2, '0');
@@ -255,6 +299,7 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
   const groups = new Map<string, {
     lot: string;
     ws: string[];
+    wsCounts: Record<WsGroupKey, number>;
     total: number;
     done: number;
     inProgress: number;
@@ -269,6 +314,7 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
     const group = groups.get(lot) || {
       lot,
       ws: [],
+      wsCounts: createEmptyWsCounts(),
       total: 0,
       done: 0,
       inProgress: 0,
@@ -278,6 +324,7 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
 
     const ws = row.ws.trim();
     if (ws && !group.ws.includes(ws)) group.ws.push(ws);
+    group.wsCounts[normalizeWsGroup(ws)] += 1;
 
     const task = taskByKey.get(makeTaskKey(row.sheetDate, row.id));
     if (task?.status === 'DONE') group.done += 1;
@@ -296,6 +343,7 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
       const status = getStatus(lot.done, lot.total, lot.inProgress);
       return {
         ...lot,
+        wsSegments: buildWsSegments(lot.wsCounts, lot.total),
         unfinished: lot.total - lot.done,
         percent,
         status,
@@ -427,21 +475,56 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
   const visibleClosedLots = closedLots.slice(0, MAX_DONE_LOTS);
   const totalHiddenActive = Math.max(0, activeLots.length - visibleActiveLots.length);
 
-  const renderProgressBar = (lot: LotProgress, tone: RowTone) => (
-    <div style={{ height: 'clamp(22px, 3.4vh, 30px)', borderRadius: 10, background: 'rgba(255,255,255,.08)', overflow: 'hidden', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.04)' }}>
-      {lot.percent > 0 && (
-        <div
-          style={{
-            width: `${lot.percent}%`,
-            height: '100%',
-            borderRadius: 10,
-            background: tone.gradient,
-            boxShadow: `0 0 18px ${tone.shadow}`,
-          }}
-        />
-      )}
-    </div>
-  );
+  const renderProgressBar = (lot: LotProgress, tone: RowTone) => {
+    const isClosed = lot.status === 'done';
+    const segments = lot.wsSegments.length > 0 ? lot.wsSegments : [{
+      key: 'other' as WsGroupKey,
+      label: 'Other',
+      count: lot.total,
+      percent: 100,
+      color: WS_SEGMENT_META.other.color,
+    }];
+
+    return (
+      <div
+        aria-label={segments.map((segment) => `${segment.label} ${segment.count}`).join(', ')}
+        style={{
+          height: 'clamp(22px, 3.4vh, 30px)',
+          borderRadius: 10,
+          background: 'rgba(255,255,255,.08)',
+          overflow: 'hidden',
+          boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.04)',
+          display: 'flex',
+        }}
+      >
+        {isClosed ? (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              borderRadius: 10,
+              background: tone.gradient,
+              boxShadow: `0 0 18px ${tone.shadow}`,
+            }}
+          />
+        ) : (
+          segments.map((segment, index) => (
+            <div
+              key={segment.key}
+              style={{
+                flex: `${segment.count} 1 0`,
+                minWidth: segment.percent > 0 ? 4 : 0,
+                height: '100%',
+                background: segment.color,
+                boxShadow: index === 0 ? `0 0 18px ${segment.color}` : 'none',
+                borderLeft: index === 0 ? 'none' : '2px solid rgba(12,16,24,.72)',
+              }}
+            />
+          ))
+        )}
+      </div>
+    );
+  };
 
   const renderLotRow = (lot: LotProgress) => {
     const tone = getTone(lot.status, lot.percent);
@@ -451,7 +534,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
         data-lot-row="active"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(300px,1.55fr) minmax(130px,.7fr) minmax(180px,2fr) clamp(82px,8vw,150px) clamp(76px,7vw,128px) clamp(108px,9vw,150px)',
+          gridTemplateColumns: 'minmax(330px,1.7fr) minmax(260px,2.5fr) clamp(82px,8vw,150px) clamp(76px,7vw,128px) clamp(108px,9vw,150px)',
           alignItems: 'center',
           gap: 'clamp(10px,1.25vw,22px)',
           minHeight: 'clamp(78px,9.5vh,122px)',
@@ -465,9 +548,6 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
       >
         <div title={lot.lot} style={{ font: "800 clamp(28px,2.15vw,39px)/1 'JetBrains Mono'", color: '#fff', letterSpacing: -1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {middleEllipsis(lot.lot, 24)}
-        </div>
-        <div title={formatWs(lot.ws)} style={{ font: "800 clamp(16px,1.35vw,23px)/1.1 'Manrope'", color: 'rgba(255,255,255,.72)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {formatWs(lot.ws)}
         </div>
         {renderProgressBar(lot, tone)}
         <div style={{ font: "900 clamp(26px,2.15vw,36px)/1 'Saira'", color: '#fff', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
@@ -491,7 +571,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
         data-lot-row="closed"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(260px,1.25fr) minmax(110px,.55fr) minmax(220px,2fr) clamp(82px,7vw,116px) clamp(72px,6vw,96px)',
+          gridTemplateColumns: 'minmax(280px,1.4fr) minmax(260px,2.3fr) clamp(82px,7vw,116px) clamp(72px,6vw,96px)',
           alignItems: 'center',
           gap: 'clamp(10px,1vw,16px)',
           minHeight: 'clamp(44px,5.4vh,58px)',
@@ -504,9 +584,6 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
       >
         <div title={lot.lot} style={{ font: "800 clamp(22px,1.65vw,30px)/1 'JetBrains Mono'", color: '#dff7e8', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {middleEllipsis(lot.lot, 22)}
-        </div>
-        <div title={formatWs(lot.ws)} style={{ font: "800 clamp(13px,1vw,17px)/1 'Manrope'", color: 'rgba(255,255,255,.54)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {formatWs(lot.ws)}
         </div>
         {renderProgressBar(lot, tone)}
         <div style={{ font: "900 clamp(20px,1.45vw,25px)/1 'Saira'", color: '#fff', textAlign: 'right', whiteSpace: 'nowrap' }}>
