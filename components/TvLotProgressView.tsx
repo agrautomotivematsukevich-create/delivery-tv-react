@@ -10,25 +10,23 @@ interface Props {
   preview?: boolean;
 }
 
-type LotStatus = 'problem' | 'not_started' | 'low' | 'progress' | 'done';
+type LotStatus = 'not_started' | 'low' | 'progress' | 'done';
 
 interface LotProgress {
   lot: string;
   ws: string[];
   done: number;
   total: number;
+  inProgress: number;
+  notStarted: number;
   percent: number;
-  rows: number;
-  containersDone: number;
-  containersActive: number;
-  containersWaiting: number;
-  invalidRows: number;
   status: LotStatus;
 }
 
-type CardTone = {
+type RowTone = {
   accent: string;
   color: string;
+  mutedColor: string;
   bg: string;
   border: string;
   badgeBg: string;
@@ -38,146 +36,186 @@ type CardTone = {
   shadow: string;
 };
 
-const LOT_PLAN_REFRESH_MS = 180000;
-const MAX_ACTIVE_LOTS = 6;
-const MAX_DONE_LOTS = 3;
-
-const PREVIEW_PLAN_ROWS: PlanRow[] = [
-  { rowIndex: 5, index: 1, lot: '43115-CT13J20260321', ws: 'Welding', pallets: '20/24', id: 'PREVIEW-001', phone: '', eta: '08:10' },
-  { rowIndex: 6, index: 2, lot: '43115-CT13J20260321', ws: 'Assembly', pallets: '5/10', id: 'PREVIEW-002', phone: '', eta: '08:40' },
-  { rowIndex: 7, index: 3, lot: '43115-CT13J20260327', ws: 'Assembly', pallets: '14/17', id: 'PREVIEW-003', phone: '', eta: '09:20' },
-  { rowIndex: 8, index: 4, lot: '43115-CT13J20260319', ws: 'Paint', pallets: '0/14', id: 'PREVIEW-004', phone: '', eta: '10:05' },
-  { rowIndex: 9, index: 5, lot: '43115-CM32T20260312', ws: 'Welding', pallets: '34/34', id: 'PREVIEW-005', phone: '', eta: '10:45' },
-  { rowIndex: 10, index: 6, lot: '43115-CT13J20260326', ws: 'Assembly', pallets: '6/17', id: 'PREVIEW-006', phone: '', eta: '11:30' },
-  { rowIndex: 11, index: 7, lot: '43115-CM32T20260310', ws: 'Paint', pallets: '18/26', id: 'PREVIEW-007', phone: '', eta: '12:20' },
-  { rowIndex: 12, index: 8, lot: '43115-CT13J20260329-LONG-ALPHA', ws: 'Paint', pallets: '31/34', id: 'PREVIEW-008', phone: '', eta: '13:00' },
-  { rowIndex: 13, index: 9, lot: '43115-CM32T20260313', ws: 'Assembly', pallets: '22/22', id: 'PREVIEW-009', phone: '', eta: '13:40' },
-  { rowIndex: 14, index: 10, lot: '43115-CM32T20260314', ws: 'Paint', pallets: '16/16', id: 'PREVIEW-010', phone: '', eta: '14:10' },
-  { rowIndex: 15, index: 11, lot: '43115-CM32T20260315-LONG-CLOSED', ws: 'Welding', pallets: '40/40', id: 'PREVIEW-011', phone: '', eta: '14:30' },
-];
-
-const PREVIEW_TASKS: Task[] = [
-  { id: 'PREVIEW-001', status: 'DONE', time: '09:00', start_time: '08:18', end_time: '08:44', zone: 'G3' },
-  { id: 'PREVIEW-002', status: 'ACTIVE', time: '08:52', start_time: '08:52', zone: 'G4' },
-  { id: 'PREVIEW-003', status: 'ACTIVE', time: '09:35', start_time: '09:35', zone: 'G5' },
-  { id: 'PREVIEW-004', status: 'WAIT', time: '10:05' },
-  { id: 'PREVIEW-005', status: 'DONE', time: '11:08', start_time: '10:40', end_time: '11:08', zone: 'G6' },
-  { id: 'PREVIEW-006', status: 'ACTIVE', time: '11:42', start_time: '11:42', zone: 'G7' },
-  { id: 'PREVIEW-007', status: 'DONE', time: '12:50', start_time: '12:15', end_time: '12:50', zone: 'G8' },
-  { id: 'PREVIEW-008', status: 'WAIT', time: '13:00' },
-  { id: 'PREVIEW-009', status: 'DONE', time: '14:05', start_time: '13:38', end_time: '14:05', zone: 'G9' },
-  { id: 'PREVIEW-010', status: 'DONE', time: '14:42', start_time: '14:14', end_time: '14:42', zone: 'P70' },
-  { id: 'PREVIEW-011', status: 'DONE', time: '15:10', start_time: '14:38', end_time: '15:10', zone: 'G3' },
-];
-
-const parseProgress = (value: string): { done: number; total: number } | null => {
-  const match = value.trim().match(/(\d+)\s*\/\s*(\d+)/);
-  if (!match) return null;
-  const done = Number.parseInt(match[1], 10);
-  const total = Number.parseInt(match[2], 10);
-  if (!Number.isFinite(done) || !Number.isFinite(total) || total <= 0 || done < 0) return null;
-  return { done, total };
+type PreviewLotFixture = {
+  lot: string;
+  ws: string | string[];
+  total: number;
+  done: number;
+  active?: number;
 };
+
+const LOT_PLAN_REFRESH_MS = 180000;
+const MIN_ROWS_PER_LOT = 4;
+const MAX_VISIBLE_ACTIVE_LOTS = 8;
+const MAX_DONE_LOTS = 3;
+const LOT_NO_PATTERN = /^43115-[A-Z0-9]+$/;
+
+const PREVIEW_LOT_FIXTURES: PreviewLotFixture[] = [
+  { lot: '43115-CT13J20260410', ws: ['Welding', 'Assembly'], total: 12, done: 5, active: 3 },
+  { lot: '43115-CT13J20260408', ws: 'Assembly', total: 13, done: 9, active: 2 },
+  { lot: '43115-CM32T20260306', ws: ['Paint', 'Welding'], total: 19, done: 14, active: 3 },
+  { lot: '43115-CT13J20260412', ws: 'Assembly', total: 17, done: 14, active: 1 },
+  { lot: '43115-CT13J20260413', ws: 'Paint', total: 11, done: 10, active: 1 },
+  { lot: '43115-CT13J20260414', ws: 'Welding', total: 14, done: 0 },
+  { lot: '43115-CM32T20260401', ws: 'Assembly', total: 8, done: 8 },
+  { lot: '43115-CM32T20260402', ws: 'Paint', total: 9, done: 9 },
+  { lot: '43115-CM32T20260403', ws: 'Welding', total: 10, done: 10 },
+  { lot: '43115-CM32T20260404', ws: 'Assembly', total: 7, done: 7 },
+  { lot: '43115-CT13J20260405', ws: 'Paint', total: 3, done: 1, active: 1 },
+];
+
+const PREVIEW_NOISE_ROWS: PlanRow[] = [
+  { rowIndex: 900, index: 900, lot: '4800169078 / 182402105', ws: 'Welding', pallets: '12/24', id: 'PREVIEW-NOISE-001', phone: '', eta: '15:00' },
+  { rowIndex: 901, index: 901, lot: '4800169078', ws: 'Assembly', pallets: '0/14', id: 'PREVIEW-NOISE-002', phone: '', eta: '15:10' },
+  { rowIndex: 902, index: 902, lot: '182402105', ws: 'Paint', pallets: '5/20', id: 'PREVIEW-NOISE-003', phone: '', eta: '15:20' },
+  { rowIndex: 903, index: 903, lot: '', ws: 'Paint', pallets: '5/20', id: 'PREVIEW-NOISE-004', phone: '', eta: '15:30' },
+];
+
+const makePreviewPlanRows = (): PlanRow[] => {
+  let rowIndex = 5;
+  let index = 1;
+  const rows = PREVIEW_LOT_FIXTURES.flatMap((fixture, lotIndex) => {
+    const wsList = Array.isArray(fixture.ws) ? fixture.ws : [fixture.ws];
+    return Array.from({ length: fixture.total }, (_, rowInLot) => ({
+      rowIndex: rowIndex++,
+      index: index++,
+      lot: fixture.lot,
+      ws: wsList[rowInLot % wsList.length],
+      pallets: '',
+      id: `PREVIEW-${String(lotIndex + 1).padStart(2, '0')}-${String(rowInLot + 1).padStart(3, '0')}`,
+      phone: '',
+      eta: `${String(8 + (lotIndex % 7)).padStart(2, '0')}:${String((rowInLot * 5) % 60).padStart(2, '0')}`,
+    }));
+  });
+  return [...rows, ...PREVIEW_NOISE_ROWS];
+};
+
+const makePreviewTasks = (): Task[] => (
+  PREVIEW_LOT_FIXTURES.flatMap((fixture, lotIndex) => Array.from({ length: fixture.total }, (_, rowInLot) => {
+    const id = `PREVIEW-${String(lotIndex + 1).padStart(2, '0')}-${String(rowInLot + 1).padStart(3, '0')}`;
+    const activeLimit = fixture.done + (fixture.active || 0);
+    if (rowInLot < fixture.done) {
+      return { id, status: 'DONE', time: '09:00', start_time: '08:18', end_time: '08:44', zone: 'G3' };
+    }
+    if (rowInLot < activeLimit) {
+      return { id, status: 'ACTIVE', time: '09:35', start_time: '09:35', zone: 'G4' };
+    }
+    return { id, status: 'WAIT', time: '10:05' };
+  }))
+);
+
+const PREVIEW_PLAN_ROWS: PlanRow[] = makePreviewPlanRows();
+const PREVIEW_TASKS: Task[] = makePreviewTasks();
+
+const fontUrl = 'https://fonts.googleapis.com/css2?family=Saira:wght@600;700;800;900&family=Manrope:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap';
 
 const normalizeId = (value: string | undefined): string => (value || '').trim().toUpperCase();
 
-const getStatus = (done: number, total: number, invalidRows: number): LotStatus => {
-  if (invalidRows > 0 || total <= 0 || done > total) return 'problem';
-  if (done === 0) return 'not_started';
-  if (done >= total) return 'done';
-  return done / total < 0.5 ? 'low' : 'progress';
+const normalizeLotNo = (value: string | undefined): string => {
+  const lot = (value || '').trim().toUpperCase();
+  return LOT_NO_PATTERN.test(lot) ? lot : '';
 };
 
-const openStatusRank: Record<LotStatus, number> = {
-  problem: 0,
-  low: 1,
-  progress: 2,
-  not_started: 3,
-  done: 4,
-};
+const formatWs = (ws: string[]): string => (ws.length > 0 ? ws.join(' / ') : '-');
 
-const middleEllipsis = (value: string, maxLength = 24): string => {
+const middleEllipsis = (value: string, maxLength = 26): string => {
   if (value.length <= maxLength) return value;
   const head = Math.ceil((maxLength - 3) * 0.58);
   const tail = maxLength - 3 - head;
   return `${value.slice(0, head)}...${value.slice(-tail)}`;
 };
 
-const formatWs = (ws: string[]): string => ws.length > 0 ? ws.join(' / ') : '—';
+const getStatus = (done: number, total: number, inProgress: number): LotStatus => {
+  if (done >= total) return 'done';
+  if (done === 0 && inProgress === 0) return 'not_started';
+  return done / total < 0.5 ? 'low' : 'progress';
+};
 
-const getTone = (lot: LotProgress): CardTone => {
-  if (lot.status === 'problem') {
+const activeStatusRank: Record<LotStatus, number> = {
+  not_started: 0,
+  low: 1,
+  progress: 2,
+  done: 3,
+};
+
+const getTone = (status: LotStatus, percent: number): RowTone => {
+  if (status === 'done') {
     return {
-      accent: '#F87171',
-      color: '#fca5a5',
-      bg: 'rgba(248,113,113,.08)',
-      border: 'rgba(248,113,113,.3)',
-      badgeBg: 'rgba(248,113,113,.16)',
-      badgeBorder: 'rgba(248,113,113,.3)',
-      badgeColor: '#fecaca',
-      gradient: 'linear-gradient(90deg,#F87171,#dc2626)',
-      shadow: 'rgba(248,113,113,.5)',
+      accent: '#00E676',
+      color: '#00E676',
+      mutedColor: '#78f5ad',
+      bg: 'rgba(0,230,118,.08)',
+      border: 'rgba(0,230,118,.22)',
+      badgeBg: 'rgba(0,230,118,.14)',
+      badgeBorder: 'rgba(0,230,118,.28)',
+      badgeColor: '#78f5ad',
+      gradient: 'linear-gradient(90deg,#00E676,#0bbf6a)',
+      shadow: 'rgba(0,230,118,.42)',
     };
   }
 
-  if (lot.status === 'not_started') {
+  if (status === 'not_started') {
     return {
-      accent: '#6b7686',
-      color: 'rgba(255,255,255,.55)',
-      bg: 'rgba(255,255,255,.03)',
-      border: 'rgba(255,255,255,.1)',
+      accent: '#778293',
+      color: 'rgba(255,255,255,.58)',
+      mutedColor: 'rgba(255,255,255,.52)',
+      bg: 'rgba(255,255,255,.035)',
+      border: 'rgba(255,255,255,.12)',
       badgeBg: 'rgba(255,255,255,.06)',
-      badgeBorder: 'rgba(255,255,255,.16)',
-      badgeColor: 'rgba(255,255,255,.6)',
-      gradient: 'linear-gradient(90deg,#6b7686,#8792a1)',
+      badgeBorder: 'rgba(255,255,255,.14)',
+      badgeColor: 'rgba(255,255,255,.68)',
+      gradient: 'linear-gradient(90deg,#778293,#98a4b3)',
       shadow: 'rgba(255,255,255,.18)',
     };
   }
 
-  if (lot.status === 'low') {
+  if (status === 'low') {
     return {
       accent: '#FBBF24',
       color: '#FBBF24',
+      mutedColor: '#f5cd6b',
       bg: 'rgba(251,191,36,.08)',
-      border: 'rgba(251,191,36,.3)',
-      badgeBg: 'rgba(251,191,36,.16)',
-      badgeBorder: 'rgba(251,191,36,.3)',
-      badgeColor: '#f5cd6b',
+      border: 'rgba(251,191,36,.26)',
+      badgeBg: 'rgba(251,191,36,.15)',
+      badgeBorder: 'rgba(251,191,36,.28)',
+      badgeColor: '#f8d779',
       gradient: 'linear-gradient(90deg,#FBBF24,#f59e0b)',
-      shadow: 'rgba(251,191,36,.5)',
+      shadow: 'rgba(251,191,36,.45)',
     };
   }
 
-  if (lot.percent >= 80) {
+  if (percent >= 80) {
     return {
       accent: '#22D3C5',
       color: '#22D3C5',
-      bg: 'rgba(34,211,197,.07)',
-      border: 'rgba(34,211,197,.28)',
-      badgeBg: 'rgba(34,211,197,.16)',
-      badgeBorder: 'rgba(34,211,197,.3)',
-      badgeColor: '#5fe6dc',
+      mutedColor: '#72eee6',
+      bg: 'rgba(34,211,197,.075)',
+      border: 'rgba(34,211,197,.26)',
+      badgeBg: 'rgba(34,211,197,.14)',
+      badgeBorder: 'rgba(34,211,197,.28)',
+      badgeColor: '#72eee6',
       gradient: 'linear-gradient(90deg,#22D3C5,#13a89c)',
-      shadow: 'rgba(34,211,197,.5)',
+      shadow: 'rgba(34,211,197,.45)',
     };
   }
 
   return {
     accent: '#4DA8FF',
     color: '#4DA8FF',
-    bg: 'rgba(77,168,255,.07)',
-    border: 'rgba(77,168,255,.28)',
-    badgeBg: 'rgba(77,168,255,.16)',
-    badgeBorder: 'rgba(77,168,255,.3)',
+    mutedColor: '#9ec5ff',
+    bg: 'rgba(77,168,255,.075)',
+    border: 'rgba(77,168,255,.26)',
+    badgeBg: 'rgba(77,168,255,.14)',
+    badgeBorder: 'rgba(77,168,255,.28)',
     badgeColor: '#9ec5ff',
     gradient: 'linear-gradient(90deg,#4DA8FF,#2f7fe0)',
-    shadow: 'rgba(77,168,255,.5)',
+    shadow: 'rgba(77,168,255,.45)',
   };
 };
 
 const statusLabel = (status: LotStatus): string => {
+  if (status === 'done') return 'Закрыто';
   if (status === 'not_started') return 'Не начато';
-  if (status === 'problem') return 'Ошибка';
   return 'В работе';
 };
 
@@ -188,62 +226,58 @@ const buildLotProgress = (rows: PlanRow[], allTasks: Task[]): LotProgress[] => {
     if (id) taskById.set(id, task);
   });
 
-  const groups = new Map<string, Omit<LotProgress, 'percent' | 'status'>>();
+  const groups = new Map<string, {
+    lot: string;
+    ws: string[];
+    total: number;
+    done: number;
+    inProgress: number;
+    notStarted: number;
+  }>();
 
   rows.forEach((row) => {
-    const lot = row.lot.trim();
+    const lot = normalizeLotNo(row.lot);
     if (!lot) return;
 
-    const existing = groups.get(lot) || {
+    const group = groups.get(lot) || {
       lot,
       ws: [],
-      done: 0,
       total: 0,
-      rows: 0,
-      containersDone: 0,
-      containersActive: 0,
-      containersWaiting: 0,
-      invalidRows: 0,
+      done: 0,
+      inProgress: 0,
+      notStarted: 0,
     };
-
-    const parsed = parseProgress(row.pallets || '');
-    if (parsed) {
-      existing.done += parsed.done;
-      existing.total += parsed.total;
-    } else {
-      existing.invalidRows += 1;
-    }
 
     const ws = row.ws.trim();
-    if (ws && !existing.ws.includes(ws)) existing.ws.push(ws);
+    if (ws && !group.ws.includes(ws)) group.ws.push(ws);
 
     const task = taskById.get(normalizeId(row.id));
-    if (task?.status === 'DONE') existing.containersDone += 1;
-    else if (task?.status === 'ACTIVE') existing.containersActive += 1;
-    else existing.containersWaiting += 1;
+    if (task?.status === 'DONE') group.done += 1;
+    else if (task?.status === 'ACTIVE') group.inProgress += 1;
+    else group.notStarted += 1;
 
-    existing.rows += 1;
-    groups.set(lot, existing);
+    group.total += 1;
+    groups.set(lot, group);
   });
 
-  return Array.from(groups.values()).map((lot) => {
-    const percent = lot.total > 0 ? Math.max(0, Math.min(100, Math.round((lot.done / lot.total) * 100))) : 0;
-    return {
-      ...lot,
-      percent,
-      status: getStatus(lot.done, lot.total, lot.invalidRows),
-    };
-  });
+  return Array.from(groups.values())
+    .filter((lot) => lot.total > MIN_ROWS_PER_LOT - 1)
+    .map((lot) => {
+      const percent = Math.round((lot.done / lot.total) * 100);
+      const status = getStatus(lot.done, lot.total, lot.inProgress);
+      return {
+        ...lot,
+        percent,
+        status,
+      };
+    });
 };
-
-const fontUrl = 'https://fonts.googleapis.com/css2?family=Saira:wght@600;700;800;900&family=Manrope:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap';
 
 const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview = false }) => {
   const [planRows, setPlanRows] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(!preview);
   const [error, setError] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [clock, setClock] = useState(() => new Date());
 
   useEffect(() => {
     const existing = document.querySelector<HTMLLinkElement>(`link[href="${fontUrl}"]`);
@@ -256,11 +290,6 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
     fontLink.rel = 'stylesheet';
     fontLink.href = fontUrl;
     document.head.append(preconnectFonts, fontLink);
-  }, []);
-
-  useEffect(() => {
-    const id = setInterval(() => setClock(new Date()), 30000);
-    return () => clearInterval(id);
   }, []);
 
   const fetchPlan = useCallback(async (showLoader: boolean) => {
@@ -317,90 +346,128 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
 
   const sourceTasks = preview ? PREVIEW_TASKS : allTasks;
   const lots = useMemo(() => buildLotProgress(planRows, sourceTasks), [planRows, sourceTasks]);
-  const closedLots = lots
-    .filter((lot) => lot.status === 'done')
-    .sort((a, b) => b.percent - a.percent || a.lot.localeCompare(b.lot));
-  const openLots = lots
-    .filter((lot) => lot.status !== 'done')
-    .sort((a, b) => {
-      const rankDiff = openStatusRank[a.status] - openStatusRank[b.status];
-      if (rankDiff !== 0) return rankDiff;
-      if (a.percent !== b.percent) return a.percent - b.percent;
-      return a.lot.localeCompare(b.lot);
-    });
-  const visibleOpenLots = openLots.slice(0, MAX_ACTIVE_LOTS);
+  const activeLots = useMemo(() => (
+    lots
+      .filter((lot) => lot.status !== 'done')
+      .sort((a, b) => {
+        const rankDiff = activeStatusRank[a.status] - activeStatusRank[b.status];
+        if (rankDiff !== 0) return rankDiff;
+        if (a.percent !== b.percent) return a.percent - b.percent;
+        return a.lot.localeCompare(b.lot);
+      })
+  ), [lots]);
+  const closedLots = useMemo(() => (
+    lots
+      .filter((lot) => lot.status === 'done')
+      .sort((a, b) => a.lot.localeCompare(b.lot))
+  ), [lots]);
+
+  const visibleActiveLots = activeLots.slice(0, MAX_VISIBLE_ACTIVE_LOTS);
   const visibleClosedLots = closedLots.slice(0, MAX_DONE_LOTS);
-  const notStartedLots = openLots.filter((lot) => lot.status === 'not_started').length;
-  const activeLots = openLots.filter((lot) => lot.status === 'low' || lot.status === 'progress').length;
-  const updatedTime = (lastUpdated || clock).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  const timeText = clock.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  const dateText = clock.toLocaleDateString('ru-RU', { weekday: 'short', day: '2-digit', month: 'long' }).toUpperCase();
+  const notStartedLots = activeLots.filter((lot) => lot.status === 'not_started').length;
+  const inWorkLots = activeLots.filter((lot) => lot.status !== 'not_started').length;
+  const updatedTime = (lastUpdated || new Date()).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const totalHiddenActive = Math.max(0, activeLots.length - visibleActiveLots.length);
+  const headerStats: Array<{ label: string; value: number; color: string }> = [
+    { label: 'Всего', value: lots.length, color: '#fff' },
+    { label: 'В работе', value: inWorkLots, color: '#4DA8FF' },
+    { label: 'Не начато', value: notStartedLots, color: '#FBBF24' },
+    { label: 'Закрыто', value: closedLots.length, color: '#00E676' },
+  ];
 
-  const renderActiveLot = (lot: LotProgress) => {
-    const tone = getTone(lot);
-    const percent = lot.status === 'problem' && lot.total <= 0 ? 0 : lot.percent;
+  const renderProgressBar = (lot: LotProgress, tone: RowTone) => (
+    <div style={{ height: 28, borderRadius: 10, background: 'rgba(255,255,255,.08)', overflow: 'hidden', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.04)' }}>
+      {lot.percent > 0 && (
+        <div
+          style={{
+            width: `${lot.percent}%`,
+            height: '100%',
+            borderRadius: 10,
+            background: tone.gradient,
+            boxShadow: `0 0 18px ${tone.shadow}`,
+          }}
+        />
+      )}
+    </div>
+  );
 
+  const renderLotRow = (lot: LotProgress) => {
+    const tone = getTone(lot.status, lot.percent);
     return (
       <div
         key={lot.lot}
         style={{
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '24px 26px',
-          borderRadius: 18,
+          display: 'grid',
+          gridTemplateColumns: '430px 250px 1fr 150px 120px 150px',
+          alignItems: 'center',
+          gap: 18,
+          minHeight: 88,
+          padding: '12px 22px',
+          borderRadius: 14,
           background: tone.bg,
           border: `1px solid ${tone.border}`,
-          borderLeft: `6px solid ${tone.accent}`,
+          borderLeft: `7px solid ${tone.accent}`,
           overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-            <span style={{ font: "800 12px/1 'JetBrains Mono'", letterSpacing: 3, color: 'rgba(255,255,255,.5)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Lot No</span>
-            <span title={formatWs(lot.ws)} style={{ font: "800 12px/1 'JetBrains Mono'", letterSpacing: 1.5, color: 'rgba(255,255,255,.38)', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              W/S {formatWs(lot.ws)}
-            </span>
-          </div>
-          <span style={{ padding: '7px 14px', borderRadius: 9, background: tone.badgeBg, border: `1px solid ${tone.badgeBorder}`, font: "800 12px 'Manrope'", letterSpacing: 1, color: tone.badgeColor, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-            {statusLabel(lot.status)}
-          </span>
-        </div>
-
-        <div title={lot.lot} style={{ font: "800 40px/1 'JetBrains Mono'", color: lot.status === 'not_started' ? 'rgba(255,255,255,.85)' : '#fff', letterSpacing: -1, marginTop: 12, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <div title={lot.lot} style={{ font: "800 37px/1 'JetBrains Mono'", color: '#fff', letterSpacing: -1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {middleEllipsis(lot.lot, 24)}
         </div>
-
-        <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
-            <span style={{ font: "900 88px/0.8 'Saira'", color: tone.color, letterSpacing: -3 }}>{lot.status === 'problem' && lot.total <= 0 ? '--' : lot.percent}</span>
-            <span style={{ font: "900 30px 'Saira'", color: tone.color }}>%</span>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ font: "800 34px/0.9 'Saira'", color: lot.status === 'not_started' ? 'rgba(255,255,255,.7)' : '#fff', fontVariantNumeric: 'tabular-nums' }}>
-              {lot.total > 0 ? lot.done : '--'} / {lot.total > 0 ? lot.total : '--'}
-            </div>
-            <div style={{ font: "700 12px 'JetBrains Mono'", letterSpacing: 1, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase', marginTop: 5 }}>деталей</div>
-          </div>
+        <div title={formatWs(lot.ws)} style={{ font: "800 21px/1.1 'Manrope'", color: 'rgba(255,255,255,.72)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {formatWs(lot.ws)}
         </div>
-
-        <div style={{ height: 30, borderRadius: 9, background: 'rgba(255,255,255,.07)', overflow: 'hidden' }}>
-          {percent > 0 && (
-            <div style={{ height: '100%', width: `${percent}%`, borderRadius: 9, background: tone.gradient, boxShadow: `0 0 16px ${tone.shadow}`, transformOrigin: 'left', animation: 'tvLotGrow 1s ease-out' }} />
-          )}
+        {renderProgressBar(lot, tone)}
+        <div style={{ font: "900 34px/1 'Saira'", color: '#fff', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+          {lot.done} / {lot.total}
+        </div>
+        <div style={{ font: "900 50px/1 'Saira'", color: tone.color, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+          {lot.percent}%
+        </div>
+        <div style={{ justifySelf: 'end', padding: '10px 14px', minWidth: 126, borderRadius: 10, background: tone.badgeBg, border: `1px solid ${tone.badgeBorder}`, color: tone.badgeColor, font: "900 16px/1 'Manrope'", textAlign: 'center', textTransform: 'uppercase', letterSpacing: .8, whiteSpace: 'nowrap' }}>
+          {statusLabel(lot.status)}
         </div>
       </div>
     );
   };
 
-  const renderClosedLot = (lot: LotProgress) => (
-    <div key={lot.lot} style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, padding: '9px 16px', borderRadius: 11, background: 'rgba(0,230,118,.09)', border: '1px solid rgba(0,230,118,.25)', overflow: 'hidden' }}>
-      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: '50%', background: '#00E676', color: '#06140c', font: "900 15px 'Manrope'", flex: '0 0 auto' }}>✓</span>
-      <span title={lot.lot} style={{ font: "800 23px/1 'JetBrains Mono'", color: '#dff7e8', letterSpacing: -.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 310 }}>
-        {middleEllipsis(lot.lot, 22)}
-      </span>
-      <span title={formatWs(lot.ws)} style={{ font: "800 12px 'JetBrains Mono'", letterSpacing: 1, color: 'rgba(255,255,255,.42)', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>{formatWs(lot.ws)}</span>
-      <span style={{ font: "900 22px 'Saira'", color: '#00E676', whiteSpace: 'nowrap' }}>{lot.percent}%</span>
-      <span style={{ font: "700 14px 'Saira'", color: 'rgba(255,255,255,.45)', whiteSpace: 'nowrap' }}>{lot.done} / {lot.total}</span>
+  const renderClosedRow = (lot: LotProgress) => {
+    const tone = getTone(lot.status, lot.percent);
+    return (
+      <div
+        key={lot.lot}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '380px 200px 1fr 116px 96px',
+          alignItems: 'center',
+          gap: 14,
+          minHeight: 56,
+          padding: '7px 16px',
+          borderRadius: 12,
+          background: tone.bg,
+          border: `1px solid ${tone.border}`,
+          overflow: 'hidden',
+        }}
+      >
+        <div title={lot.lot} style={{ font: "800 28px/1 'JetBrains Mono'", color: '#dff7e8', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          {middleEllipsis(lot.lot, 22)}
+        </div>
+        <div title={formatWs(lot.ws)} style={{ font: "800 16px/1 'Manrope'", color: 'rgba(255,255,255,.54)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {formatWs(lot.ws)}
+        </div>
+        {renderProgressBar(lot, tone)}
+        <div style={{ font: "900 24px/1 'Saira'", color: '#fff', textAlign: 'right', whiteSpace: 'nowrap' }}>
+          {lot.done} / {lot.total}
+        </div>
+        <div style={{ font: "900 30px/1 'Saira'", color: tone.color, textAlign: 'right', whiteSpace: 'nowrap' }}>
+          {lot.percent}%
+        </div>
+      </div>
+    );
+  };
+
+  const renderEmptyState = () => (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 18, border: '1px dashed rgba(255,255,255,.12)', background: 'rgba(255,255,255,.03)', color: 'rgba(255,255,255,.58)', font: "900 34px/1 'Saira'", letterSpacing: .5, textTransform: 'uppercase' }}>
+      Нет активных Lot No для отображения
     </div>
   );
 
@@ -410,100 +477,83 @@ const TvLotProgressView: React.FC<Props> = ({ allTasks, isTasksLoading, preview 
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        background: 'radial-gradient(1300px 720px at 82% -16%,rgba(0,230,118,.06),transparent 56%),radial-gradient(1100px 700px at 2% 116%,rgba(77,168,255,.05),transparent 55%),linear-gradient(168deg,#1b2230 0%,#0f121b 78%)',
-        padding: '26px 30px',
+        background: 'radial-gradient(1250px 720px at 88% -12%,rgba(0,230,118,.06),transparent 56%),radial-gradient(980px 620px at 0% 118%,rgba(77,168,255,.05),transparent 55%),linear-gradient(168deg,#1b2230 0%,#0f121b 78%)',
+        padding: '18px 24px',
         display: 'flex',
         flexDirection: 'column',
-        gap: 16,
+        gap: 12,
         color: '#eaf0f7',
         fontFamily: "'Manrope',system-ui,sans-serif",
       }}
     >
-      <style>{`
-        @keyframes tvLotPulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
-        @keyframes tvLotGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-      `}</style>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 22, height: 66, flex: 'none' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 46, padding: '0 16px', borderRadius: 12, background: 'linear-gradient(135deg,#00E676,#0c8f53)', font: "900 22px/1 'Saira'", letterSpacing: 1, color: '#06140c' }}>AGR</div>
-        <div style={{ width: 1, height: 38, background: 'rgba(255,255,255,.13)' }} />
-        <div>
-          <div style={{ font: "800 12px/1 'JetBrains Mono'", letterSpacing: 4, color: '#5ff0a6', textTransform: 'uppercase' }}>Мониторинг склада</div>
-          <div style={{ font: "900 38px/1 'Saira'", letterSpacing: 1, color: '#fff', textTransform: 'uppercase', marginTop: 7 }}>Отработка Lot No</div>
+      <div
+        style={{
+          height: 58,
+          maxHeight: 70,
+          flex: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 18,
+          padding: '0 22px',
+          borderRadius: 15,
+          background: 'rgba(255,255,255,.055)',
+          border: '1px solid rgba(255,255,255,.1)',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ font: "900 30px/1 'Saira'", color: '#fff', letterSpacing: 1, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+          Отработка Lot No
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', borderRadius: 13, background: 'rgba(34,211,197,.1)', border: '1px solid rgba(34,211,197,.26)' }}>
-            <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#22D3C5', animation: 'tvLotPulse 1.6s ease-in-out infinite' }} />
-            <span style={{ font: "800 13px 'JetBrains Mono'", letterSpacing: 1, color: '#5fe6dc', textTransform: 'uppercase' }}>Обновлено {updatedTime}</span>
+        <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,.16)', flex: 'none' }} />
+        {headerStats.map(({ label, value, color }) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 8, whiteSpace: 'nowrap' }}>
+            <span style={{ font: "800 16px/1 'Manrope'", color: 'rgba(255,255,255,.56)' }}>{label}:</span>
+            <span style={{ font: "900 32px/1 'Saira'", color }}>{value}</span>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ font: "900 44px/0.9 'Saira'", letterSpacing: 1, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{timeText}</div>
-            <div style={{ font: "800 11px 'JetBrains Mono'", letterSpacing: 2, color: 'rgba(255,255,255,.45)', marginTop: 4 }}>{dateText}</div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 16, height: 128, flex: 'none' }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8, padding: '0 30px', borderRadius: 18, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.09)' }}>
-          <span style={{ font: "800 13px/1 'JetBrains Mono'", letterSpacing: 3, color: 'rgba(255,255,255,.5)', textTransform: 'uppercase' }}>Всего лотов</span>
-          <span style={{ font: "900 68px/0.85 'Saira'", color: '#fff', letterSpacing: -1 }}>{lots.length}</span>
-        </div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8, padding: '0 30px', borderRadius: 18, background: 'rgba(77,168,255,.08)', border: '1px solid rgba(77,168,255,.26)' }}>
-          <span style={{ font: "800 13px/1 'JetBrains Mono'", letterSpacing: 3, color: '#9ec5ff', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>В работе</span>
-          <span style={{ font: "900 68px/0.85 'Saira'", color: '#4DA8FF', letterSpacing: -1 }}>{activeLots}</span>
-        </div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8, padding: '0 30px', borderRadius: 18, background: 'rgba(251,191,36,.08)', border: '1px solid rgba(251,191,36,.26)' }}>
-          <span style={{ font: "800 13px/1 'JetBrains Mono'", letterSpacing: 3, color: '#f5cd6b', textTransform: 'uppercase' }}>Не начато</span>
-          <span style={{ font: "900 68px/0.85 'Saira'", color: '#FBBF24', letterSpacing: -1 }}>{notStartedLots}</span>
-        </div>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8, padding: '0 30px', borderRadius: 18, background: 'rgba(0,230,118,.07)', border: '1px solid rgba(0,230,118,.26)' }}>
-          <span style={{ font: "800 13px/1 'JetBrains Mono'", letterSpacing: 3, color: '#5ff0a6', textTransform: 'uppercase' }}>Закрыто</span>
-          <span style={{ font: "900 68px/0.85 'Saira'", color: '#00E676', letterSpacing: -1 }}>{closedLots.length}</span>
+        ))}
+        <div style={{ marginLeft: 'auto', font: "800 17px/1 'JetBrains Mono'", color: 'rgba(255,255,255,.55)', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
+          обновлено {updatedTime}
         </div>
       </div>
 
       {loading || (!preview && isTasksLoading) ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', font: "900 34px 'Saira'", color: 'rgba(255,255,255,.55)', textTransform: 'uppercase' }}>Загрузка Lot No...</div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', font: "900 34px/1 'Saira'", color: 'rgba(255,255,255,.55)', textTransform: 'uppercase' }}>
+          Загрузка Lot No...
+        </div>
       ) : error ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-          <AlertTriangle style={{ width: 80, height: 80, color: '#fca5a5' }} />
-          <div style={{ marginTop: 18, font: "900 44px 'Saira'", color: '#fff' }}>Не удалось загрузить план</div>
-          <div style={{ marginTop: 4, font: "800 18px 'Manrope'", color: 'rgba(255,255,255,.45)' }}>Экран использует существующий план текущего операционного дня</div>
+          <AlertTriangle style={{ width: 72, height: 72, color: '#fca5a5' }} />
+          <div style={{ marginTop: 18, font: "900 40px/1 'Saira'", color: '#fff' }}>Не удалось загрузить план</div>
+          <div style={{ marginTop: 8, font: "800 18px/1 'Manrope'", color: 'rgba(255,255,255,.48)' }}>Используется текущий план операционного дня</div>
         </div>
       ) : (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 13, flex: 'none' }}>
-            <span style={{ width: 5, height: 20, borderRadius: 3, background: '#4DA8FF' }} />
-            <span style={{ font: "800 15px/1 'JetBrains Mono'", letterSpacing: 3, color: '#fff', textTransform: 'uppercase' }}>Активные лоты · сначала проблемные</span>
-            <span style={{ marginLeft: 'auto', font: "800 13px 'JetBrains Mono'", letterSpacing: 1, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase' }}>
-              {openLots.length > MAX_ACTIVE_LOTS ? `${visibleOpenLots.length} из ${openLots.length} открыто` : `${openLots.length} открыто`}
-            </span>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {visibleActiveLots.length > 0 ? visibleActiveLots.map(renderLotRow) : renderEmptyState()}
           </div>
 
-          <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gridTemplateRows: 'repeat(2,1fr)', gap: 16 }}>
-            {visibleOpenLots.map(renderActiveLot)}
-            {Array.from({ length: Math.max(0, MAX_ACTIVE_LOTS - visibleOpenLots.length) }).map((_, index) => (
-              <div key={`empty-${index}`} style={{ borderRadius: 18, background: 'rgba(255,255,255,.025)', border: '1px dashed rgba(255,255,255,.08)' }} />
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 18, height: 74, flex: 'none', padding: '0 24px', borderRadius: 16, background: 'rgba(0,230,118,.05)', border: '1px solid rgba(0,230,118,.2)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 11, flex: 'none' }}>
-              <span style={{ width: 5, height: 22, borderRadius: 3, background: '#00E676' }} />
-              <span style={{ font: "800 14px/1 'JetBrains Mono'", letterSpacing: 3, color: '#5ff0a6', textTransform: 'uppercase' }}>Закрытые лоты</span>
-              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 30, height: 30, padding: '0 9px', borderRadius: 8, background: 'rgba(0,230,118,.16)', border: '1px solid rgba(0,230,118,.3)', font: "900 16px 'Saira'", color: '#00E676' }}>
-                {visibleClosedLots.length}
-              </span>
+          {totalHiddenActive > 0 && (
+            <div style={{ flex: 'none', height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,.48)', font: "800 15px/1 'JetBrains Mono'", letterSpacing: 1, textTransform: 'uppercase' }}>
+              Показано {visibleActiveLots.length} из {activeLots.length} активных Lot No
             </div>
-            {closedLots.length > MAX_DONE_LOTS && (
-              <div style={{ flex: '0 0 auto', font: "800 12px 'JetBrains Mono'", letterSpacing: 1, color: '#5ff0a6', textTransform: 'uppercase', opacity: .9 }}>
-                Закрытые: показано {visibleClosedLots.length} из {closedLots.length}
+          )}
+
+          {closedLots.length > 0 && (
+            <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ height: 28, display: 'flex', alignItems: 'center', gap: 12, color: '#5ff0a6', font: "900 16px/1 'JetBrains Mono'", letterSpacing: 2, textTransform: 'uppercase' }}>
+                <span style={{ width: 5, height: 20, borderRadius: 3, background: '#00E676' }} />
+                Закрытые Lot No
+                {closedLots.length > MAX_DONE_LOTS && (
+                  <span style={{ color: 'rgba(95,240,166,.72)', letterSpacing: 1 }}>
+                    показано {visibleClosedLots.length} из {closedLots.length}
+                  </span>
+                )}
               </div>
-            )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, overflow: 'hidden' }}>
-              {visibleClosedLots.map(renderClosedLot)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {visibleClosedLots.map(renderClosedRow)}
+              </div>
             </div>
-          </div>
+          )}
         </>
       )}
     </div>
