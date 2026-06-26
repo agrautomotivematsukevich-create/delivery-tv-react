@@ -614,6 +614,44 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
     </div>
   );
 
+  const renderWsLegend = () => (
+    <div
+      aria-label="W/S группы"
+      style={{
+        marginLeft: 'auto',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'clamp(9px,.8vw,14px)',
+        padding: 'clamp(5px,.65vh,8px) clamp(9px,.9vw,14px)',
+        borderRadius: 999,
+        background: 'rgba(8,13,22,.52)',
+        border: '1px solid rgba(255,255,255,.11)',
+        boxShadow: '0 8px 24px rgba(0,0,0,.18), inset 0 0 0 1px rgba(255,255,255,.03)',
+        color: 'rgba(255,255,255,.58)',
+        font: "900 clamp(10px,.75vw,13px)/1 'Manrope'",
+        letterSpacing: .8,
+        textTransform: 'none',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span style={{ color: 'rgba(255,255,255,.5)', textTransform: 'uppercase' }}>W/S группы</span>
+      {(['welding', 'assembly', 'paint'] as WsGroupKey[]).map((key) => (
+        <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 'clamp(5px,.45vw,7px)', color: 'rgba(255,255,255,.76)' }}>
+          <span
+            style={{
+              width: 'clamp(8px,.65vw,11px)',
+              height: 'clamp(8px,.65vw,11px)',
+              borderRadius: 3,
+              background: WS_SEGMENT_META[key].color,
+              boxShadow: `0 0 10px ${WS_SEGMENT_META[key].color}`,
+            }}
+          />
+          {WS_SEGMENT_META[key].label}
+        </span>
+      ))}
+    </div>
+  );
+
   return (
     <div
       style={{
@@ -650,6 +688,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
                 показано {visibleActiveLots.length} из {activeLots.length}
               </span>
             )}
+            {renderWsLegend()}
           </div>
 
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 'clamp(8px,1vh,14px)' }}>
