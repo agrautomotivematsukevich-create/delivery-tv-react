@@ -299,7 +299,7 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
   const groups = new Map<string, {
     lot: string;
     ws: string[];
-    wsCounts: Record<WsGroupKey, number>;
+    doneWsCounts: Record<WsGroupKey, number>;
     total: number;
     done: number;
     inProgress: number;
@@ -314,7 +314,7 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
     const group = groups.get(lot) || {
       lot,
       ws: [],
-      wsCounts: createEmptyWsCounts(),
+      doneWsCounts: createEmptyWsCounts(),
       total: 0,
       done: 0,
       inProgress: 0,
@@ -324,11 +324,12 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
 
     const ws = row.ws.trim();
     if (ws && !group.ws.includes(ws)) group.ws.push(ws);
-    group.wsCounts[normalizeWsGroup(ws)] += 1;
 
     const task = taskByKey.get(makeTaskKey(row.sheetDate, row.id));
-    if (task?.status === 'DONE') group.done += 1;
-    else if (task?.status === 'ACTIVE') group.inProgress += 1;
+    if (task?.status === 'DONE') {
+      group.done += 1;
+      group.doneWsCounts[normalizeWsGroup(ws)] += 1;
+    } else if (task?.status === 'ACTIVE') group.inProgress += 1;
     else group.notStarted += 1;
 
     group.total += 1;
@@ -343,7 +344,7 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
       const status = getStatus(lot.done, lot.total, lot.inProgress);
       return {
         ...lot,
-        wsSegments: buildWsSegments(lot.wsCounts, lot.total),
+        wsSegments: buildWsSegments(lot.doneWsCounts, lot.done),
         unfinished: lot.total - lot.done,
         percent,
         status,
@@ -477,10 +478,11 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
 
   const renderProgressBar = (lot: LotProgress, tone: RowTone) => {
     const isClosed = lot.status === 'done';
-    const segments = lot.wsSegments.length > 0 ? lot.wsSegments : [{
+    const filledWidth = lot.total > 0 ? (lot.done / lot.total) * 100 : 0;
+    const segments = lot.done > 0 && lot.wsSegments.length > 0 ? lot.wsSegments : [{
       key: 'other' as WsGroupKey,
       label: 'Other',
-      count: lot.total,
+      count: lot.done,
       percent: 100,
       color: WS_SEGMENT_META.other.color,
     }];
@@ -494,7 +496,6 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
           background: 'rgba(255,255,255,.08)',
           overflow: 'hidden',
           boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.04)',
-          display: 'flex',
         }}
       >
         {isClosed ? (
@@ -507,21 +508,32 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false }) => {
               boxShadow: `0 0 18px ${tone.shadow}`,
             }}
           />
-        ) : (
-          segments.map((segment, index) => (
-            <div
-              key={segment.key}
-              style={{
-                flex: `${segment.count} 1 0`,
-                minWidth: segment.percent > 0 ? 4 : 0,
-                height: '100%',
-                background: segment.color,
-                boxShadow: index === 0 ? `0 0 18px ${segment.color}` : 'none',
-                borderLeft: index === 0 ? 'none' : '2px solid rgba(12,16,24,.72)',
-              }}
-            />
-          ))
-        )}
+        ) : filledWidth > 0 ? (
+          <div
+            style={{
+              width: `${filledWidth}%`,
+              height: '100%',
+              borderRadius: filledWidth >= 99.5 ? 10 : '10px 0 0 10px',
+              overflow: 'hidden',
+              display: 'flex',
+              boxShadow: `0 0 18px ${tone.shadow}`,
+            }}
+          >
+            {segments.map((segment, index) => (
+              <div
+                key={segment.key}
+                style={{
+                  flex: `${segment.count} 1 0`,
+                  minWidth: segment.percent > 0 ? 4 : 0,
+                  height: '100%',
+                  background: segment.color,
+                  boxShadow: index === 0 ? `0 0 18px ${segment.color}` : 'none',
+                  borderLeft: index === 0 ? 'none' : '2px solid rgba(12,16,24,.72)',
+                }}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
     );
   };
