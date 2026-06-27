@@ -85,6 +85,165 @@ var SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
 var SESSION_LAST_SEEN_TOUCH_SECONDS = 15 * 60;
 var SESSION_LAST_SEEN_TOUCH_MS = SESSION_LAST_SEEN_TOUCH_SECONDS * 1000;
 
+// ══════════════════════════════════════════════════════════════════════════════
+// PLAN SHEET LAYOUT (V1 / V2) — header-based column mapping
+// ══════════════════════════════════════════════════════════════════════════════
+// Date sheets ("DD.MM") exist in two layouts. Old sheets are V1; the 27.06 sheet and
+// later are V2 (the user inserts them manually). Every plan handler resolves columns
+// per-sheet via getPlanColumnsForSheet(sheet) so V1 and V2 coexist. Data starts on
+// row 5; the header sits in rows 1..4.
+//
+// V1: A# B-LotNo C-WS D-Pallets E-Container F-Phone G-ETA H-Start I-End J-Duration
+//     K-Zone L-Worker M-PhotoContainer N-PhotoSeal O-PhotoUnloaded P-Arrival Q-SAP R-LES
+// V2: A# B-LotNo C-WS D-Pallets E-Container F-Carrier G-Driver H-Phone I-ETA
+//     J-Arrival K-Start L-End M-Duration(user formula) N-FactoryDowntime(user formula)
+//     O-Zone P-Worker Q-PhotoContainer R-PhotoSeal S-PhotoUnloaded T-SAP U-LES
+// Numbers are 1-BASED (for getRange). For 0-based array access use (C.X - 1).
+// In V2, M/N hold USER FORMULAS — Apps Script never writes/clears/formats them.
+var PLAN_COL_V1 = {
+  version: "V1",
+  N: 1, LOT_NO: 2, WS: 3, PALLETS: 4, CONTAINER_NO: 5,
+  CARRIER: 0, DRIVER: 0, PHONE: 6, ETA: 7, ARRIVAL_TIME: 16,
+  START_TIME: 8, END_TIME: 9, UNLOAD_DURATION: 10, FACTORY_DOWNTIME: 0,
+  ZONE: 11, WORKER: 12, PHOTO_CONTAINER: 13, PHOTO_SEAL: 14, PHOTO_UNLOADED: 15,
+  SAP_STATUS: 17, LES_STATUS: 18, W_READ: 16, W_AUDIT: 18
+};
+var PLAN_COL_V2 = {
+  version: "V2",
+  N: 1, LOT_NO: 2, WS: 3, PALLETS: 4, CONTAINER_NO: 5,
+  CARRIER: 6, DRIVER: 7, PHONE: 8, ETA: 9, ARRIVAL_TIME: 10,
+  START_TIME: 11, END_TIME: 12, UNLOAD_DURATION: 13, FACTORY_DOWNTIME: 14,
+  ZONE: 15, WORKER: 16, PHOTO_CONTAINER: 17, PHOTO_SEAL: 18, PHOTO_UNLOADED: 19,
+  SAP_STATUS: 20, LES_STATUS: 21, W_READ: 19, W_AUDIT: 21
+};
+var PLAN_W_AUDIT = PLAN_COL_V2.LES_STATUS; // 21 — full V2 width (A..U)
+
+var PLAN_HEADER_ROW     = 4;
+var PLAN_DATA_START_ROW = 5;
+var PLAN_HEADER_BG   = "#dfe3e8";
+var PLAN_HEADER_FONT = "#1f2933";
+// Header-title markers used to LOCATE the header row in rows 1..4 (most matches wins;
+// later row breaks ties) — tolerant of KPI rows above and two-row headers.
+var PLAN_HEADER_MARKERS = [
+  "lot", "w/s", "container", "контейнер", "телефон", "прибыт", "зона",
+  "выгрузк", "водитель", "перевозчик", "окончан", "пломб", "фото", "разгрузк"
+];
+var PLAN_V2_HEADERS = [
+  "№", "Lot No", "W/S", "Кейсов P70 / в КТК", "Container No.",
+  "Перевозчик", "Водитель", "Телефон", "Ожидаемое время прибытия",
+  "Фактическое время прибытия на территорию АГМ", "Факт начала разгрузки",
+  "Окончание разгрузки", "Затраченное время на разгрузку", "Простой ТС на заводе",
+  "Зона выгрузки", "Работник принявший контейнер", "Фото контейнера",
+  "Фото пломбы", "Фото выгруженного/пустого контейнера"
+];
+
+// Reads rows 1..4 once, returns { row, header[], found }. row = 1-based header row.
+function planHeaderScan(sheet) {
+  var lastRow = sheet.getLastRow();
+  var width = Math.min(Math.max(sheet.getLastColumn(), 1), sheet.getMaxColumns());
+  if (lastRow < 1 || width < 5) return { row: PLAN_HEADER_ROW, header: [], found: false };
+  var scanRows = Math.min(PLAN_DATA_START_ROW - 1, lastRow);
+  var block = sheet.getRange(1, 1, scanRows, width).getDisplayValues();
+  var bestIdx = -1, bestHits = 0;
+  for (var r = 0; r < block.length; r++) {
+    var joined = block[r].join("|").toLowerCase();
+    var hits = 0;
+    for (var m = 0; m < PLAN_HEADER_MARKERS.length; m++) {
+      if (joined.indexOf(PLAN_HEADER_MARKERS[m]) !== -1) hits++;
+    }
+    if (hits >= bestHits) { bestHits = hits; bestIdx = r; }
+  }
+  if (bestHits < 2 || bestIdx < 0) {
+    return { row: PLAN_HEADER_ROW, header: (block[PLAN_HEADER_ROW - 1] || []), found: false };
+  }
+  return { row: bestIdx + 1, header: block[bestIdx], found: true };
+}
+
+// "V2" | "V1" | "UNKNOWN". V2 ⇔ the located header row has BOTH "перевозчик" and
+// "водитель" (V2-exclusive columns) — robust to minor wording/position changes.
+function detectPlanLayout(sheet) {
+  var scan = planHeaderScan(sheet);
+  if (!scan.found) return "UNKNOWN";
+  var joined = (scan.header || []).join("|").toLowerCase();
+  if (joined.indexOf("перевозчик") !== -1 && joined.indexOf("водитель") !== -1) return "V2";
+  return "V1";
+}
+
+// READ-safe map (never throws; UNKNOWN→V1, the safe default).
+function getPlanColumnsForSheet(sheet) {
+  try { return detectPlanLayout(sheet) === "V2" ? PLAN_COL_V2 : PLAN_COL_V1; }
+  catch (e) { return PLAN_COL_V1; }
+}
+
+// WRITE-safe map: header MUST positively classify the sheet; UNKNOWN THROWS so a write
+// never lands in the wrong columns. Used by start/finish/undo/update_row/accounting.
+function getPlanColumnsForSheetWriteSafe_(sheet) {
+  var layout = detectPlanLayout(sheet);
+  if (layout === "V2") return PLAN_COL_V2;
+  if (layout === "V1") return PLAN_COL_V1;
+  throw new Error("UNKNOWN_PLAN_LAYOUT: header not recognized on '"
+    + (sheet && sheet.getName ? sheet.getName() : "?") + "'");
+}
+
+// Clamp a read width to the sheet's real column count so getRange() never throws
+// "out of bounds" on a narrow sheet. Missing columns read as "" (safe).
+function planReadCols_(sheet, want) {
+  return Math.max(1, Math.min(want, sheet.getMaxColumns()));
+}
+
+// Read-only diagnostic log line. Never mutates data; never throws into the caller.
+function logPlanHandlerDebug_(handlerName, mode, sheet, C, extra) {
+  try {
+    var scan = planHeaderScan(sheet);
+    Logger.log("PLAN_DEBUG " + JSON.stringify({
+      handler: handlerName, mode: mode || "",
+      sheet: sheet && sheet.getName ? sheet.getName() : "",
+      layout: detectPlanLayout(sheet), headerRow: scan ? scan.row : null,
+      headerFound: scan ? scan.found : null,
+      maxCols: sheet && sheet.getMaxColumns ? sheet.getMaxColumns() : null,
+      version: C ? C.version : null,
+      cols: C ? { phone: C.PHONE, eta: C.ETA, arrival: C.ARRIVAL_TIME, start: C.START_TIME,
+                  end: C.END_TIME, zone: C.ZONE, worker: C.WORKER, photoContainer: C.PHOTO_CONTAINER,
+                  photoSeal: C.PHOTO_SEAL, photoUnloaded: C.PHOTO_UNLOADED, sap: C.SAP_STATUS, les: C.LES_STATUS } : null,
+      extra: extra || null
+    }));
+  } catch (e) { try { Logger.log("PLAN_DEBUG failed: " + e); } catch (_e) {} }
+}
+
+// Ensure the sheet is wide enough for the full V2 layout (A..U).
+function ensurePlanV2Width(sheet) {
+  var maxCols = sheet.getMaxColumns();
+  if (maxCols < PLAN_W_AUDIT) sheet.insertColumnsAfter(maxCols, PLAN_W_AUDIT - maxCols);
+}
+
+// Write V2 headers + freeze for a NEW sheet created by the app. No formulas/coloring.
+function applyPlanV2Layout(sheet, headerRow) {
+  headerRow = headerRow || PLAN_HEADER_ROW;
+  ensurePlanV2Width(sheet);
+  sheet.getRange(headerRow, 1, 1, PLAN_V2_HEADERS.length)
+    .setValues([PLAN_V2_HEADERS]).setFontWeight("bold")
+    .setBackground(PLAN_HEADER_BG).setFontColor(PLAN_HEADER_FONT);
+  sheet.setFrozenRows(PLAN_DATA_START_ROW - 1);
+}
+
+// Manual read-only diagnostic, e.g. debugPlanColumns("27.06"). NOT wired to doGet/doPost.
+function debugPlanColumns(sheetName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) { Logger.log("debugPlanColumns: sheet not found: " + sheetName); return "MISSING"; }
+  var scan = planHeaderScan(sheet);
+  var C = getPlanColumnsForSheet(sheet);
+  Logger.log("debugPlanColumns " + JSON.stringify({
+    sheet: sheetName, layout: detectPlanLayout(sheet), version: C.version,
+    headerRow: scan.row, headerFound: scan.found,
+    maxCols: sheet.getMaxColumns(), lastCol: sheet.getLastColumn(), lastRow: sheet.getLastRow(),
+    header: scan.header,
+    cols: { container: C.CONTAINER_NO, phone: C.PHONE, eta: C.ETA, arrival: C.ARRIVAL_TIME,
+            start: C.START_TIME, end: C.END_TIME, zone: C.ZONE, worker: C.WORKER }
+  }));
+  return detectPlanLayout(sheet);
+}
+
 // ── ROUTE TABLE ──────────────────────────────────────────────────────────────
 
 var ROUTES = {
@@ -879,30 +1038,37 @@ function padRow_(row, width) {
 
 function buildContainerRowSnapshot_(sheet, rowNumber) {
   if (!sheet || !rowNumber) return null;
-  var row = sheet.getRange(rowNumber, 1, 1, 18).getDisplayValues()[0];
-  padRow_(row, 18);
+  var C = getPlanColumnsForSheet(sheet); // read-safe layout map (V1/V2)
+  var width = planReadCols_(sheet, C.W_AUDIT);
+  var row = sheet.getRange(rowNumber, 1, 1, width).getDisplayValues()[0];
+  padRow_(row, width);
+  var at = function (col) { return col > 0 ? (row[col - 1] || "") : ""; };
   return {
     sheetName: sheet.getName(),
     sheetDate: sheet.getName(),
     rowNumber: rowNumber,
-    index: row[0] || "",
-    lotNo: row[1] || "",
-    ws: row[2] || "",
-    pallets: row[3] || "",
-    containerNo: row[4] || "",
-    driverPhone: row[5] || "",
-    eta: row[6] || "",
-    start_time: row[7] || "",
-    end_time: row[8] || "",
-    unload_duration: row[9] || "",
-    zone: row[10] || "",
-    worker: row[11] || "",
-    photo_container: row[12] || "",
-    photo_seal: row[13] || "",
-    photo_unloaded: row[14] || "",
-    arrival_time: row[15] || "",
-    sap_status: row[16] || "",
-    les_status: row[17] || ""
+    layout: C.version,
+    index: at(C.N),
+    lotNo: at(C.LOT_NO),
+    ws: at(C.WS),
+    pallets: at(C.PALLETS),
+    containerNo: at(C.CONTAINER_NO),
+    carrier: at(C.CARRIER),
+    driver: at(C.DRIVER),
+    driverPhone: at(C.PHONE),
+    eta: at(C.ETA),
+    arrival_time: at(C.ARRIVAL_TIME),
+    start_time: at(C.START_TIME),
+    end_time: at(C.END_TIME),
+    unload_duration: at(C.UNLOAD_DURATION),
+    factory_downtime: at(C.FACTORY_DOWNTIME),
+    zone: at(C.ZONE),
+    worker: at(C.WORKER),
+    photo_container: at(C.PHOTO_CONTAINER),
+    photo_seal: at(C.PHOTO_SEAL),
+    photo_unloaded: at(C.PHOTO_UNLOADED),
+    sap_status: at(C.SAP_STATUS),
+    les_status: at(C.LES_STATUS)
   };
 }
 
@@ -1059,28 +1225,29 @@ function handleTvDashboard(params, ss) {
   var onTerritory = 0;
 
   if (sheet) {
+    var C = getPlanColumnsForSheet(sheet);
     var lr = sheet.getLastRow();
     if (lr >= 5) {
-      var d = sheet.getRange(5, 1, lr - 4, 16).getDisplayValues();
+      var d = sheet.getRange(5, 1, lr - 4, planReadCols_(sheet, C.W_READ)).getDisplayValues();
       for (var i = 0; i < d.length; i++) {
         var row = d[i];
-        if (row[4]) {
+        if (row[C.CONTAINER_NO - 1]) {
           total++;
-          if (row[8]) {
+          if (row[C.END_TIME - 1]) {
             done++;
-            var endMin = parseTimeToMin(row[8]);
+            var endMin = parseTimeToMin(row[C.END_TIME - 1]);
             if (endMin !== null) {
               if (endMin >= 470 && endMin < 1010) shiftMorning++;
               else if (endMin >= 1010 || endMin < 110) shiftEvening++;
               else shiftNight++;
             } else { shiftMorning++; }
           }
-          else if (row[7]) {
-            activeList.push({ id: row[4], start: row[7], zone: row[10] || "" });
+          else if (row[C.START_TIME - 1]) {
+            activeList.push({ id: row[C.CONTAINER_NO - 1], start: row[C.START_TIME - 1], zone: row[C.ZONE - 1] || "" });
           }
           else {
-            if (nextId === "---") { nextId = row[4]; nextTime = row[6]; }
-            if (row[15] && row[15] !== "") onTerritory++;
+            if (nextId === "---") { nextId = row[C.CONTAINER_NO - 1]; nextTime = row[C.ETA - 1]; }
+            if (row[C.ARRIVAL_TIME - 1] && row[C.ARRIVAL_TIME - 1] !== "") onTerritory++;
           }
         }
       }
@@ -1133,51 +1300,57 @@ function handleTvLotProgress(params, ss) {
 
   for (var dayIndex = 0; dayIndex < sheetNames.length; dayIndex++) {
     var sheetName = sheetNames[dayIndex];
-    var sheet = ss.getSheetByName(sheetName);
-    if (!sheet) continue;
+    // Per-sheet guard: one missing/empty/UNKNOWN/narrow day must not fail the whole screen.
+    try {
+      var sheet = ss.getSheetByName(sheetName);
+      if (!sheet) continue;
 
-    var lr = sheet.getLastRow();
-    if (lr < 5) continue;
+      var lr = sheet.getLastRow();
+      if (lr < 5) continue;
 
-    var rowCount = lr - 4;
-    var rows = sheet.getRange(5, 1, rowCount, 16).getDisplayValues();
-    var dayRank = sheetNames.length - dayIndex;
+      var C = getPlanColumnsForSheet(sheet); // header-based V1/V2 mapping (read-safe)
+      var rowCount = lr - 4;
+      var rows = sheet.getRange(5, 1, rowCount, planReadCols_(sheet, C.W_READ)).getDisplayValues();
+      var dayRank = sheetNames.length - dayIndex;
 
-    for (var i = 0; i < rows.length; i++) {
-      var row = rows[i];
-      var lot = (row[1] || "").toString().trim().toUpperCase();
-      var id = (row[4] || "").toString().trim();
-      if (!id || !TV_LOT_NO_PATTERN.test(lot)) continue;
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        var lot = (row[C.LOT_NO - 1] || "").toString().trim().toUpperCase();
+        var id = (row[C.CONTAINER_NO - 1] || "").toString().trim();
+        if (!id || !TV_LOT_NO_PATTERN.test(lot)) continue;
 
-      var rowIndex = i + 5;
-      var status = deriveStatus(row[7], row[8]);
-      var timeDisplay = row[8] || row[7] || row[6] || "";
+        var rowIndex = i + 5;
+        var status = deriveStatus(row[C.START_TIME - 1], row[C.END_TIME - 1]);
+        var timeDisplay = row[C.END_TIME - 1] || row[C.START_TIME - 1] || row[C.ETA - 1] || "";
 
-      planRows.push({
-        rowIndex: rowIndex,
-        index: row[0],
-        lot: lot,
-        ws: row[2],
-        pallets: row[3],
-        id: id,
-        phone: "",
-        eta: row[6],
-        sheetDate: sheetName,
-        sequence: dayRank * 100000 + rowIndex
-      });
+        planRows.push({
+          rowIndex: rowIndex,
+          index: row[C.N - 1],
+          lot: lot,
+          ws: row[C.WS - 1],
+          pallets: row[C.PALLETS - 1],
+          id: id,
+          phone: "",
+          eta: row[C.ETA - 1],
+          sheetDate: sheetName,
+          sequence: dayRank * 100000 + rowIndex
+        });
 
-      tasks.push({
-        id: id,
-        type: row[2],
-        pallets: row[3],
-        eta: row[6],
-        status: status,
-        time: timeDisplay,
-        start_time: row[7],
-        end_time: row[8],
-        zone: row[10] || "",
-        sheet_date: sheetName
-      });
+        tasks.push({
+          id: id,
+          type: row[C.WS - 1],
+          pallets: row[C.PALLETS - 1],
+          eta: row[C.ETA - 1],
+          status: status,
+          time: timeDisplay,
+          start_time: row[C.START_TIME - 1],
+          end_time: row[C.END_TIME - 1],
+          zone: row[C.ZONE - 1] || "",
+          sheet_date: sheetName
+        });
+      }
+    } catch (dayErr) {
+      Logger.log("handleTvLotProgress: skip sheet '" + sheetName + "': " + dayErr);
     }
   }
 
@@ -1208,31 +1381,36 @@ function handleTvLotTracker(params, ss) {
     if (lr < 5) continue;
 
     sheetsScanned++;
-    var rowCount = lr - 4;
-    var narrow = sheet.getRange(5, 2, rowCount, 4).getValues(); 
-    var matchedRows = [];
+    try {
+      var rowCount = lr - 4;
+      var narrow = sheet.getRange(5, 2, rowCount, 4).getValues(); // B..E (lot/ws/pallets/id) — same in V1/V2
+      var matchedRows = [];
 
-    for (var i = 0; i < narrow.length; i++) {
-      var lot = (narrow[i][0] || "").toString().trim().toUpperCase();
-      var id  = (narrow[i][3] || "").toString().trim().toUpperCase();
-      if (lot.indexOf(lotQuery) !== -1 || id.indexOf(lotQuery) !== -1) {
-        matchedRows.push(i);
+      for (var i = 0; i < narrow.length; i++) {
+        var lot = (narrow[i][0] || "").toString().trim().toUpperCase();
+        var id  = (narrow[i][3] || "").toString().trim().toUpperCase();
+        if (lot.indexOf(lotQuery) !== -1 || id.indexOf(lotQuery) !== -1) {
+          matchedRows.push(i);
+        }
       }
-    }
 
-    if (matchedRows.length > 0) {
-      var full = sheet.getRange(5, 1, rowCount, 16).getDisplayValues();
-      for (var m = 0; m < matchedRows.length; m++) {
-        var ri = matchedRows[m];
-        var row = full[ri];
-        results.push({
-          date: sheetName, index: row[0], lot: row[1], ws: row[2],
-          pallets: row[3], id: (row[4] || "").trim().toUpperCase() || "—",
-          eta: row[6], status: deriveStatus(row[7], row[8]),
-          start_time: row[7], end_time: row[8], zone: row[10]
-        });
-        if (results.length >= LOT_TRACKER_MAX_RESULTS) break;
+      if (matchedRows.length > 0) {
+        var C = getPlanColumnsForSheet(sheet);
+        var full = sheet.getRange(5, 1, rowCount, planReadCols_(sheet, C.W_READ)).getDisplayValues();
+        for (var m = 0; m < matchedRows.length; m++) {
+          var ri = matchedRows[m];
+          var row = full[ri];
+          results.push({
+            date: sheetName, index: row[C.N - 1], lot: row[C.LOT_NO - 1], ws: row[C.WS - 1],
+            pallets: row[C.PALLETS - 1], id: (row[C.CONTAINER_NO - 1] || "").trim().toUpperCase() || "—",
+            eta: row[C.ETA - 1], status: deriveStatus(row[C.START_TIME - 1], row[C.END_TIME - 1]),
+            start_time: row[C.START_TIME - 1], end_time: row[C.END_TIME - 1], zone: row[C.ZONE - 1]
+          });
+          if (results.length >= LOT_TRACKER_MAX_RESULTS) break;
+        }
       }
+    } catch (lotErr) {
+      Logger.log("handleTvLotTracker: skip sheet '" + sheetName + "': " + lotErr);
     }
     if (results.length >= LOT_TRACKER_MAX_RESULTS) break;
     if (sheetsScanned >= LOT_TRACKER_MAX_SHEETS) break;
@@ -1488,32 +1666,33 @@ function handleReadComplex(params, ss) {
   var noEtaCount = 0;
 
   if (sheet) {
+    var C = getPlanColumnsForSheet(sheet);
     var lr = sheet.getLastRow();
     if (lr >= 5) {
-      var d = sheet.getRange(5, 1, lr - 4, 16).getDisplayValues();
+      var d = sheet.getRange(5, 1, lr - 4, planReadCols_(sheet, C.W_READ)).getDisplayValues();
       for (var i = 0; i < d.length; i++) {
         var row = d[i];
-        if (row[4]) {
+        if (row[C.CONTAINER_NO - 1]) {
           total++;
-          
-          // --- СЧИТАЕМ ФАКТ (По времени завершения - колонка I / row[8]) ---
-          if (row[8]) {
+
+          // --- СЧИТАЕМ ФАКТ (По времени завершения — Окончание разгрузки) ---
+          if (row[C.END_TIME - 1]) {
             done++;
-            var endMin = parseTimeToMin(row[8]);
+            var endMin = parseTimeToMin(row[C.END_TIME - 1]);
             if (endMin !== null) {
               if (endMin >= 470 && endMin < 1010) m_fact++;
               else if (endMin >= 1010 || endMin < 110) e_fact++;
               else if (endMin >= 110 && endMin < 470) n_fact++;
             }
-          } 
-          else if (row[7]) activeRows.push(row[4] + "|" + row[7] + "|0|" + row[2] + "|" + row[10]);
+          }
+          else if (row[C.START_TIME - 1]) activeRows.push(row[C.CONTAINER_NO - 1] + "|" + row[C.START_TIME - 1] + "|0|" + row[C.WS - 1] + "|" + row[C.ZONE - 1]);
           else {
-            if (nextId === "---") { nextId = row[4]; nextTime = row[6]; }
-            if (row[15] && row[15] !== "") onTerritory++;
+            if (nextId === "---") { nextId = row[C.CONTAINER_NO - 1]; nextTime = row[C.ETA - 1]; }
+            if (row[C.ARRIVAL_TIME - 1] && row[C.ARRIVAL_TIME - 1] !== "") onTerritory++;
           }
 
-          // --- СЧИТАЕМ БАЗОВЫЙ ПЛАН (По времени ETA - колонка G / row[6]) ---
-          var etaMin = parseTimeToMin(row[6]);
+          // --- СЧИТАЕМ БАЗОВЫЙ ПЛАН (По времени ETA — Ожидаемое время прибытия) ---
+          var etaMin = parseTimeToMin(row[C.ETA - 1]);
           if (etaMin === null) {
             noEtaCount++;
           } else {
@@ -1577,21 +1756,23 @@ function handleGetStats(params, ss) {
 
   var sheet = ss.getSheetByName(sheetName);
   if (sheet && sheet.getLastRow() >= 5) {
-    var data = sheet.getRange(5, 1, sheet.getLastRow() - 4, 16).getDisplayValues();
+    var C = getPlanColumnsForSheet(sheet); // read-safe (never throws)
+    logPlanHandlerDebug_("handleGetStats", "get_operator_tasks", sheet, C, null);
+    var data = sheet.getRange(5, 1, sheet.getLastRow() - 4, planReadCols_(sheet, C.W_READ)).getDisplayValues();
     for (var i = 0; i < data.length; i++) {
       var row = data[i];
-      var id = row[4];
+      var id = row[C.CONTAINER_NO - 1];
       if (id) {
-        var status = deriveStatus(row[7], row[8]);
-        var timeDisplay = row[6];
-        if (row[8]) timeDisplay = row[8];
-        else if (row[7]) timeDisplay = row[7];
+        var status = deriveStatus(row[C.START_TIME - 1], row[C.END_TIME - 1]);
+        var timeDisplay = row[C.ETA - 1];
+        if (row[C.END_TIME - 1]) timeDisplay = row[C.END_TIME - 1];
+        else if (row[C.START_TIME - 1]) timeDisplay = row[C.START_TIME - 1];
         tasks.push({
-          id: id, type: row[2], pallets: row[3], phone: row[5], eta: row[6],
-          status: status, time: timeDisplay, start_time: row[7], end_time: row[8],
-          zone: row[10] || "", operator: row[11] || "",
-          photo_gen: row[12] || "", photo_seal: row[13] || "",
-          arrival_time: row[15] || "", sheet_date: sheetName
+          id: id, type: row[C.WS - 1], pallets: row[C.PALLETS - 1], phone: row[C.PHONE - 1], eta: row[C.ETA - 1],
+          status: status, time: timeDisplay, start_time: row[C.START_TIME - 1], end_time: row[C.END_TIME - 1],
+          zone: row[C.ZONE - 1] || "", operator: row[C.WORKER - 1] || "",
+          photo_gen: row[C.PHOTO_CONTAINER - 1] || "", photo_seal: row[C.PHOTO_SEAL - 1] || "",
+          arrival_time: row[C.ARRIVAL_TIME - 1] || "", sheet_date: sheetName
         });
       }
     }
@@ -1625,20 +1806,21 @@ function handleGetHistory(params, ss) {
   var lr = sheet.getLastRow();
   if (lr < 5) return jsonOut([]);
 
-  var data = sheet.getRange(5, 1, lr - 4, 18).getDisplayValues();
+  var C = getPlanColumnsForSheet(sheet);
+  var data = sheet.getRange(5, 1, lr - 4, planReadCols_(sheet, C.W_AUDIT)).getDisplayValues();
   var tasks = [];
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
-    var id = row[4];
+    var id = row[C.CONTAINER_NO - 1];
     if (id && id !== "") {
       tasks.push({
-        id: id, type: row[2], pallets: row[3], phone: row[5], eta: row[6],
-        status: deriveStatus(row[7], row[8]), start_time: row[7], end_time: row[8],
-        zone: row[10], operator: row[11], photo_gen: row[12],
-        photo_seal: row[13], photo_empty: row[14], arrival_time: row[15],
+        id: id, type: row[C.WS - 1], pallets: row[C.PALLETS - 1], phone: row[C.PHONE - 1], eta: row[C.ETA - 1],
+        status: deriveStatus(row[C.START_TIME - 1], row[C.END_TIME - 1]), start_time: row[C.START_TIME - 1], end_time: row[C.END_TIME - 1],
+        zone: row[C.ZONE - 1], operator: row[C.WORKER - 1], photo_gen: row[C.PHOTO_CONTAINER - 1],
+        photo_seal: row[C.PHOTO_SEAL - 1], photo_empty: row[C.PHOTO_UNLOADED - 1], arrival_time: row[C.ARRIVAL_TIME - 1],
         sheet_date: dateStr,
-        sap_status: mapAccountingFromSheet(row[16]),
-        les_status: mapAccountingFromSheet(row[17])
+        sap_status: mapAccountingFromSheet(row[C.SAP_STATUS - 1]),
+        les_status: mapAccountingFromSheet(row[C.LES_STATUS - 1])
       });
     }
   }
@@ -1749,8 +1931,12 @@ function handleUpdateAccounting(params, ss) {
     return jsonOut({ error: "NO_DATA" });
   }
 
-  var ids = sheet.getRange(5, 5, lr - 4, 1).getDisplayValues();
-  var col = (system === "SAP") ? 17 : 18; // Q=17, R=18
+  // WRITE-SAFE: a wrong layout would write SAP/LES into the wrong column.
+  var C;
+  try { C = getPlanColumnsForSheetWriteSafe_(sheet); }
+  catch (e) { return jsonOut({ error: "UNKNOWN_LAYOUT", detail: e.toString() }); }
+  var ids = sheet.getRange(5, C.CONTAINER_NO, lr - 4, 1).getDisplayValues();
+  var col = (system === "SAP") ? C.SAP_STATUS : C.LES_STATUS; // V1: Q/R, V2: T/U
 
   for (var i = 0; i < ids.length; i++) {
     if (ids[i][0] === id) {
@@ -1809,14 +1995,15 @@ function handleGetFullPlan(params, ss) {
   var lr = sheet.getLastRow();
   if (lr < 5) return jsonOut([]);
 
-  var data = sheet.getRange(5, 1, lr - 4, 7).getDisplayValues();
+  var C = getPlanColumnsForSheet(sheet);
+  var data = sheet.getRange(5, 1, lr - 4, planReadCols_(sheet, C.ETA)).getDisplayValues();
   var rows = [];
   for (var i = 0; i < data.length; i++) {
     var r = data[i];
-    if (r[4]) {
+    if (r[C.CONTAINER_NO - 1]) {
       rows.push({
-        index: r[0], lot: r[1], ws: r[2], pallets: r[3],
-        id: r[4], phone: r[5], eta: r[6], rowIndex: i + 5
+        index: r[C.N - 1], lot: r[C.LOT_NO - 1], ws: r[C.WS - 1], pallets: r[C.PALLETS - 1],
+        id: r[C.CONTAINER_NO - 1], phone: r[C.PHONE - 1], eta: r[C.ETA - 1], rowIndex: i + 5
       });
     }
   }
@@ -1840,34 +2027,39 @@ function handleGetLotTracker(params, ss) {
     if (lr < 5) continue;
 
     sheetsScanned++;
-    var rowCount = lr - 4;
-    var narrow = sheet.getRange(5, 2, rowCount, 4).getValues(); 
-    var matchedRows = [];
+    try {
+      var rowCount = lr - 4;
+      var narrow = sheet.getRange(5, 2, rowCount, 4).getValues(); // B..E (lot/ws/pallets/id) — same in V1/V2
+      var matchedRows = [];
 
-    for (var i = 0; i < narrow.length; i++) {
-      var lot = (narrow[i][0] || "").toString().trim().toUpperCase(); 
-      var id  = (narrow[i][3] || "").toString().trim().toUpperCase(); 
-      if (lot.indexOf(lotQuery) !== -1 || id.indexOf(lotQuery) !== -1) {
-        matchedRows.push(i);
+      for (var i = 0; i < narrow.length; i++) {
+        var lot = (narrow[i][0] || "").toString().trim().toUpperCase();
+        var id  = (narrow[i][3] || "").toString().trim().toUpperCase();
+        if (lot.indexOf(lotQuery) !== -1 || id.indexOf(lotQuery) !== -1) {
+          matchedRows.push(i);
+        }
       }
-    }
 
-    if (matchedRows.length > 0) {
-      var full = sheet.getRange(5, 1, rowCount, 16).getDisplayValues();
-      for (var m = 0; m < matchedRows.length; m++) {
-        var ri = matchedRows[m];
-        var row = full[ri];
-        var matchedId = (row[4] || "").toString().trim().toUpperCase();
+      if (matchedRows.length > 0) {
+        var C = getPlanColumnsForSheet(sheet);
+        var full = sheet.getRange(5, 1, rowCount, planReadCols_(sheet, C.W_READ)).getDisplayValues();
+        for (var m = 0; m < matchedRows.length; m++) {
+          var ri = matchedRows[m];
+          var row = full[ri];
+          var matchedId = (row[C.CONTAINER_NO - 1] || "").toString().trim().toUpperCase();
 
-        results.push({
-          date: sheetName, index: row[0], lot: row[1], ws: row[2],
-          pallets: row[3], id: matchedId || "НЕ НАЗНАЧЕН", phone: row[5], eta: row[6],
-          status: deriveStatus(row[7], row[8]), start_time: row[7], end_time: row[8],
-          zone: row[10], operator: row[11], arrival_time: row[15]
-        });
+          results.push({
+            date: sheetName, index: row[C.N - 1], lot: row[C.LOT_NO - 1], ws: row[C.WS - 1],
+            pallets: row[C.PALLETS - 1], id: matchedId || "НЕ НАЗНАЧЕН", phone: row[C.PHONE - 1], eta: row[C.ETA - 1],
+            status: deriveStatus(row[C.START_TIME - 1], row[C.END_TIME - 1]), start_time: row[C.START_TIME - 1], end_time: row[C.END_TIME - 1],
+            zone: row[C.ZONE - 1], operator: row[C.WORKER - 1], arrival_time: row[C.ARRIVAL_TIME - 1]
+          });
 
-        if (results.length >= LOT_TRACKER_MAX_RESULTS) break;
+          if (results.length >= LOT_TRACKER_MAX_RESULTS) break;
+        }
       }
+    } catch (lotErr) {
+      Logger.log("handleGetLotTracker: skip sheet '" + sheetName + "': " + lotErr);
     }
     if (results.length >= LOT_TRACKER_MAX_RESULTS) break;
     if (sheetsScanned >= LOT_TRACKER_MAX_SHEETS) break;
@@ -1886,7 +2078,8 @@ function handleGetAllContainers(params, ss) {
   if (!sheet) return jsonOut([]);
   var lr = sheet.getLastRow();
   if (lr < 5) return jsonOut([]);
-  var data = sheet.getRange(5, 5, lr - 4, 1).getValues();
+  var C = getPlanColumnsForSheet(sheet);
+  var data = sheet.getRange(5, C.CONTAINER_NO, lr - 4, 1).getValues();
   var ids = [];
   for (var i = 0; i < data.length; i++) {
     if (data[i][0]) ids.push(data[i][0].toString());
@@ -2036,34 +2229,43 @@ function handleTaskAction(params, ss) {
 }
 
 function applyTaskAction(sheet, id, act, time, params) {
+  // WRITE-SAFE: throws on UNKNOWN layout so a start/finish never lands in wrong columns.
+  var C = getPlanColumnsForSheetWriteSafe_(sheet);
+  logPlanHandlerDebug_("applyTaskAction", "task_action", sheet, C, { act: act, id: id });
   var lr = sheet.getLastRow();
   if (lr < 5) return null;
-  var data = sheet.getRange(5, 5, lr - 4, 1).getValues();
+  var data = sheet.getRange(5, C.CONTAINER_NO, lr - 4, 1).getValues();
   var actionTime = getActionTime(act, time);
 
+  // ZONE,WORKER,PhotoContainer,PhotoSeal are 4 contiguous cols in BOTH layouts
+  // (V1 K..N, V2 O..R) and never span V2 M/N (Duration/FactoryDowntime = USER FORMULAS).
   for (var i = 0; i < data.length; i++) {
     if (data[i][0] && data[i][0].toString() === id) {
       var r = i + 5;
       var oldSnapshot = buildContainerRowSnapshot_(sheet, r);
       if (act === "start" || act.indexOf("start_manual") === 0) {
-        var vals = sheet.getRange(r, 8, 1, 7).getValues()[0];
-        vals[0] = actionTime;
-        vals[3] = params.zone || vals[3];
-        vals[4] = params.op   || vals[4];
-        vals[5] = params.pGen  || vals[5];
-        vals[6] = params.pSeal || vals[6];
-        sheet.getRange(r, 8, 1, 7).setValues([vals]);
+        sheet.getRange(r, C.START_TIME).setValue(actionTime);
+        var meta = sheet.getRange(r, C.ZONE, 1, 4).getValues()[0];
+        meta[0] = params.zone  || meta[0]; // Zone
+        meta[1] = params.op    || meta[1]; // Worker
+        meta[2] = params.pGen  || meta[2]; // PhotoContainer
+        meta[3] = params.pSeal || meta[3]; // PhotoSeal
+        sheet.getRange(r, C.ZONE, 1, 4).setValues([meta]);
       } else if (act === "undo_start") {
-        sheet.getRange(r, 8, 1, 7).setValues([["", "", "", "", "", "", ""]]);
+        sheet.getRange(r, C.START_TIME, 1, 2).setValues([["", ""]]);   // Start + End
+        sheet.getRange(r, C.ZONE, 1, 4).setValues([["", "", "", ""]]); // Zone/Worker/2 photos
+        // V1 Duration (J) is a plain value — clear it (legacy). V2 Duration (M) is a USER
+        // FORMULA — never touch it; it blanks itself once Start/End are empty.
+        if (C.version === "V1") sheet.getRange(r, C.UNLOAD_DURATION).setValue("");
       } else if (act === "update_photo") {
-        var pVals = sheet.getRange(r, 13, 1, 3).getValues()[0];
+        var pVals = sheet.getRange(r, C.PHOTO_CONTAINER, 1, 3).getValues()[0];
         if (params.pGen)   pVals[0] = params.pGen;
         if (params.pSeal)  pVals[1] = params.pSeal;
         if (params.pEmpty) pVals[2] = params.pEmpty;
-        sheet.getRange(r, 13, 1, 3).setValues([pVals]);
+        sheet.getRange(r, C.PHOTO_CONTAINER, 1, 3).setValues([pVals]);
       } else {
-        sheet.getRange(r, 9).setValue(actionTime);
-        if (params.pEmpty) sheet.getRange(r, 15).setValue(params.pEmpty);
+        sheet.getRange(r, C.END_TIME).setValue(actionTime);
+        if (params.pEmpty) sheet.getRange(r, C.PHOTO_UNLOADED).setValue(params.pEmpty);
       }
       SpreadsheetApp.flush();
       return {
@@ -2279,8 +2481,24 @@ function handleUpdateContainerRow(params, ss) {
   }
 
   var oldSnapshot = buildContainerRowSnapshot_(sheet, rowIndex);
-  var vals = [[(params.lot || ""), (params.ws || ""), (params.pallets || ""), (params.id || ""), (params.phone || ""), (params.eta || "")]];
-  sheet.getRange(rowIndex, 2, 1, 6).setValues(vals);
+  // WRITE-SAFE: a wrong layout would write phone/eta into the wrong columns.
+  var C;
+  try { C = getPlanColumnsForSheetWriteSafe_(sheet); }
+  catch (e) { return textOut("UNKNOWN_LAYOUT"); }
+  logPlanHandlerDebug_("handleUpdateContainerRow", "update_container_row", sheet, C, { row: rowIndex });
+  if (C.version === "V2") {
+    // V2: Phone=H(8), ETA=I(9). Carrier(F)/Driver(G) sit between Container(E) and Phone(H)
+    // and are NOT managed here — write B..E, then H and I separately, so Carrier/Driver,
+    // the M/N user formulas, and Q/R/S photos are never clobbered.
+    sheet.getRange(rowIndex, C.LOT_NO, 1, 4)
+      .setValues([[(params.lot || ""), (params.ws || ""), (params.pallets || ""), (params.id || "")]]); // B..E
+    sheet.getRange(rowIndex, C.PHONE).setValue(params.phone || ""); // H (col 8)
+    sheet.getRange(rowIndex, C.ETA).setValue(params.eta || "");     // I (col 9)
+  } else {
+    // V1: Lot..ETA are contiguous B..G — single write.
+    sheet.getRange(rowIndex, C.LOT_NO, 1, 6)
+      .setValues([[(params.lot || ""), (params.ws || ""), (params.pallets || ""), (params.id || ""), (params.phone || ""), (params.eta || "")]]); // B..G
+  }
   SpreadsheetApp.flush();
   var newSnapshot = buildContainerRowSnapshot_(sheet, rowIndex);
   var changes = diffContainerSnapshots_(oldSnapshot, newSnapshot);
@@ -2377,22 +2595,34 @@ function handleCreatePlan(params, ss) {
 
   var sheet = ss.getSheetByName(dateStr);
   if (!sheet) {
+    // New sheets are created in the V2 layout (headers + freeze only — no formulas).
     sheet = ss.insertSheet(dateStr);
-    var headers = [["#", "Lot No", "W/S", "Pallets/Cases", "Container ID", "Driver Phone", "ETA", "Start", "End", "Duration", "Zone", "Operator", "Photo Gen", "Photo Seal", "Photo Empty"]];
-    sheet.getRange("A4:O4").setValues(headers).setFontWeight("bold").setBackground("#EEE");
-    sheet.setFrozenRows(4);
+    applyPlanV2Layout(sheet);
   }
 
+  // Append rows in whatever layout THIS sheet uses (an existing V1 sheet stays V1).
+  var C = getPlanColumnsForSheet(sheet);
+  var width = (C.version === "V2") ? PLAN_COL_V2.PHOTO_UNLOADED : 15; // V1 base = A..O
   var lastRow = Math.max(sheet.getLastRow(), 4);
   var rows = [];
   for (var i = 0; i < tasks.length; i++) {
     var t = tasks[i];
     var idx = lastRow - 3 + i;
-    rows.push([idx, (t.lot || ""), (t.ws || ""), (t.pallets || ""), (t.id || ""), (t.phone || ""), (t.eta || ""), "", "", "", "", "", "", "", ""]);
+    var row = [];
+    for (var c = 0; c < width; c++) row[c] = "";
+    row[C.N - 1]            = idx;
+    row[C.LOT_NO - 1]       = t.lot || "";
+    row[C.WS - 1]           = t.ws || "";
+    row[C.PALLETS - 1]      = t.pallets || "";
+    row[C.CONTAINER_NO - 1] = t.id || "";
+    row[C.PHONE - 1]        = t.phone || ""; // V1 F / V2 H
+    row[C.ETA - 1]          = t.eta || "";   // V1 G / V2 I
+    rows.push(row);
   }
 
   if (rows.length > 0) {
-    sheet.getRange(lastRow + 1, 1, rows.length, 15).setValues(rows);
+    sheet.getRange(lastRow + 1, 1, rows.length, width).setValues(rows);
+    // V2 M/N stay empty here — the user owns those formulas.
   }
   invalidateDateReadCache(dateStr);
   if (dateStr === getTodaySheetName()) invalidateTodayReadCache();

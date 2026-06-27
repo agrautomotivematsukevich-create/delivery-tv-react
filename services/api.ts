@@ -147,6 +147,18 @@ function pruneCache(): void {
   }
 }
 
+// Drop client caches that reflect operator/plan state so the next fetch is fresh right
+// after a write — otherwise a just-started container keeps showing as "ready to start"
+// for up to the 60s cache TTL even though the server state already changed.
+function invalidateTaskCaches(): void {
+  for (const key of Object.keys(_cache)) {
+    if (key.startsWith("tasks_") || key.startsWith("bundle_") || key === "dashboard"
+        || key.startsWith("history_") || key.startsWith("tv_lot_progress_")) {
+      delete _cache[key];
+    }
+  }
+}
+
 async function cachedFetch<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
   const cached = _cache[key];
   if (cached && Date.now() - cached.ts < ttlMs) return cached.data as T;
@@ -605,6 +617,8 @@ export const api = {
     };
     if (dateStr) payload.date = dateStr;
     await authPost(payload, { timeout: 20000 });
+    // Bust client task caches so the immediate refetch returns fresh post-action state.
+    invalidateTaskCaches();
   },
 
   uploadPhoto: async (image: string, mimeType: string, filename: string, context: UploadPhotoContext = {}): Promise<string> => {

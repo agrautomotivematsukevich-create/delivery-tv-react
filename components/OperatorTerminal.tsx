@@ -122,6 +122,17 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     
     try {
       const result = await onTaskAction(task, action);
+      // Optimistic update: move the container to its new state immediately so it does not
+      // linger in the "Начать" list while the refetch resolves (and to keep the offline-
+      // queued state visible, since the server won't reflect it yet).
+      const nowHHMM = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', hour12: false });
+      if (action === 'start') {
+        setTasks(prev => prev.map(tk => tk.id === task.id
+          ? { ...tk, start_time: tk.start_time || nowHHMM, status: 'ACTIVE' } : tk));
+      } else if (action === 'finish') {
+        setTasks(prev => prev.map(tk => tk.id === task.id
+          ? { ...tk, end_time: tk.end_time || nowHHMM, status: 'DONE' } : tk));
+      }
       await fetchQueue();
       if (result === 'queued') {
         addToast('Действие сохранено локально. Отправится при появлении сети.', 'info');
