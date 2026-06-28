@@ -159,30 +159,150 @@ function planHeaderScan(sheet) {
   return { row: bestIdx + 1, header: block[bestIdx], found: true };
 }
 
-// "V2" | "V1" | "UNKNOWN". V2 ⇔ the located header row has BOTH "перевозчик" and
-// "водитель" (V2-exclusive columns) — robust to minor wording/position changes.
-function detectPlanLayout(sheet) {
+// ── HEADER-BASED COLUMN MAPPING (the real source of truth) ───────────────────
+// Columns are resolved from the ACTUAL header text of each sheet, never from a fixed
+// position table keyed by date. Three layouts are supported and distinguished purely
+// by which headers are present:
+//   V1       — legacy: no "простой", no "перевозчик/водитель"
+//   V2_LIVE  — current prod: has "простой ТС", no "перевозчик/водитель"
+//   V2_FULL  — theoretical wide layout: has "перевозчик" AND "водитель"
+// The same builder serves reads and writes, so a sheet that puts ZONE in M (V2_LIVE)
+// is read AND written at M — никогда по теоретической схеме.
+
+// Normalize a header cell: lowercase, trim, strip newlines, ё→е, collapse spaces.
+function normalizePlanHeader_(v) {
+  if (v === null || v === undefined) return "";
+  var s = v.toString().toLowerCase();
+  s = s.replace(/[\r\n]+/g, " ").replace(/ё/g, "е").replace(/\s+/g, " ");
+  return s.trim();
+}
+
+// Required for any write — if any are missing, writes are blocked (no guessing).
+var PLAN_REQUIRED_WRITE_FIELDS = [
+  "LOT_NO", "CONTAINER_NO", "PHONE", "ETA", "START_TIME", "END_TIME",
+  "ZONE", "WORKER", "PHOTO_CONTAINER", "PHOTO_SEAL", "PHOTO_UNLOADED"
+];
+
+// Ordered, MOST-SPECIFIC-FIRST classification rules. Each header cell is matched to the
+// first rule that fits; the first column matching a field wins. `all` = every token must
+// be present, `any` = at least one token present.
+var PLAN_HEADER_RULES = [
+  { field: "PHOTO_SEAL",       all: ["фото"], any: ["пломб"] },
+  { field: "PHOTO_UNLOADED",   all: ["фото"], any: ["выгруж", "пуст"] },
+  { field: "PHOTO_CONTAINER",  all: ["фото"], any: ["контейнер"] },
+  { field: "WORKER",           any: ["работник"] },
+  { field: "ZONE",             any: ["зона"] },
+  { field: "CARRIER",          any: ["перевозчик"] },
+  { field: "DRIVER",           any: ["водитель"] },
+  { field: "FACTORY_DOWNTIME", any: ["простой"] },
+  { field: "UNLOAD_DURATION",  any: ["затрачен", "время на разгруз"] },
+  { field: "END_TIME",         any: ["окончан"] },
+  { field: "START_TIME",       any: ["начал"] },
+  { field: "ETA",              any: ["ожидаем"] },
+  { field: "ARRIVAL_TIME",     any: ["приб"] },
+  { field: "PHONE",            any: ["телефон"] },
+  { field: "CONTAINER_NO",     any: ["container"] },
+  { field: "PALLETS",          any: ["кейсов", "p70", "р70", "ктк"] },
+  { field: "WS",               any: ["w/s"] },
+  { field: "LOT_NO",           any: ["lot"] },
+  { field: "SAP_STATUS",       any: ["sap"] },
+  { field: "LES_STATUS",       any: ["les"] }
+];
+
+function planHeaderRuleMatches_(h, rule) {
+  var i;
+  if (rule.all) {
+    for (i = 0; i < rule.all.length; i++) if (h.indexOf(rule.all[i]) === -1) return false;
+  }
+  if (rule.any) {
+    var ok = false;
+    for (i = 0; i < rule.any.length; i++) { if (h.indexOf(rule.any[i]) !== -1) { ok = true; break; } }
+    if (!ok) return false;
+  }
+  return true;
+}
+
+// Resolve the full column map for a sheet from its real headers. Always returns an object
+// (version may be "UNKNOWN"); callers decide whether that is acceptable (reads vs writes).
+function buildPlanColumnsFromHeaders_(sheet) {
   var scan = planHeaderScan(sheet);
-  if (!scan.found) return "UNKNOWN";
-  var joined = (scan.header || []).join("|").toLowerCase();
-  if (joined.indexOf("перевозчик") !== -1 && joined.indexOf("водитель") !== -1) return "V2";
-  return "V1";
+  var header = scan.header || [];
+  var pos = {}; // field -> 1-based column, first match wins
+  for (var c = 0; c < header.length; c++) {
+    var norm = normalizePlanHeader_(header[c]);
+    if (!norm) continue;
+    for (var r = 0; r < PLAN_HEADER_RULES.length; r++) {
+      var rule = PLAN_HEADER_RULES[r];
+      if (planHeaderRuleMatches_(norm, rule)) {
+        if (!pos[rule.field]) pos[rule.field] = c + 1;
+        break; // one field per column
+      }
+    }
+  }
+  var get = function (f) { return pos[f] || 0; };
+  var C = {
+    headerRow: scan.row,
+    headerFound: scan.found,
+    N: pos.N || 1, // # is always column A
+    LOT_NO: get("LOT_NO"), WS: get("WS"), PALLETS: get("PALLETS"), CONTAINER_NO: get("CONTAINER_NO"),
+    CARRIER: get("CARRIER"), DRIVER: get("DRIVER"), PHONE: get("PHONE"), ETA: get("ETA"),
+    ARRIVAL_TIME: get("ARRIVAL_TIME"), START_TIME: get("START_TIME"), END_TIME: get("END_TIME"),
+    UNLOAD_DURATION: get("UNLOAD_DURATION"), FACTORY_DOWNTIME: get("FACTORY_DOWNTIME"),
+    ZONE: get("ZONE"), WORKER: get("WORKER"),
+    PHOTO_CONTAINER: get("PHOTO_CONTAINER"), PHOTO_SEAL: get("PHOTO_SEAL"), PHOTO_UNLOADED: get("PHOTO_UNLOADED"),
+    SAP_STATUS: get("SAP_STATUS"), LES_STATUS: get("LES_STATUS")
+  };
+
+  // Version is informational only — the mapping is ALWAYS by found positions.
+  if (C.CARRIER && C.DRIVER) C.version = "V2_FULL";
+  else if (C.FACTORY_DOWNTIME) C.version = "V2_LIVE";
+  else if (C.CONTAINER_NO && scan.found) C.version = "V1";
+  else C.version = "UNKNOWN";
+
+  // Read width = widest operational column (SAP/LES excluded); audit width includes them.
+  C.W_READ = Math.max(
+    C.N, C.LOT_NO, C.WS, C.PALLETS, C.CONTAINER_NO, C.CARRIER, C.DRIVER,
+    C.PHONE, C.ETA, C.ARRIVAL_TIME, C.START_TIME, C.END_TIME,
+    C.UNLOAD_DURATION, C.FACTORY_DOWNTIME, C.ZONE, C.WORKER,
+    C.PHOTO_CONTAINER, C.PHOTO_SEAL, C.PHOTO_UNLOADED, 1
+  );
+  C.W_AUDIT = Math.max(C.W_READ, C.SAP_STATUS, C.LES_STATUS);
+
+  C.missing = [];
+  for (var k = 0; k < PLAN_REQUIRED_WRITE_FIELDS.length; k++) {
+    if (!C[PLAN_REQUIRED_WRITE_FIELDS[k]]) C.missing.push(PLAN_REQUIRED_WRITE_FIELDS[k]);
+  }
+  return C;
 }
 
-// READ-safe map (never throws; UNKNOWN→V1, the safe default).
+// "V1" | "V2_LIVE" | "V2_FULL" | "UNKNOWN" — derived from real headers.
+function detectPlanLayout(sheet) {
+  try { return buildPlanColumnsFromHeaders_(sheet).version; }
+  catch (e) { return "UNKNOWN"; }
+}
+
+// READ-safe map (never throws). Uses header positions when the header row is found and
+// the container column resolved; otherwise falls back to the legacy V1 fixed map so old
+// malformed sheets keep reading as before.
 function getPlanColumnsForSheet(sheet) {
-  try { return detectPlanLayout(sheet) === "V2" ? PLAN_COL_V2 : PLAN_COL_V1; }
-  catch (e) { return PLAN_COL_V1; }
+  try {
+    var C = buildPlanColumnsFromHeaders_(sheet);
+    if (C.headerFound && C.CONTAINER_NO) return C;
+  } catch (e) {}
+  return PLAN_COL_V1;
 }
 
-// WRITE-safe map: header MUST positively classify the sheet; UNKNOWN THROWS so a write
-// never lands in the wrong columns. Used by start/finish/undo/update_row/accounting.
+// WRITE-safe map: the header row MUST be found AND every required write column resolved,
+// or the write is BLOCKED with a clear error so data never lands in the wrong columns.
 function getPlanColumnsForSheetWriteSafe_(sheet) {
-  var layout = detectPlanLayout(sheet);
-  if (layout === "V2") return PLAN_COL_V2;
-  if (layout === "V1") return PLAN_COL_V1;
-  throw new Error("UNKNOWN_PLAN_LAYOUT: header not recognized on '"
-    + (sheet && sheet.getName ? sheet.getName() : "?") + "'");
+  var name = (sheet && sheet.getName) ? sheet.getName() : "?";
+  var C;
+  try { C = buildPlanColumnsFromHeaders_(sheet); }
+  catch (e) { throw new Error("Unknown or incomplete plan layout, write blocked for sheet " + name); }
+  if (!C.headerFound || (C.missing && C.missing.length > 0)) {
+    throw new Error("Unknown or incomplete plan layout, write blocked for sheet " + name);
+  }
+  return C;
 }
 
 // Clamp a read width to the sheet's real column count so getRange() never throws
@@ -226,22 +346,38 @@ function applyPlanV2Layout(sheet, headerRow) {
   sheet.setFrozenRows(PLAN_DATA_START_ROW - 1);
 }
 
-// Manual read-only diagnostic, e.g. debugPlanColumns("27.06"). NOT wired to doGet/doPost.
+// Manual read-only diagnostic, e.g. debugPlanColumns("28.06"). NOT wired to doGet/doPost.
+// Prints detected layout, header row, every resolved column and any missing required cols.
 function debugPlanColumns(sheetName) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) { Logger.log("debugPlanColumns: sheet not found: " + sheetName); return "MISSING"; }
   var scan = planHeaderScan(sheet);
-  var C = getPlanColumnsForSheet(sheet);
-  Logger.log("debugPlanColumns " + JSON.stringify({
-    sheet: sheetName, layout: detectPlanLayout(sheet), version: C.version,
-    headerRow: scan.row, headerFound: scan.found,
-    maxCols: sheet.getMaxColumns(), lastCol: sheet.getLastColumn(), lastRow: sheet.getLastRow(),
-    header: scan.header,
-    cols: { container: C.CONTAINER_NO, phone: C.PHONE, eta: C.ETA, arrival: C.ARRIVAL_TIME,
-            start: C.START_TIME, end: C.END_TIME, zone: C.ZONE, worker: C.WORKER }
-  }));
-  return detectPlanLayout(sheet);
+  var C = buildPlanColumnsFromHeaders_(sheet);
+  var lines = [];
+  lines.push("debugPlanColumns sheet=" + sheetName);
+  lines.push("version=" + C.version);
+  lines.push("headerRow=" + scan.row + " headerFound=" + scan.found);
+  lines.push("maxCols=" + sheet.getMaxColumns() + " lastCol=" + sheet.getLastColumn() + " lastRow=" + sheet.getLastRow());
+  lines.push("header=" + JSON.stringify(scan.header));
+  var fields = [
+    "N", "LOT_NO", "WS", "PALLETS", "CONTAINER_NO", "CARRIER", "DRIVER", "PHONE", "ETA",
+    "ARRIVAL_TIME", "START_TIME", "END_TIME", "UNLOAD_DURATION", "FACTORY_DOWNTIME",
+    "ZONE", "WORKER", "PHOTO_CONTAINER", "PHOTO_SEAL", "PHOTO_UNLOADED", "SAP_STATUS", "LES_STATUS"
+  ];
+  for (var i = 0; i < fields.length; i++) lines.push(fields[i] + "=" + (C[fields[i]] || 0));
+  lines.push("W_READ=" + C.W_READ + " W_AUDIT=" + C.W_AUDIT);
+  lines.push((C.missing && C.missing.length)
+    ? ("WARNING missing required: " + C.missing.join(","))
+    : "missing required: none");
+  var out = lines.join("\n");
+  Logger.log(out);
+  return out;
+}
+
+// Convenience wrapper for the prod sheet — run from the Apps Script editor.
+function debugPlanColumns_2806() {
+  return debugPlanColumns("28.06");
 }
 
 // ── ROUTE TABLE ──────────────────────────────────────────────────────────────
@@ -2237,32 +2373,33 @@ function applyTaskAction(sheet, id, act, time, params) {
   var data = sheet.getRange(5, C.CONTAINER_NO, lr - 4, 1).getValues();
   var actionTime = getActionTime(act, time);
 
-  // ZONE,WORKER,PhotoContainer,PhotoSeal are 4 contiguous cols in BOTH layouts
-  // (V1 K..N, V2 O..R) and never span V2 M/N (Duration/FactoryDowntime = USER FORMULAS).
+  // All writes are PER-CELL via the header-resolved map — never a range that could span
+  // the UNLOAD_DURATION / FACTORY_DOWNTIME formula columns (K/L in V2_LIVE, M/N in V2_FULL).
   for (var i = 0; i < data.length; i++) {
     if (data[i][0] && data[i][0].toString() === id) {
       var r = i + 5;
       var oldSnapshot = buildContainerRowSnapshot_(sheet, r);
       if (act === "start" || act.indexOf("start_manual") === 0) {
         sheet.getRange(r, C.START_TIME).setValue(actionTime);
-        var meta = sheet.getRange(r, C.ZONE, 1, 4).getValues()[0];
-        meta[0] = params.zone  || meta[0]; // Zone
-        meta[1] = params.op    || meta[1]; // Worker
-        meta[2] = params.pGen  || meta[2]; // PhotoContainer
-        meta[3] = params.pSeal || meta[3]; // PhotoSeal
-        sheet.getRange(r, C.ZONE, 1, 4).setValues([meta]);
+        if (params.zone)  sheet.getRange(r, C.ZONE).setValue(params.zone);
+        if (params.op)    sheet.getRange(r, C.WORKER).setValue(params.op);
+        if (params.pGen)  sheet.getRange(r, C.PHOTO_CONTAINER).setValue(params.pGen);
+        if (params.pSeal) sheet.getRange(r, C.PHOTO_SEAL).setValue(params.pSeal);
       } else if (act === "undo_start") {
-        sheet.getRange(r, C.START_TIME, 1, 2).setValues([["", ""]]);   // Start + End
-        sheet.getRange(r, C.ZONE, 1, 4).setValues([["", "", "", ""]]); // Zone/Worker/2 photos
-        // V1 Duration (J) is a plain value — clear it (legacy). V2 Duration (M) is a USER
-        // FORMULA — never touch it; it blanks itself once Start/End are empty.
-        if (C.version === "V1") sheet.getRange(r, C.UNLOAD_DURATION).setValue("");
+        // Clear only action-related operational cells, one by one.
+        sheet.getRange(r, C.START_TIME).setValue("");
+        sheet.getRange(r, C.END_TIME).setValue("");
+        sheet.getRange(r, C.ZONE).setValue("");
+        sheet.getRange(r, C.WORKER).setValue("");
+        sheet.getRange(r, C.PHOTO_CONTAINER).setValue("");
+        sheet.getRange(r, C.PHOTO_SEAL).setValue("");
+        // V1 Duration (J) is a plain value — clear it (legacy). In V2_LIVE/V2_FULL the
+        // UNLOAD_DURATION and FACTORY_DOWNTIME columns are USER FORMULAS — never touched.
+        if (C.version === "V1" && C.UNLOAD_DURATION) sheet.getRange(r, C.UNLOAD_DURATION).setValue("");
       } else if (act === "update_photo") {
-        var pVals = sheet.getRange(r, C.PHOTO_CONTAINER, 1, 3).getValues()[0];
-        if (params.pGen)   pVals[0] = params.pGen;
-        if (params.pSeal)  pVals[1] = params.pSeal;
-        if (params.pEmpty) pVals[2] = params.pEmpty;
-        sheet.getRange(r, C.PHOTO_CONTAINER, 1, 3).setValues([pVals]);
+        if (params.pGen)   sheet.getRange(r, C.PHOTO_CONTAINER).setValue(params.pGen);
+        if (params.pSeal)  sheet.getRange(r, C.PHOTO_SEAL).setValue(params.pSeal);
+        if (params.pEmpty) sheet.getRange(r, C.PHOTO_UNLOADED).setValue(params.pEmpty);
       } else {
         sheet.getRange(r, C.END_TIME).setValue(actionTime);
         if (params.pEmpty) sheet.getRange(r, C.PHOTO_UNLOADED).setValue(params.pEmpty);
@@ -2486,18 +2623,21 @@ function handleUpdateContainerRow(params, ss) {
   try { C = getPlanColumnsForSheetWriteSafe_(sheet); }
   catch (e) { return textOut("UNKNOWN_LAYOUT"); }
   logPlanHandlerDebug_("handleUpdateContainerRow", "update_container_row", sheet, C, { row: rowIndex });
-  if (C.version === "V2") {
-    // V2: Phone=H(8), ETA=I(9). Carrier(F)/Driver(G) sit between Container(E) and Phone(H)
-    // and are NOT managed here — write B..E, then H and I separately, so Carrier/Driver,
-    // the M/N user formulas, and Q/R/S photos are never clobbered.
-    sheet.getRange(rowIndex, C.LOT_NO, 1, 4)
-      .setValues([[(params.lot || ""), (params.ws || ""), (params.pallets || ""), (params.id || "")]]); // B..E
-    sheet.getRange(rowIndex, C.PHONE).setValue(params.phone || ""); // H (col 8)
-    sheet.getRange(rowIndex, C.ETA).setValue(params.eta || "");     // I (col 9)
-  } else {
-    // V1: Lot..ETA are contiguous B..G — single write.
-    sheet.getRange(rowIndex, C.LOT_NO, 1, 6)
-      .setValues([[(params.lot || ""), (params.ws || ""), (params.pallets || ""), (params.id || ""), (params.phone || ""), (params.eta || "")]]); // B..G
+  // Per-field writes via the header-resolved map. Never a contiguous range that could span
+  // Carrier/Driver (V2_FULL F/G) or the UNLOAD_DURATION/FACTORY_DOWNTIME formula columns.
+  // Photos and SAP/LES are not touched here.
+  sheet.getRange(rowIndex, C.LOT_NO).setValue(params.lot || "");
+  sheet.getRange(rowIndex, C.WS).setValue(params.ws || "");
+  sheet.getRange(rowIndex, C.PALLETS).setValue(params.pallets || "");
+  sheet.getRange(rowIndex, C.CONTAINER_NO).setValue(params.id || "");
+  sheet.getRange(rowIndex, C.PHONE).setValue(params.phone || "");
+  sheet.getRange(rowIndex, C.ETA).setValue(params.eta || "");
+  // Arrival is written ONLY when the client explicitly sends it, so the existing contract
+  // is unchanged and a missing field never clears the ARRIVAL_TIME column.
+  var arrivalParam = (params.arrival !== undefined) ? params.arrival
+                   : ((params.arrival_time !== undefined) ? params.arrival_time : undefined);
+  if (arrivalParam !== undefined && C.ARRIVAL_TIME) {
+    sheet.getRange(rowIndex, C.ARRIVAL_TIME).setValue(arrivalParam);
   }
   SpreadsheetApp.flush();
   var newSnapshot = buildContainerRowSnapshot_(sheet, rowIndex);
@@ -2600,30 +2740,37 @@ function handleCreatePlan(params, ss) {
     applyPlanV2Layout(sheet);
   }
 
-  // Append rows in whatever layout THIS sheet uses (an existing V1 sheet stays V1).
-  var C = getPlanColumnsForSheet(sheet);
-  var width = (C.version === "V2") ? PLAN_COL_V2.PHOTO_UNLOADED : 15; // V1 base = A..O
+  // Append rows using the header-resolved map. WRITE-SAFE so a mis-detected layout never
+  // lands data in the wrong columns. A freshly created sheet carries the V2 headers above.
+  var C;
+  try { C = getPlanColumnsForSheetWriteSafe_(sheet); }
+  catch (e) {
+    appendAuditEvent_(ss, {
+      params: params, caller: caller, action: "PLAN_CREATE_FAILED", entityType: "plan",
+      sheetName: dateStr, sheetDate: dateStr, details: { reason: "UNKNOWN_LAYOUT" },
+      result: "failed", error: e.toString()
+    });
+    return textOut("UNKNOWN_LAYOUT");
+  }
   var lastRow = Math.max(sheet.getLastRow(), 4);
-  var rows = [];
+  var startRow = lastRow + 1;
+  var baseRows = [], phoneCol = [], etaCol = [];
   for (var i = 0; i < tasks.length; i++) {
     var t = tasks[i];
     var idx = lastRow - 3 + i;
-    var row = [];
-    for (var c = 0; c < width; c++) row[c] = "";
-    row[C.N - 1]            = idx;
-    row[C.LOT_NO - 1]       = t.lot || "";
-    row[C.WS - 1]           = t.ws || "";
-    row[C.PALLETS - 1]      = t.pallets || "";
-    row[C.CONTAINER_NO - 1] = t.id || "";
-    row[C.PHONE - 1]        = t.phone || ""; // V1 F / V2 H
-    row[C.ETA - 1]          = t.eta || "";   // V1 G / V2 I
-    rows.push(row);
+    baseRows.push([idx, t.lot || "", t.ws || "", t.pallets || "", t.id || ""]); // A..E (#..Container) — contiguous in every layout
+    phoneCol.push([t.phone || ""]);
+    etaCol.push([t.eta || ""]);
   }
 
-  if (rows.length > 0) {
-    sheet.getRange(lastRow + 1, 1, rows.length, width).setValues(rows);
-    // V2 M/N stay empty here — the user owns those formulas.
+  if (baseRows.length > 0) {
+    // Three targeted writes — never a wide block, so Carrier/Driver and the
+    // UNLOAD_DURATION/FACTORY_DOWNTIME formula columns are never overwritten.
+    sheet.getRange(startRow, C.N, baseRows.length, 5).setValues(baseRows);
+    sheet.getRange(startRow, C.PHONE, phoneCol.length, 1).setValues(phoneCol);
+    sheet.getRange(startRow, C.ETA, etaCol.length, 1).setValues(etaCol);
   }
+  var rows = baseRows; // keep downstream audit references intact
   invalidateDateReadCache(dateStr);
   if (dateStr === getTodaySheetName()) invalidateTodayReadCache();
   appendAuditEvent_(ss, {
