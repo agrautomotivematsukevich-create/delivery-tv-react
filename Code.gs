@@ -205,6 +205,8 @@ var PLAN_HEADER_RULES = [
   { field: "PALLETS",          any: ["кейсов", "p70", "р70", "ктк"] },
   { field: "WS",               any: ["w/s"] },
   { field: "LOT_NO",           any: ["lot"] },
+  // SAP/LES matched ONLY against the header row (the substring "sap"/"les" covers
+  // "статус sap", "sap статус", "принято sap", etc.) — never against data like "Принят".
   { field: "SAP_STATUS",       any: ["sap"] },
   { field: "LES_STATUS",       any: ["les"] }
 ];
@@ -378,6 +380,45 @@ function debugPlanColumns(sheetName) {
 // Convenience wrapper for the prod sheet — run from the Apps Script editor.
 function debugPlanColumns_2806() {
   return debugPlanColumns("28.06");
+}
+
+// Manual read-only per-row diagnostic, e.g. debugPlanRow("28.06", 14). NEVER writes.
+// Prints each resolved field with its display value and warns about SAP/LES problems.
+function debugPlanRow(sheetName, rowNumber) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) { Logger.log("debugPlanRow: sheet not found: " + sheetName); return "MISSING"; }
+  rowNumber = parseInt(rowNumber, 10);
+  if (!rowNumber || rowNumber < 1 || rowNumber > sheet.getLastRow()) {
+    Logger.log("debugPlanRow: invalid row " + rowNumber + " on " + sheetName); return "INVALID_ROW";
+  }
+  var C = buildPlanColumnsFromHeaders_(sheet);
+  var width = planReadCols_(sheet, Math.max(C.W_AUDIT, 1));
+  var row = sheet.getRange(rowNumber, 1, 1, width).getDisplayValues()[0];
+  var at = function (col) { return col > 0 ? (row[col - 1] !== undefined ? row[col - 1] : "") : "(no column)"; };
+  var lines = [];
+  lines.push("debugPlanRow sheet=" + sheetName + " row=" + rowNumber + " version=" + C.version);
+  var fields = [
+    "PHONE", "ETA", "ARRIVAL_TIME", "START_TIME", "END_TIME", "UNLOAD_DURATION", "FACTORY_DOWNTIME",
+    "ZONE", "WORKER", "PHOTO_CONTAINER", "PHOTO_SEAL", "PHOTO_UNLOADED", "SAP_STATUS", "LES_STATUS"
+  ];
+  for (var i = 0; i < fields.length; i++) {
+    var f = fields[i];
+    lines.push(f + " [col " + (C[f] || 0) + "] = " + JSON.stringify(at(C[f])));
+  }
+  if (!C.SAP_STATUS || !C.LES_STATUS) {
+    lines.push("WARNING: SAP/LES header(s) NOT found — accounting reads/writes are blocked/empty (no Q/R fallback).");
+  }
+  if (C.PHOTO_UNLOADED && (C.PHOTO_UNLOADED === C.SAP_STATUS || C.PHOTO_UNLOADED === C.LES_STATUS)) {
+    lines.push("WARNING: PHOTO_UNLOADED column equals a SAP/LES column — header mapping is wrong, fix the sheet headers.");
+  }
+  var out = lines.join("\n");
+  Logger.log(out);
+  return out;
+}
+
+function debugPlanRow_2806_14() {
+  return debugPlanRow("28.06", 14);
 }
 
 // ── ROUTE TABLE ──────────────────────────────────────────────────────────────
@@ -2071,8 +2112,36 @@ function handleUpdateAccounting(params, ss) {
   var C;
   try { C = getPlanColumnsForSheetWriteSafe_(sheet); }
   catch (e) { return jsonOut({ error: "UNKNOWN_LAYOUT", detail: e.toString() }); }
+  logPlanHandlerDebug_("handleUpdateAccounting", "update_accounting", sheet, C, {
+    sap: C.SAP_STATUS, les: C.LES_STATUS, photoUnloaded: C.PHOTO_UNLOADED
+  });
+  // SAP/LES are resolved STRICTLY from headers — never a Q/R fallback that would land a
+  // status on top of a photo column. If a column is absent, block the write entirely.
+  if (!C.SAP_STATUS || !C.LES_STATUS) {
+    var blockMsg = "SAP/LES columns not found for sheet " + sheetName + ", write blocked";
+    appendAuditEvent_(ss, {
+      params: params, caller: caller, action: "ACCOUNTING_STATUS_FAILED",
+      entityType: "container", entityId: id, containerNo: id,
+      sheetName: sheetName, sheetDate: sheetName,
+      details: { system: system, status: status, reason: "SAP_LES_COLUMNS_NOT_FOUND", sap: C.SAP_STATUS, les: C.LES_STATUS },
+      result: "failed", error: blockMsg
+    });
+    return jsonOut({ error: "SAP_LES_COLUMNS_NOT_FOUND", detail: blockMsg });
+  }
   var ids = sheet.getRange(5, C.CONTAINER_NO, lr - 4, 1).getDisplayValues();
-  var col = (system === "SAP") ? C.SAP_STATUS : C.LES_STATUS; // V1: Q/R, V2: T/U
+  var col = (system === "SAP") ? C.SAP_STATUS : C.LES_STATUS;
+  // Defensive: a status must never overwrite a photo column.
+  if (col === C.PHOTO_CONTAINER || col === C.PHOTO_SEAL || col === C.PHOTO_UNLOADED) {
+    var photoMsg = "SAP/LES column collides with a photo column on sheet " + sheetName + ", write blocked";
+    appendAuditEvent_(ss, {
+      params: params, caller: caller, action: "ACCOUNTING_STATUS_FAILED",
+      entityType: "container", entityId: id, containerNo: id,
+      sheetName: sheetName, sheetDate: sheetName,
+      details: { system: system, status: status, reason: "SAP_LES_PHOTO_COLLISION", col: col },
+      result: "failed", error: photoMsg
+    });
+    return jsonOut({ error: "SAP_LES_PHOTO_COLLISION", detail: photoMsg });
+  }
 
   for (var i = 0; i < ids.length; i++) {
     if (ids[i][0] === id) {
