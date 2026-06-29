@@ -64,9 +64,20 @@ const AccountingView: React.FC<AccountingViewProps> = ({ t }) => {
   const loadData = useCallback(async (sheetDate: string = getOperationalDateInfo().operationalSheetName) => {
     setLoading(true);
     try {
+      const info = getOperationalDateInfo();
       const data = await api.fetchHistory(sheetDate);
+      let merged = data;
+      // Calendar-day carry-over: a container started on the previous day but finished after
+      // midnight lives in the previous sheet. Surface its still-pending SAP/LES rows here so they
+      // can be accepted; writes route back to the previous sheet via task.sheet_date.
+      if (sheetDate === info.operationalSheetName) {
+        const prev = await api.fetchHistory(info.previousSheetName).catch(() => [] as Task[]);
+        const seen = new Set(data.map((task) => task.id));
+        const carryover = prev.filter((task) => task.status === 'DONE' && isUnacceptedTask(task) && !seen.has(task.id));
+        if (carryover.length) merged = [...carryover, ...data];
+      }
       setActiveSheetDate(sheetDate);
-      setTasks(data);
+      setTasks(merged);
     } catch {
       // ignore
     } finally {

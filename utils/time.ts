@@ -7,8 +7,11 @@ export function parseHHMM(s: string | undefined): number | null {
 }
 
 export const MOSCOW_TIME_ZONE = 'Europe/Moscow';
-export const OPERATIONAL_DAY_START_HOUR = 7;
-export const OPERATIONAL_DAY_START_MINUTE = 50;
+// Day model: STRICT CALENDAR DAY (no 07:50 operational cutoff). The day boundary is midnight;
+// carry-over of unfinished work is handled on the backend (current calendar sheet + unfinished
+// rows of the previous calendar sheet). These constants now mark the midnight boundary.
+export const OPERATIONAL_DAY_START_HOUR = 0;
+export const OPERATIONAL_DAY_START_MINUTE = 0;
 
 export interface OperationalDateInfo {
   calendarDate: string;
@@ -77,33 +80,27 @@ function formatUtcSheetName(date: Date): string {
   return `${day}.${month}`;
 }
 
+// Calendar-day model: the operational day IS the calendar day (no 07:50 cutoff, no
+// 00:00–07:49 = previous-day logic). operational* fields alias the calendar day for back-compat;
+// previousSheetName = calendar yesterday. Carry-over of unfinished work is handled on the backend.
 export function getOperationalDateInfo(now: Date = new Date()): OperationalDateInfo {
   const moscowParts = getMoscowDateParts(now);
   const calendarUtc = buildUtcDateFromMoscowParts(moscowParts);
-  const operationalUtc = new Date(calendarUtc.getTime());
-  const nowMinutes = moscowParts.hour * 60 + moscowParts.minute;
-  const cutoffMinutes = OPERATIONAL_DAY_START_HOUR * 60 + OPERATIONAL_DAY_START_MINUTE;
-  const isBeforeOperationalCutoff = nowMinutes < cutoffMinutes;
-
-  if (isBeforeOperationalCutoff) {
-    operationalUtc.setUTCDate(operationalUtc.getUTCDate() - 1);
-  }
-
-  const previousUtc = new Date(operationalUtc.getTime());
+  const previousUtc = new Date(calendarUtc.getTime());
   previousUtc.setUTCDate(previousUtc.getUTCDate() - 1);
 
   return {
     calendarDate: formatUtcIsoDate(calendarUtc),
-    operationalDate: formatUtcIsoDate(operationalUtc),
+    operationalDate: formatUtcIsoDate(calendarUtc),
     calendarSheetName: formatUtcSheetName(calendarUtc),
-    operationalSheetName: formatUtcSheetName(operationalUtc),
+    operationalSheetName: formatUtcSheetName(calendarUtc),
     previousSheetName: formatUtcSheetName(previousUtc),
     hour: moscowParts.hour,
     minute: moscowParts.minute,
     second: moscowParts.second,
     cutoffHour: OPERATIONAL_DAY_START_HOUR,
     cutoffMinute: OPERATIONAL_DAY_START_MINUTE,
-    isBeforeOperationalCutoff,
+    isBeforeOperationalCutoff: false,
   };
 }
 
@@ -115,18 +112,14 @@ export function getOperationalSheetName(now: Date = new Date()): string {
   return getOperationalDateInfo(now).operationalSheetName;
 }
 
+// Time until the next calendar-day boundary = next local midnight (Moscow). +1s guards against
+// the timer firing a hair early. Drives the "roll over to the new day's sheet" refresh.
 export function getMillisecondsUntilNextOperationalBoundary(now: Date = new Date()): number {
   const parts = getMoscowDateParts(now);
   const currentUtc = buildUtcDateFromMoscowParts(parts);
-  const nextBoundaryUtc = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, OPERATIONAL_DAY_START_HOUR, OPERATIONAL_DAY_START_MINUTE, 0));
-  const nowMinutes = parts.hour * 60 + parts.minute;
-  const cutoffMinutes = OPERATIONAL_DAY_START_HOUR * 60 + OPERATIONAL_DAY_START_MINUTE;
-
-  if (nowMinutes >= cutoffMinutes) {
-    nextBoundaryUtc.setUTCDate(nextBoundaryUtc.getUTCDate() + 1);
-  }
-
-  return Math.max(nextBoundaryUtc.getTime() - currentUtc.getTime() + 1000, 1000);
+  const nextMidnightUtc = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 0, 0, 0));
+  nextMidnightUtc.setUTCDate(nextMidnightUtc.getUTCDate() + 1);
+  return Math.max(nextMidnightUtc.getTime() - currentUtc.getTime() + 1000, 1000);
 }
 
 /** Текущее время в минутах от полуночи. */
@@ -184,7 +177,7 @@ export function calcDuration(start?: string, end?: string): string {
   return formatDuration(diff);
 }
 
-/** Текущая операционная дата в формате "DD.MM" (Москва, смена в 07:50). */
+/** Текущая календарная дата в формате "DD.MM" (Москва, граница суток — полночь). */
 export function todayDDMM(): string {
   return getOperationalSheetName();
 }

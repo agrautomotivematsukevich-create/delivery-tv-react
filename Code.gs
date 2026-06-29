@@ -6,8 +6,10 @@
 // ── CONFIGURATION ────────────────────────────────────────────────────────────
 
 var TIMEZONE     = "Europe/Moscow";
-var OPERATIONAL_DAY_START_HOUR = 7;
-var OPERATIONAL_DAY_START_MINUTE = 50;
+// Day model: STRICT CALENDAR DAY (no 07:50 operational cutoff). The current sheet is the
+// calendar "DD.MM" sheet; carry-over of unfinished work is handled by the active sheet set
+// (current calendar sheet + unfinished rows of the previous calendar sheet) — see
+// getActivePlanSheetNames_/getActivePlanRows_. The old 07:50 cutoff is gone.
 var ALERT_EMAIL  = "MHReceiving@agr.auto";  // TODO: move to sheet config cell
 
 var ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
@@ -1156,30 +1158,24 @@ function getActionTime(act, fallbackTime) {
   return m ? m[1] : fallbackTime;
 }
 
+// Calendar-day model. The "operational" fields are kept as aliases of the calendar day so
+// every existing caller keeps working without change. previousSheetName = calendar yesterday.
+// isBeforeOperationalCutoff is retained as a constant `false` for back-compat (no cutoff now).
 function getOperationalDateInfo(now) {
   var current = now || new Date();
   var hour = parseInt(Utilities.formatDate(current, TIMEZONE, "H"), 10) || 0;
   var minute = parseInt(Utilities.formatDate(current, TIMEZONE, "m"), 10) || 0;
-  var nowMinutes = hour * 60 + minute;
-  var cutoffMinutes = OPERATIONAL_DAY_START_HOUR * 60 + OPERATIONAL_DAY_START_MINUTE;
-  var isBeforeOperationalCutoff = nowMinutes < cutoffMinutes;
-  var operationalBase = isBeforeOperationalCutoff
-    ? new Date(current.getTime() - 24 * 60 * 60 * 1000)
-    : new Date(current.getTime());
-  var previousBase = new Date(operationalBase.getTime() - 24 * 60 * 60 * 1000);
+  var previousBase = new Date(current.getTime() - 24 * 60 * 60 * 1000);
 
   return {
     calendarDate: Utilities.formatDate(current, TIMEZONE, "yyyy-MM-dd"),
-    operationalDate: Utilities.formatDate(operationalBase, TIMEZONE, "yyyy-MM-dd"),
+    operationalDate: Utilities.formatDate(current, TIMEZONE, "yyyy-MM-dd"),
     calendarSheetName: Utilities.formatDate(current, TIMEZONE, "dd.MM"),
-    operationalSheetName: Utilities.formatDate(operationalBase, TIMEZONE, "dd.MM"),
+    operationalSheetName: Utilities.formatDate(current, TIMEZONE, "dd.MM"),
     previousSheetName: Utilities.formatDate(previousBase, TIMEZONE, "dd.MM"),
     hour: hour,
     minute: minute,
-    cutoffHour: OPERATIONAL_DAY_START_HOUR,
-    cutoffMinute: OPERATIONAL_DAY_START_MINUTE,
-    cutoffMinutes: cutoffMinutes,
-    isBeforeOperationalCutoff: isBeforeOperationalCutoff
+    isBeforeOperationalCutoff: false
   };
 }
 
@@ -1201,6 +1197,141 @@ function getYesterdaySheetName(now) {
 
 function isNightCarryover(now) {
   return getOperationalDateInfo(now).isBeforeOperationalCutoff;
+}
+
+// ── ACTIVE PLAN SHEET SET (calendar day + unfinished carry-over) ──────────────
+// "Current operational work" = the current calendar-day sheet (all rows) PLUS the rows of
+// the previous calendar-day sheet whose unloading has NOT finished (END_TIME empty). A row
+// always keeps its source sheet (sheetName/rowNumber) so writes land back where they came
+// from — finishing a carried-over 29.06 row at 30.06 00:30 writes into the 29.06 sheet.
+function getActivePlanSheetNames_(now) {
+  var info = getOperationalDateInfo(now);
+  return { current: info.operationalSheetName, previous: info.previousSheetName };
+}
+
+// Read normalized rows from ONE plan sheet. Bad/missing/empty/UNKNOWN sheets yield [] with a
+// logged warning so a single broken day never breaks the active set.
+//   options.onlyUnfinished   — keep only rows with empty END_TIME (used for the previous day).
+//   options.includeAccounting — read SAP/LES too (wider read); else operational width only.
+// Each entry carries its source sheet's column map (C) and the raw display-value row (cells),
+// so callers index exactly like before but per-row (current and previous may differ in layout).
+function readActivePlanSheetRows_(ss, sheetName, options) {
+  options = options || {};
+  var out = [];
+  if (!sheetName) return out;
+  try {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) { Logger.log("readActivePlanSheetRows_: sheet missing: " + sheetName); return out; }
+    var lr = sheet.getLastRow();
+    if (lr < 5) return out;
+    var C = getPlanColumnsForSheet(sheet); // read-safe header mapping (V1/V2_LIVE/V2_FULL)
+    if (!C || !C.CONTAINER_NO) { Logger.log("readActivePlanSheetRows_: no container column on " + sheetName); return out; }
+    var width = planReadCols_(sheet, options.includeAccounting ? C.W_AUDIT : C.W_READ);
+    var data = sheet.getRange(5, 1, lr - 4, width).getDisplayValues();
+    for (var i = 0; i < data.length; i++) {
+      var row = data[i];
+      if (!row[C.CONTAINER_NO - 1]) continue;
+      var endTime = C.END_TIME ? (row[C.END_TIME - 1] || "") : "";
+      if (options.onlyUnfinished && endTime !== "") continue;
+      out.push({
+        sheetName: sheetName,
+        sheetDate: sheetName,
+        rowNumber: i + 5,
+        version: C.version,
+        C: C,
+        cells: row
+      });
+    }
+  } catch (e) {
+    Logger.log("readActivePlanSheetRows_: skip '" + sheetName + "': " + e);
+  }
+  return out;
+}
+
+// Compose the active set: previous-day UNFINISHED rows first (already in work / carried over),
+// then the current-day sheet in row order. Returns the merged list plus the two sheet names.
+function getActivePlanRows_(ss, options) {
+  options = options || {};
+  var names = getActivePlanSheetNames_(options.now);
+  var current  = readActivePlanSheetRows_(ss, names.current,  { includeAccounting: options.includeAccounting, onlyUnfinished: false });
+  var previous = readActivePlanSheetRows_(ss, names.previous, { includeAccounting: options.includeAccounting, onlyUnfinished: true });
+  return {
+    currentSheet: names.current,
+    previousSheet: names.previous,
+    current: current,
+    previous: previous,
+    rows: previous.concat(current)
+  };
+}
+
+// Invalidate the shared live read cache for a written sheet. The live dashboard/stats cache is
+// keyed by the CURRENT calendar sheet, but a write may target the previous (carried-over) sheet,
+// so we also bust the current-day cache whenever the written sheet is part of the active set.
+function invalidateActivePlanReadCache_(sheetName) {
+  invalidateDateReadCache(sheetName);
+  var names = getActivePlanSheetNames_();
+  if (sheetName === names.current || sheetName === names.previous) invalidateTodayReadCache();
+}
+
+// Resolve the sheet a write action should target. Prefers an explicit requestedDate. When the
+// client sends none (legacy), it searches the active set (current first, then previous) for the
+// container ID and returns the sheet that actually holds it — never blind-writes to "today".
+function resolveActionSheetName_(ss, containerId, requestedDate) {
+  if (requestedDate) return requestedDate;
+  var id = (containerId || "").toString().trim();
+  var names = getActivePlanSheetNames_();
+  var order = [names.current, names.previous];
+  for (var s = 0; s < order.length; s++) {
+    var name = order[s];
+    if (!name) continue;
+    var sheet = ss.getSheetByName(name);
+    if (!sheet) continue;
+    var lr = sheet.getLastRow();
+    if (lr < 5) continue;
+    var C = getPlanColumnsForSheet(sheet);
+    if (!C || !C.CONTAINER_NO) continue;
+    try {
+      var ids = sheet.getRange(5, C.CONTAINER_NO, lr - 4, 1).getDisplayValues();
+      for (var i = 0; i < ids.length; i++) {
+        if ((ids[i][0] || "").toString() === id) return name;
+      }
+    } catch (e) { Logger.log("resolveActionSheetName_: skip '" + name + "': " + e); }
+  }
+  return names.current; // default — applyTaskAction will simply report ID_NOT_FOUND if absent
+}
+
+// ── Read-only diagnostics (run from the Apps Script editor; not wired to doGet/doPost) ──
+function debugActivePlanSheets() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var names = getActivePlanSheetNames_();
+  var lines = ["debugActivePlanSheets current=" + names.current + " previous=" + names.previous];
+  [names.current, names.previous].forEach(function (name) {
+    var sheet = ss.getSheetByName(name);
+    if (!sheet) { lines.push(name + ": MISSING"); return; }
+    var C = getPlanColumnsForSheet(sheet);
+    lines.push(name + ": exists layout=" + C.version + " lastRow=" + sheet.getLastRow() +
+      " maxCols=" + sheet.getMaxColumns() + " endCol=" + C.END_TIME);
+  });
+  var out = lines.join("\n");
+  Logger.log(out);
+  return out;
+}
+
+function debugActivePlanRows() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var active = getActivePlanRows_(ss, { includeAccounting: true });
+  var lines = ["debugActivePlanRows currentSheet=" + active.currentSheet + " (" + active.current.length + " rows)" +
+    " previousUnfinished=" + active.previousSheet + " (" + active.previous.length + " rows)"];
+  var sample = active.rows.slice(0, 12);
+  for (var i = 0; i < sample.length; i++) {
+    var e = sample[i], C = e.C, row = e.cells;
+    lines.push("  [" + e.sheetName + " r" + e.rowNumber + "] id=" + (row[C.CONTAINER_NO - 1] || "") +
+      " lot=" + (row[C.LOT_NO - 1] || "") + " start=" + (C.START_TIME ? (row[C.START_TIME - 1] || "") : "") +
+      " end=" + (C.END_TIME ? (row[C.END_TIME - 1] || "") : ""));
+  }
+  var out = lines.join("\n");
+  Logger.log(out);
+  return out;
 }
 
 function isValidEmail(email) {
@@ -1387,8 +1518,9 @@ function extractDriveFileId_(url) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function handleTvDashboard(params, ss) {
-  var sheet = ss.getSheetByName(getTodaySheetName());
-  if (!sheet) {
+  // Active set: current calendar sheet (all rows) + previous calendar sheet (unfinished only).
+  var active = getActivePlanRows_(ss);
+  if (active.rows.length === 0) {
     return jsonOut({
       status: "WAIT", done: 0, total: 0, nextId: "---", nextTime: "",
       shiftCounts: { morning: 0, evening: 0, night: 0 },
@@ -1401,33 +1533,26 @@ function handleTvDashboard(params, ss) {
   var shiftMorning = 0, shiftEvening = 0, shiftNight = 0;
   var onTerritory = 0;
 
-  if (sheet) {
-    var C = getPlanColumnsForSheet(sheet);
-    var lr = sheet.getLastRow();
-    if (lr >= 5) {
-      var d = sheet.getRange(5, 1, lr - 4, planReadCols_(sheet, C.W_READ)).getDisplayValues();
-      for (var i = 0; i < d.length; i++) {
-        var row = d[i];
-        if (row[C.CONTAINER_NO - 1]) {
-          total++;
-          if (row[C.END_TIME - 1]) {
-            done++;
-            var endMin = parseTimeToMin(row[C.END_TIME - 1]);
-            if (endMin !== null) {
-              if (endMin >= 470 && endMin < 1010) shiftMorning++;
-              else if (endMin >= 1010 || endMin < 110) shiftEvening++;
-              else shiftNight++;
-            } else { shiftMorning++; }
-          }
-          else if (row[C.START_TIME - 1]) {
-            activeList.push({ id: row[C.CONTAINER_NO - 1], start: row[C.START_TIME - 1], zone: row[C.ZONE - 1] || "" });
-          }
-          else {
-            if (nextId === "---") { nextId = row[C.CONTAINER_NO - 1]; nextTime = row[C.ETA - 1]; }
-            if (row[C.ARRIVAL_TIME - 1] && row[C.ARRIVAL_TIME - 1] !== "") onTerritory++;
-          }
-        }
-      }
+  for (var i = 0; i < active.rows.length; i++) {
+    var entry = active.rows[i];
+    var C = entry.C;
+    var row = entry.cells;
+    total++;
+    if (row[C.END_TIME - 1]) {
+      done++;
+      var endMin = parseTimeToMin(row[C.END_TIME - 1]);
+      if (endMin !== null) {
+        if (endMin >= 470 && endMin < 1010) shiftMorning++;
+        else if (endMin >= 1010 || endMin < 110) shiftEvening++;
+        else shiftNight++;
+      } else { shiftMorning++; }
+    }
+    else if (row[C.START_TIME - 1]) {
+      activeList.push({ id: row[C.CONTAINER_NO - 1], start: row[C.START_TIME - 1], zone: row[C.ZONE - 1] || "" });
+    }
+    else {
+      if (nextId === "---") { nextId = row[C.CONTAINER_NO - 1]; nextTime = row[C.ETA - 1]; }
+      if (row[C.ARRIVAL_TIME - 1] && row[C.ARRIVAL_TIME - 1] !== "") onTerritory++;
     }
   }
 
@@ -1829,9 +1954,10 @@ function handleReadComplex(params, ss) {
   var hit = cache.get(ck);
   if (hit) return textOut(hit);
 
-  var sheet = ss.getSheetByName(getTodaySheetName());
-  // 1. Заглушка теперь отдает 6 нулей (3 для факта, 3 для плана)
-  if (!sheet) return textOut("WAIT;0|0;---;00:00;0|0|0|0|0|0;0\n###MSG###");
+  // Active set: current calendar sheet (all rows) + previous calendar sheet (unfinished only).
+  var active = getActivePlanRows_(ss);
+  // 1. Заглушка отдает 6 нулей (3 для факта, 3 для плана), когда активной работы нет вовсе.
+  if (active.rows.length === 0) return textOut("WAIT;0|0;---;00:00;0|0|0|0|0|0;0\n###MSG###");
 
   var total = 0, done = 0, nextId = "---", nextTime = "";
   var activeRows = [];
@@ -1842,43 +1968,36 @@ function handleReadComplex(params, ss) {
   var m_base = 0, e_base = 0, n_base = 0;
   var noEtaCount = 0;
 
-  if (sheet) {
-    var C = getPlanColumnsForSheet(sheet);
-    var lr = sheet.getLastRow();
-    if (lr >= 5) {
-      var d = sheet.getRange(5, 1, lr - 4, planReadCols_(sheet, C.W_READ)).getDisplayValues();
-      for (var i = 0; i < d.length; i++) {
-        var row = d[i];
-        if (row[C.CONTAINER_NO - 1]) {
-          total++;
+  for (var i = 0; i < active.rows.length; i++) {
+    var entry = active.rows[i];
+    var C = entry.C;          // per-row layout (current/previous sheets may differ)
+    var row = entry.cells;
+    total++;
 
-          // --- СЧИТАЕМ ФАКТ (По времени завершения — Окончание разгрузки) ---
-          if (row[C.END_TIME - 1]) {
-            done++;
-            var endMin = parseTimeToMin(row[C.END_TIME - 1]);
-            if (endMin !== null) {
-              if (endMin >= 470 && endMin < 1010) m_fact++;
-              else if (endMin >= 1010 || endMin < 110) e_fact++;
-              else if (endMin >= 110 && endMin < 470) n_fact++;
-            }
-          }
-          else if (row[C.START_TIME - 1]) activeRows.push(row[C.CONTAINER_NO - 1] + "|" + row[C.START_TIME - 1] + "|0|" + row[C.WS - 1] + "|" + row[C.ZONE - 1]);
-          else {
-            if (nextId === "---") { nextId = row[C.CONTAINER_NO - 1]; nextTime = row[C.ETA - 1]; }
-            if (row[C.ARRIVAL_TIME - 1] && row[C.ARRIVAL_TIME - 1] !== "") onTerritory++;
-          }
-
-          // --- СЧИТАЕМ БАЗОВЫЙ ПЛАН (По времени ETA — Ожидаемое время прибытия) ---
-          var etaMin = parseTimeToMin(row[C.ETA - 1]);
-          if (etaMin === null) {
-            noEtaCount++;
-          } else {
-            if (etaMin >= 470 && etaMin < 1010) m_base++;
-            else if (etaMin >= 1010 || etaMin < 110) e_base++;
-            else if (etaMin >= 110 && etaMin < 470) n_base++;
-          }
-        }
+    // --- СЧИТАЕМ ФАКТ (По времени завершения — Окончание разгрузки) ---
+    if (row[C.END_TIME - 1]) {
+      done++;
+      var endMin = parseTimeToMin(row[C.END_TIME - 1]);
+      if (endMin !== null) {
+        if (endMin >= 470 && endMin < 1010) m_fact++;
+        else if (endMin >= 1010 || endMin < 110) e_fact++;
+        else if (endMin >= 110 && endMin < 470) n_fact++;
       }
+    }
+    else if (row[C.START_TIME - 1]) activeRows.push(row[C.CONTAINER_NO - 1] + "|" + row[C.START_TIME - 1] + "|0|" + row[C.WS - 1] + "|" + row[C.ZONE - 1]);
+    else {
+      if (nextId === "---") { nextId = row[C.CONTAINER_NO - 1]; nextTime = row[C.ETA - 1]; }
+      if (row[C.ARRIVAL_TIME - 1] && row[C.ARRIVAL_TIME - 1] !== "") onTerritory++;
+    }
+
+    // --- СЧИТАЕМ БАЗОВЫЙ ПЛАН (По времени ETA — Ожидаемое время прибытия) ---
+    var etaMin = parseTimeToMin(row[C.ETA - 1]);
+    if (etaMin === null) {
+      noEtaCount++;
+    } else {
+      if (etaMin >= 470 && etaMin < 1010) m_base++;
+      else if (etaMin >= 1010 || etaMin < 110) e_base++;
+      else if (etaMin >= 110 && etaMin < 470) n_base++;
     }
   }
 
@@ -1929,30 +2048,27 @@ function handleGetStats(params, ss) {
   if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
 
   var tasks = [];
-  var sheetName = getTodaySheetName();
-
-  var sheet = ss.getSheetByName(sheetName);
-  if (sheet && sheet.getLastRow() >= 5) {
-    var C = getPlanColumnsForSheet(sheet); // read-safe (never throws)
-    logPlanHandlerDebug_("handleGetStats", "get_operator_tasks", sheet, C, null);
-    var data = sheet.getRange(5, 1, sheet.getLastRow() - 4, planReadCols_(sheet, C.W_READ)).getDisplayValues();
-    for (var i = 0; i < data.length; i++) {
-      var row = data[i];
-      var id = row[C.CONTAINER_NO - 1];
-      if (id) {
-        var status = deriveStatus(row[C.START_TIME - 1], row[C.END_TIME - 1]);
-        var timeDisplay = row[C.ETA - 1];
-        if (row[C.END_TIME - 1]) timeDisplay = row[C.END_TIME - 1];
-        else if (row[C.START_TIME - 1]) timeDisplay = row[C.START_TIME - 1];
-        tasks.push({
-          id: id, type: row[C.WS - 1], pallets: row[C.PALLETS - 1], phone: row[C.PHONE - 1], eta: row[C.ETA - 1],
-          status: status, time: timeDisplay, start_time: row[C.START_TIME - 1], end_time: row[C.END_TIME - 1],
-          zone: row[C.ZONE - 1] || "", operator: row[C.WORKER - 1] || "",
-          photo_gen: row[C.PHOTO_CONTAINER - 1] || "", photo_seal: row[C.PHOTO_SEAL - 1] || "",
-          arrival_time: row[C.ARRIVAL_TIME - 1] || "", sheet_date: sheetName
-        });
-      }
-    }
+  // Active set: current calendar sheet (all rows) + previous calendar sheet (unfinished only).
+  // Each task keeps its source sheet in sheet_date so the terminal routes start/finish/undo
+  // back to the correct sheet (a carried-over previous-day row writes to the previous sheet).
+  var active = getActivePlanRows_(ss);
+  for (var i = 0; i < active.rows.length; i++) {
+    var entry = active.rows[i];
+    var C = entry.C;
+    var row = entry.cells;
+    var id = row[C.CONTAINER_NO - 1];
+    if (!id) continue;
+    var status = deriveStatus(row[C.START_TIME - 1], row[C.END_TIME - 1]);
+    var timeDisplay = row[C.ETA - 1];
+    if (row[C.END_TIME - 1]) timeDisplay = row[C.END_TIME - 1];
+    else if (row[C.START_TIME - 1]) timeDisplay = row[C.START_TIME - 1];
+    tasks.push({
+      id: id, type: row[C.WS - 1], pallets: row[C.PALLETS - 1], phone: row[C.PHONE - 1], eta: row[C.ETA - 1],
+      status: status, time: timeDisplay, start_time: row[C.START_TIME - 1], end_time: row[C.END_TIME - 1],
+      zone: row[C.ZONE - 1] || "", operator: row[C.WORKER - 1] || "",
+      photo_gen: row[C.PHOTO_CONTAINER - 1] || "", photo_seal: row[C.PHOTO_SEAL - 1] || "",
+      arrival_time: row[C.ARRIVAL_TIME - 1] || "", sheet_date: entry.sheetName
+    });
   }
   var json = JSON.stringify(tasks);
   try { CacheService.getScriptCache().put(ck, json, TODAY_READ_CACHE_TTL); } catch (e) {}
@@ -2071,7 +2187,8 @@ function handleUpdateAccounting(params, ss) {
     return jsonOut({ error: "INVALID_STATUS" });
   }
 
-  var sheetName = requestedDate || getTodaySheetName();
+  // Route SAP/LES to the row's SOURCE sheet (explicit date wins; else find it in the active set).
+  var sheetName = resolveActionSheetName_(ss, id, requestedDate);
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     appendAuditEvent_(ss, {
@@ -2151,8 +2268,7 @@ function handleUpdateAccounting(params, ss) {
       sheet.getRange(i + 5, col).setValue(mapAccountingToSheet(status));
       SpreadsheetApp.flush();
       var newSnapshot = buildContainerRowSnapshot_(sheet, rowNumber);
-      invalidateDateReadCache(sheetName);
-      if (sheetName === getTodaySheetName()) invalidateTodayReadCache();
+      invalidateActivePlanReadCache_(sheetName);
       appendAuditEvent_(ss, {
         params: params,
         caller: caller,
@@ -2279,15 +2395,13 @@ function handleGetPriorityLot(params, ss) {
 }
 
 function handleGetAllContainers(params, ss) {
-  var sheet = ss.getSheetByName(getTodaySheetName());
-  if (!sheet) return jsonOut([]);
-  var lr = sheet.getLastRow();
-  if (lr < 5) return jsonOut([]);
-  var C = getPlanColumnsForSheet(sheet);
-  var data = sheet.getRange(5, C.CONTAINER_NO, lr - 4, 1).getValues();
+  // Active set: current calendar sheet (all rows) + previous calendar sheet (unfinished only).
+  var active = getActivePlanRows_(ss);
   var ids = [];
-  for (var i = 0; i < data.length; i++) {
-    if (data[i][0]) ids.push(data[i][0].toString());
+  for (var i = 0; i < active.rows.length; i++) {
+    var entry = active.rows[i];
+    var id = entry.cells[entry.C.CONTAINER_NO - 1];
+    if (id) ids.push(id.toString());
   }
   return jsonOut(ids);
 }
@@ -2357,7 +2471,9 @@ function handleTaskAction(params, ss) {
   }
 
   var time = Utilities.formatDate(new Date(), TIMEZONE, "HH:mm");
-  var sheetName = requestedDate || getTodaySheetName();
+  // Route to the row's SOURCE sheet. Explicit date wins; otherwise find the container in the
+  // active set (current then previous) so a carried-over row is never blind-written to today.
+  var sheetName = resolveActionSheetName_(ss, id, requestedDate);
   try {
     var sheet = ss.getSheetByName(sheetName);
     if (!sheet) {
@@ -2379,8 +2495,7 @@ function handleTaskAction(params, ss) {
 
     var result = applyTaskAction(sheet, id, act, time, params);
     if (result) {
-      invalidateDateReadCache(sheetName);
-      if (sheetName === getTodaySheetName()) invalidateTodayReadCache();
+      invalidateActivePlanReadCache_(sheetName);
 
       var auditEvents = buildContainerChangeAuditEvents_(params, caller, sheetName, result.rowNumber, act, result.oldSnapshot, result.newSnapshot);
       if (auditEvents.length === 0) {
@@ -2711,8 +2826,7 @@ function handleUpdateContainerRow(params, ss) {
   SpreadsheetApp.flush();
   var newSnapshot = buildContainerRowSnapshot_(sheet, rowIndex);
   var changes = diffContainerSnapshots_(oldSnapshot, newSnapshot);
-  invalidateDateReadCache(dateStr);
-  if (dateStr === getTodaySheetName()) invalidateTodayReadCache();
+  invalidateActivePlanReadCache_(dateStr);
   appendAuditEvent_(ss, {
     params: params,
     caller: caller,
@@ -2840,8 +2954,7 @@ function handleCreatePlan(params, ss) {
     sheet.getRange(startRow, C.ETA, etaCol.length, 1).setValues(etaCol);
   }
   var rows = baseRows; // keep downstream audit references intact
-  invalidateDateReadCache(dateStr);
-  if (dateStr === getTodaySheetName()) invalidateTodayReadCache();
+  invalidateActivePlanReadCache_(dateStr);
   appendAuditEvent_(ss, {
     params: params,
     caller: caller,
