@@ -446,7 +446,9 @@ export const api = {
   },
 
   fetchTvLotProgress: async (days = 7): Promise<{ planRows: Array<PlanRow & { sheetDate?: string; sequence?: number }>; tasks: Task[] }> => {
-    return cachedFetch(`tv_lot_progress_${days}`, 60000, async () => {
+    // Key includes the current calendar day so the cached lot window (tomorrow+today+prev) is
+    // dropped on a day rollover instead of being served stale for the TTL.
+    return cachedFetch(`tv_lot_progress_${days}_${getOperationalSheetName()}`, 60000, async () => {
       const res = await fetchWithTimeout(SCRIPT_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },

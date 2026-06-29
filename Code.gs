@@ -1568,19 +1568,35 @@ var TV_LOT_PROGRESS_DEFAULT_DAYS = 7;
 var TV_LOT_PROGRESS_MAX_DAYS = 14;
 var TV_LOT_NO_PATTERN = /^43115-[A-Z0-9]+$/;
 
-function getRecentOperationalSheetNames_(days) {
-  var info = getOperationalDateInfo();
-  var parts = info.operationalDate.split("-");
+// tv_lot_progress day window: TOMORROW + today + (days-2) previous CALENDAR days = `days` sheets.
+// Including tomorrow lets a Lot No that already spilled into the next day's plan be aggregated as
+// one lot (e.g. Lot 502 = 35 cars on 29.06 + 20 cars on 30.06 → shown as 55). Europe/Moscow
+// calendar days only; no operational cutoff. Order: [tomorrow, today, today-1, …].
+function getTvLotProgressSheetNames_(days, now) {
+  var info = getOperationalDateInfo(now);
+  var parts = info.calendarDate.split("-");
   var base = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
   var result = [];
-
-  for (var i = 0; i < days; i++) {
+  // offsets: +1 (tomorrow), 0 (today), -1, … , -(days-2)
+  for (var offset = 1; offset > 1 - days; offset--) {
     var d = new Date(base.getTime());
-    d.setDate(base.getDate() - i);
+    d.setDate(base.getDate() + offset);
     result.push(Utilities.formatDate(d, TIMEZONE, "dd.MM"));
   }
-
   return result;
+}
+
+// Read-only diagnostics (run from the Apps Script editor; not wired to doGet/doPost).
+function debugTvLotProgressDays() {
+  var out = getTvLotProgressSheetNames_(TV_LOT_PROGRESS_DEFAULT_DAYS);
+  Logger.log(JSON.stringify(out));
+  return out;
+}
+
+function debugTvLotProgressDays_2906() {
+  var out = getTvLotProgressSheetNames_(TV_LOT_PROGRESS_DEFAULT_DAYS, new Date(2026, 5, 29, 15, 20));
+  Logger.log(JSON.stringify(out));
+  return out;
 }
 
 function handleTvLotProgress(params, ss) {
@@ -1588,7 +1604,10 @@ function handleTvLotProgress(params, ss) {
   if (!isFinite(days) || days <= 0) days = TV_LOT_PROGRESS_DEFAULT_DAYS;
   days = Math.min(Math.max(days, 1), TV_LOT_PROGRESS_MAX_DAYS);
 
-  var cacheKey = "tv_lot_progress_" + getTodaySheetName() + "_" + days;
+  // Day window includes TOMORROW; the cache key carries the full day set so it busts on a
+  // calendar-day rollover (the window shifts) — see getTvLotProgressSheetNames_.
+  var sheetNames = getTvLotProgressSheetNames_(days);
+  var cacheKey = "tv_lot_progress_" + days + "_" + sheetNames.join("_");
   var cache = CacheService.getScriptCache();
   var cached = cache.get(cacheKey);
   if (cached) {
@@ -1596,7 +1615,6 @@ function handleTvLotProgress(params, ss) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
-  var sheetNames = getRecentOperationalSheetNames_(days);
   var planRows = [];
   var tasks = [];
 

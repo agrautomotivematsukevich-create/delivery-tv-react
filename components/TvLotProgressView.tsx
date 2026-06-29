@@ -142,13 +142,17 @@ const formatSheetName = (date: Date): string => {
   return `${day}.${month}`;
 };
 
+// Lot window: TOMORROW + today + (days-2) previous calendar days. Including tomorrow lets a Lot
+// No that already spilled into the next day's plan be aggregated as one lot. Mirrors the backend
+// getTvLotProgressSheetNames_ used by the read-only TV path.
 const getRecentOperationalSheetNames = (days = LOT_LOOKBACK_DAYS): string[] => {
   const { operationalDate } = getOperationalDateInfo();
   const [year, month, day] = operationalDate.split('-').map(Number);
   const base = new Date(Date.UTC(year, month - 1, day));
   return Array.from({ length: days }, (_, index) => {
+    const offset = 1 - index; // +1 (tomorrow), 0 (today), -1, … , -(days-2)
     const date = new Date(base.getTime());
-    date.setUTCDate(base.getUTCDate() - index);
+    date.setUTCDate(base.getUTCDate() + offset);
     return formatSheetName(date);
   });
 };
