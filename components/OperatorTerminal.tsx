@@ -119,7 +119,8 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     vibrate(30);
     stopPolling();
     setProcessingIds(prev => [...prev, task.id]);
-    
+    const startedAt = import.meta.env.DEV ? performance.now() : 0;
+
     try {
       const result = await onTaskAction(task, action);
       // Optimistic update: move the container to its new state immediately so it does not
@@ -133,12 +134,15 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
         setTasks(prev => prev.map(tk => tk.id === task.id
           ? { ...tk, end_time: tk.end_time || nowHHMM, status: 'DONE' } : tk));
       }
-      await fetchQueue();
+      // Reconcile with the server in the BACKGROUND — the optimistic update already shows the
+      // new state, so don't block the row (and modal close) on the refetch round-trip.
+      void fetchQueue();
       if (result === 'queued') {
         addToast('Действие сохранено локально. Отправится при появлении сети.', 'info');
       } else {
         addToast('Действие успешно выполнено!', 'success');
       }
+      if (import.meta.env.DEV) console.debug(`[terminal] ${action} ${task.id} ${Math.round(performance.now() - startedAt)}ms`);
     } catch (e: unknown) {
       if (e instanceof Error && e.message === 'USER_CANCELLED') return;
       console.error('Task action error:', e);

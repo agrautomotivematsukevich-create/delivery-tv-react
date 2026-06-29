@@ -325,7 +325,11 @@ function App() {
   const handleActionSuccess = (result: TaskActionResult = 'completed') => {
     if (currentAction?.onResolve) currentAction.onResolve(result);
     setCurrentAction(null);
-    refreshDashboard();
+    // When the action came from the operator terminal, the terminal refetches its own
+    // get_operator_tasks — skip the heavier get_dashboard_bundle here so the terminal flow
+    // isn't competing for GAS quota/network. The dashboard refreshes when the terminal closes
+    // (see onClose below) and on its own 45s poll.
+    if (!showTerminal) refreshDashboard();
   };
 
   const handleActionClose = () => {
@@ -482,7 +486,7 @@ function App() {
           </div>
 
           {showAuth && <AuthModal t={t} onClose={() => setShowAuth(false)} onLoginSuccess={(u) => { setUser(u); setShowAuth(false); }} />}
-          {showTerminal && <OperatorTerminal t={t} onClose={() => setShowTerminal(false)} onTaskAction={handleTaskActionRequest} />}
+          {showTerminal && <OperatorTerminal t={t} onClose={() => { setShowTerminal(false); refreshDashboard(); }} onTaskAction={handleTaskActionRequest} />}
           {showStats && <StatsModal t={t} onClose={() => setShowStats(false)} />}
           {showIssue && <IssueModal t={t} user={user} onClose={() => setShowIssue(false)} />}
           {showIssueHistory && <IssueHistoryModal t={t} onClose={() => setShowIssueHistory(false)} />}

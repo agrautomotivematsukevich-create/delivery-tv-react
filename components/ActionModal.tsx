@@ -167,20 +167,26 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
       if (!isLocalManual) {
         if (isStart) {
-          setUploadStatus({ state: 'uploading', step: 'Загрузка фото 1 из 2...', progress: 30 });
-          urlGen = photo1 ? await api.uploadPhoto(photo1.data, photo1.mime, photo1.name, {
-            containerId: action.id,
-            photoType: 'container',
-            sheetDate: action.sheetDate || '',
-            actionType,
-          }) : '';
-          setUploadStatus({ state: 'uploading', step: 'Загрузка фото 2 из 2...', progress: 60 });
-          urlSeal = photo2 ? await api.uploadPhoto(photo2.data, photo2.mime, photo2.name, {
-            containerId: action.id,
-            photoType: 'seal',
-            sheetDate: action.sheetDate || '',
-            actionType,
-          }) : '';
+          // Upload both photos IN PARALLEL — each is a ~80KB POST that can take several
+          // seconds; sequential awaits doubled the wait. task_action still runs after both
+          // resolve (business requires both photos before start).
+          setUploadStatus({ state: 'uploading', step: 'Загрузка фото...', progress: 40 });
+          const [genUrl, sealUrl] = await Promise.all([
+            photo1 ? api.uploadPhoto(photo1.data, photo1.mime, photo1.name, {
+              containerId: action.id,
+              photoType: 'container',
+              sheetDate: action.sheetDate || '',
+              actionType,
+            }) : Promise.resolve(''),
+            photo2 ? api.uploadPhoto(photo2.data, photo2.mime, photo2.name, {
+              containerId: action.id,
+              photoType: 'seal',
+              sheetDate: action.sheetDate || '',
+              actionType,
+            }) : Promise.resolve(''),
+          ]);
+          urlGen = genUrl;
+          urlSeal = sealUrl;
         } else {
           setUploadStatus({ state: 'uploading', step: 'Загрузка фото...', progress: 40 });
           if (photo1) urlEmpty = await api.uploadPhoto(photo1.data, photo1.mime, photo1.name, {

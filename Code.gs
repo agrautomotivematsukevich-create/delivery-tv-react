@@ -954,7 +954,15 @@ function createSharedUploadFileWithRetry(blob) {
   throw new Error("UPLOAD_PHOTO_RETRY_EXHAUSTED");
 }
 
+// Per-execution cache of the audit-log sheet. A single write (e.g. a start with photos) emits
+// several audit events; without this each one re-opened the secret DB (openById) and re-checked
+// headers, adding seconds to the operator's wait. The cache resets every web request (each is a
+// fresh script execution), so a freshly-deployed header change is still picked up on the next call.
+var _auditLogSheetCache = null;
+
 function getOrCreateAuditLogSheet(ss) {
+  if (_auditLogSheetCache) return _auditLogSheetCache;
+
   var authSheet = getAuthSheet();
   var auditSs = authSheet ? authSheet.getParent() : null;
   if (!auditSs) throw new Error("AUDIT_LOG_AUTH_DB_UNAVAILABLE");
@@ -971,6 +979,7 @@ function getOrCreateAuditLogSheet(ss) {
 
   ensureAuditLogHeaders_(sheet);
 
+  _auditLogSheetCache = sheet;
   return sheet;
 }
 
@@ -1344,9 +1353,9 @@ function padRow_(row, width) {
   return row;
 }
 
-function buildContainerRowSnapshot_(sheet, rowNumber) {
+function buildContainerRowSnapshot_(sheet, rowNumber, colMap) {
   if (!sheet || !rowNumber) return null;
-  var C = getPlanColumnsForSheet(sheet); // read-safe layout map (V1/V2)
+  var C = colMap || getPlanColumnsForSheet(sheet); // reuse caller's map when provided (V1/V2)
   var width = planReadCols_(sheet, C.W_AUDIT);
   var row = sheet.getRange(rowNumber, 1, 1, width).getDisplayValues()[0];
   padRow_(row, width);
@@ -2452,6 +2461,7 @@ function handleGetIssues(params, ss) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function handleTaskAction(params, ss) {
+  var _t0 = Date.now();
   var id  = (params.id || "").trim();
   var act = (params.act || "").trim();
   var requestedDate = (params.date || "").toString().trim();
@@ -2531,6 +2541,7 @@ function handleTaskAction(params, ss) {
       for (var i = 0; i < auditEvents.length; i++) {
         appendAuditEvent_(ss, auditEvents[i]);
       }
+      Logger.log("task_action " + act + " " + id + " duration ms=" + (Date.now() - _t0));
       return textOut("UPDATED");
     }
 
@@ -2580,7 +2591,7 @@ function applyTaskAction(sheet, id, act, time, params) {
   for (var i = 0; i < data.length; i++) {
     if (data[i][0] && data[i][0].toString() === id) {
       var r = i + 5;
-      var oldSnapshot = buildContainerRowSnapshot_(sheet, r);
+      var oldSnapshot = buildContainerRowSnapshot_(sheet, r, C); // reuse C — skip a header re-scan
       if (act === "start" || act.indexOf("start_manual") === 0) {
         sheet.getRange(r, C.START_TIME).setValue(actionTime);
         if (params.zone)  sheet.getRange(r, C.ZONE).setValue(params.zone);
@@ -2610,7 +2621,7 @@ function applyTaskAction(sheet, id, act, time, params) {
       return {
         rowNumber: r,
         oldSnapshot: oldSnapshot,
-        newSnapshot: buildContainerRowSnapshot_(sheet, r)
+        newSnapshot: buildContainerRowSnapshot_(sheet, r, C) // reuse C — skip a header re-scan
       };
     }
   }
