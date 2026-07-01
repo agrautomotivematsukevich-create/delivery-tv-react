@@ -205,8 +205,8 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
         setUploadStatus({ state: 'success' });
         vibrate([100, 50, 100]);
         addToast('Задача успешно выполнена', 'success');
-        setTimeout(() => onSuccess('completed'), 700);
-      }, 400);
+        setTimeout(() => onSuccess('completed'), 300);
+      }, 150);
     } catch (error: unknown) {
       vibrate([200, 100, 200]);
       const msg = error instanceof Error ? error.message : 'Ошибка. Попробуйте снова или используйте оффлайн режим.';

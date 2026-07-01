@@ -959,6 +959,7 @@ function createSharedUploadFileWithRetry(blob) {
 // headers, adding seconds to the operator's wait. The cache resets every web request (each is a
 // fresh script execution), so a freshly-deployed header change is still picked up on the next call.
 var _auditLogSheetCache = null;
+var _auditLogHeadersCache = null;
 
 function getOrCreateAuditLogSheet(ss) {
   if (_auditLogSheetCache) return _auditLogSheetCache;
@@ -977,7 +978,7 @@ function getOrCreateAuditLogSheet(ss) {
     }
   }
 
-  ensureAuditLogHeaders_(sheet);
+  _auditLogHeadersCache = ensureAuditLogHeaders_(sheet);
 
   _auditLogSheetCache = sheet;
   return sheet;
@@ -1079,17 +1080,12 @@ function extractAuditClientInfo_(params, entry) {
   };
 }
 
-function appendAuditEvent_(ss, entry) {
-  try {
-    if (!ss || !entry) return;
+function buildAuditRow_(entry, headers) {
+  var params = entry.params || {};
+  var caller = entry.caller || params._caller || {};
+  var client = extractAuditClientInfo_(params, entry);
 
-    var params = entry.params || {};
-    var caller = entry.caller || params._caller || {};
-    var client = extractAuditClientInfo_(params, entry);
-    var sheet = getOrCreateAuditLogSheet(ss);
-    var headers = ensureAuditLogHeaders_(sheet);
-
-    var values = {
+  var values = {
       Timestamp: Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd HH:mm:ss"),
       RequestId: client.requestId,
       SessionId: client.sessionId,
@@ -1119,17 +1115,52 @@ function appendAuditEvent_(ss, entry) {
       Error: safeAuditJson_(entry.error || "", getAuditFieldMaxLen_("Error"))
     };
 
-    var row = [];
-    for (var i = 0; i < headers.length; i++) {
-      var header = headers[i];
-      var maxLen = getAuditFieldMaxLen_(header);
-      row.push(normalizeAuditCell(values[header] || "", maxLen));
-    }
-
-    sheet.appendRow(row);
-  } catch (e) {
-    try { Logger.log("AUDIT_EVENT_APPEND_FAILED: " + e); } catch (_err) {}
+  var row = [];
+  for (var i = 0; i < headers.length; i++) {
+    var header = headers[i];
+    var maxLen = getAuditFieldMaxLen_(header);
+    row.push(normalizeAuditCell(values[header] || "", maxLen));
   }
+  return row;
+}
+
+// Batch-append audit events with a single setValues (previously N separate appendRow calls — the
+// dominant cost of task_action: a start emits ~5 events, each doing a header read + appendRow).
+// Best-effort, same semantics as the old per-event path: audit was never mandatory, so a failure
+// here is logged but does NOT fail the caller's action. Falls back to per-row append if the batch
+// write throws, so one malformed row can't drop the whole batch.
+function appendAuditEventsBatch_(ss, events) {
+  if (!ss || !events || !events.length) return;
+  var sheet = null, headers = null;
+  try {
+    sheet = getOrCreateAuditLogSheet(ss);
+    headers = _auditLogHeadersCache || ensureAuditLogHeaders_(sheet);
+    var rows = [];
+    for (var i = 0; i < events.length; i++) {
+      if (events[i]) rows.push(buildAuditRow_(events[i], headers));
+    }
+    if (!rows.length) return;
+    var startRow = sheet.getLastRow() + 1;
+    var needRows = startRow + rows.length - 1;
+    var maxRows = sheet.getMaxRows();
+    if (maxRows < needRows) sheet.insertRowsAfter(maxRows, needRows - maxRows);
+    sheet.getRange(startRow, 1, rows.length, headers.length).setValues(rows);
+  } catch (e) {
+    try { Logger.log("AUDIT_EVENT_APPEND_FAILED (batch): " + e); } catch (_err) {}
+    try {
+      if (!sheet) sheet = getOrCreateAuditLogSheet(ss);
+      if (!headers) headers = _auditLogHeadersCache || ensureAuditLogHeaders_(sheet);
+      for (var j = 0; j < events.length; j++) {
+        if (!events[j]) continue;
+        try { sheet.appendRow(buildAuditRow_(events[j], headers)); } catch (_e2) {}
+      }
+    } catch (_e3) {}
+  }
+}
+
+function appendAuditEvent_(ss, entry) {
+  if (!ss || !entry) return;
+  appendAuditEventsBatch_(ss, [entry]);
 }
 
 function appendAuditLog(ss, entry) {
@@ -2521,7 +2552,9 @@ function handleTaskAction(params, ss) {
       return textOut("ID_NOT_FOUND");
     }
 
+    var _tWrite0 = Date.now();
     var result = applyTaskAction(sheet, id, act, time, params);
+    var planWriteMs = Date.now() - _tWrite0;
     if (result) {
       invalidateActivePlanReadCache_(sheetName);
 
@@ -2538,10 +2571,14 @@ function handleTaskAction(params, ss) {
         auditEvents.push(base);
       }
 
-      for (var i = 0; i < auditEvents.length; i++) {
-        appendAuditEvent_(ss, auditEvents[i]);
-      }
+      // Single batched setValues instead of one appendRow per changed field.
+      var _tAudit0 = Date.now();
+      appendAuditEventsBatch_(ss, auditEvents);
+      var auditBatchMs = Date.now() - _tAudit0;
+
       Logger.log("task_action " + act + " " + id + " duration ms=" + (Date.now() - _t0));
+      Logger.log("task_action audit events=" + auditEvents.length + " auditBatchMs=" + auditBatchMs);
+      Logger.log("task_action planWriteMs=" + planWriteMs);
       return textOut("UPDATED");
     }
 
