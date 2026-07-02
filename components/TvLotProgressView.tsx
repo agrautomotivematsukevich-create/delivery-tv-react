@@ -19,6 +19,17 @@ interface LotPlanRow extends PlanRow {
   sequence: number;
 }
 
+interface UnfinishedContainer {
+  id: string;
+  materialType: string; // W/S column (col C) — the only "type" field the sheet carries
+  status: 'in_progress' | 'waiting';
+  sheetDate: string;
+  eta: string;
+  zone: string;
+  startTime: string;
+  sequence: number;
+}
+
 interface LotProgress {
   lot: string;
   ws: string[];
@@ -28,6 +39,7 @@ interface LotProgress {
   inProgress: number;
   notStarted: number;
   unfinished: number;
+  unfinishedContainers: UnfinishedContainer[];
   percent: number;
   lastSequence: number;
   status: LotStatus;
@@ -241,6 +253,20 @@ const statusLabel = (status: LotStatus): string => {
 
 const makeTaskKey = (sheetDate: string | undefined, id: string | undefined): string => `${(sheetDate || '').trim()}|${normalizeId(id)}`;
 
+// Detail sort: В работе → Ожидает, then by sheet date (sequence is chronological), then container No.
+const sortUnfinishedContainers = (list: UnfinishedContainer[]): UnfinishedContainer[] => (
+  [...list].sort((a, b) => {
+    if (a.status !== b.status) return a.status === 'in_progress' ? -1 : 1;
+    if (a.sequence !== b.sequence) return a.sequence - b.sequence;
+    return a.id.localeCompare(b.id);
+  })
+);
+
+const unfinishedStatusMeta: Record<UnfinishedContainer['status'], { label: string; color: string; bg: string; border: string }> = {
+  in_progress: { label: 'В работе', color: '#f8d779', bg: 'rgba(251,191,36,.15)', border: 'rgba(251,191,36,.32)' },
+  waiting: { label: 'Ожидает', color: 'rgba(255,255,255,.72)', bg: 'rgba(255,255,255,.07)', border: 'rgba(255,255,255,.16)' },
+};
+
 const makePreviewData = (): { planRows: LotPlanRow[]; tasks: Task[] } => {
   const sheetNames = getRecentOperationalSheetNames();
   let index = 1;
@@ -310,6 +336,7 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
     inProgress: number;
     notStarted: number;
     lastSequence: number;
+    unfinishedContainers: UnfinishedContainer[];
   }>();
 
   rows.forEach((row) => {
@@ -325,6 +352,7 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
       inProgress: 0,
       notStarted: 0,
       lastSequence: 0,
+      unfinishedContainers: [],
     };
 
     const ws = row.ws.trim();
@@ -334,8 +362,21 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
     if (task?.status === 'DONE') {
       group.done += 1;
       group.doneWsCounts[normalizeWsGroup(ws)] += 1;
-    } else if (task?.status === 'ACTIVE') group.inProgress += 1;
-    else group.notStarted += 1;
+    } else {
+      if (task?.status === 'ACTIVE') group.inProgress += 1;
+      else group.notStarted += 1;
+      // Not finished (no end_time) → carry the detail for the drill-down modal.
+      group.unfinishedContainers.push({
+        id: (row.id || '').trim(),
+        materialType: ws,
+        status: task?.status === 'ACTIVE' ? 'in_progress' : 'waiting',
+        sheetDate: row.sheetDate || '',
+        eta: (row.eta || '').trim(),
+        zone: (task?.zone || '').trim(),
+        startTime: (task?.start_time || '').trim(),
+        sequence: row.sequence,
+      });
+    }
 
     group.total += 1;
     group.lastSequence = Math.max(group.lastSequence, row.sequence);
@@ -351,6 +392,7 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
         ...lot,
         wsSegments: buildWsSegments(lot.doneWsCounts, lot.done),
         unfinished: lot.total - lot.done,
+        unfinishedContainers: sortUnfinishedContainers(lot.unfinishedContainers),
         percent,
         status,
       };
@@ -363,6 +405,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
   const [loading, setLoading] = useState(!preview);
   const [error, setError] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(() => (typeof window === 'undefined' ? 1080 : window.innerHeight));
+  const [selectedLotNo, setSelectedLotNo] = useState<string | null>(null);
 
   useEffect(() => {
     const existing = document.querySelector<HTMLLinkElement>(`link[href="${fontUrl}"]`);
@@ -493,6 +536,27 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
   const visibleClosedLots = closedLots.slice(0, MAX_DONE_LOTS);
   const totalHiddenActive = Math.max(0, activeLots.length - visibleActiveLots.length);
 
+  // Derive the open lot from the live `lots` list so the modal stays in sync with polling
+  // (a lot that finishes while open flips to the "все выгружены" state instead of going stale).
+  const selectedLot = useMemo(
+    () => (selectedLotNo ? lots.find((lot) => lot.lot === selectedLotNo) || null : null),
+    [lots, selectedLotNo],
+  );
+
+  const closeLotDetail = useCallback(() => setSelectedLotNo(null), []);
+  const openLotDetail = useCallback((lot: LotProgress) => {
+    if (lot.unfinishedContainers.length > 0) setSelectedLotNo(lot.lot);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedLotNo) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedLotNo(null);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [selectedLotNo]);
+
   const renderProgressBar = (lot: LotProgress, tone: RowTone) => {
     const isClosed = lot.status === 'done';
     const filledWidth = lot.total > 0 ? (lot.done / lot.total) * 100 : 0;
@@ -558,11 +622,24 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
 
   const renderLotRow = (lot: LotProgress) => {
     const tone = getTone(lot.status, lot.percent);
+    const clickable = lot.unfinishedContainers.length > 0;
+    const interactiveProps = clickable ? {
+      role: 'button' as const,
+      tabIndex: 0,
+      onClick: () => openLotDetail(lot),
+      onKeyDown: (event: React.KeyboardEvent) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openLotDetail(lot);
+        }
+      },
+    } : {};
     return (
       <div
         key={lot.lot}
-        className="tv-lot-active-row"
+        className={`tv-lot-active-row${clickable ? ' tv-lot-clickable' : ''}`}
         data-lot-row="active"
+        {...interactiveProps}
         style={{
           display: 'grid',
           gridTemplateColumns: 'minmax(330px,1.7fr) minmax(260px,2.5fr) clamp(82px,8vw,150px) clamp(76px,7vw,128px) clamp(108px,9vw,150px)',
@@ -575,10 +652,19 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
           border: `1px solid ${tone.border}`,
           borderLeft: `7px solid ${tone.accent}`,
           overflow: 'hidden',
+          cursor: clickable ? 'pointer' : 'default',
+          outline: 'none',
         }}
       >
-        <div title={lot.lot} style={{ font: "800 clamp(28px,2.15vw,39px)/1 'JetBrains Mono'", color: '#fff', letterSpacing: -1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-          {middleEllipsis(lot.lot, 24)}
+        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 'clamp(3px,.4vh,6px)' }}>
+          <div title={lot.lot} style={{ font: "800 clamp(28px,2.15vw,39px)/1 'JetBrains Mono'", color: '#fff', letterSpacing: -1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+            {middleEllipsis(lot.lot, 24)}
+          </div>
+          {clickable && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(4px,.4vw,7px)', color: tone.color, font: "800 clamp(11px,.9vw,15px)/1 'Manrope'", letterSpacing: .3, whiteSpace: 'nowrap' }}>
+              Осталось {lot.unfinished}<span style={{ opacity: .72 }}>· подробнее ▸</span>
+            </div>
+          )}
         </div>
         {renderProgressBar(lot, tone)}
         <div style={{ font: "900 clamp(26px,2.15vw,36px)/1 'Saira'", color: '#fff', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
@@ -633,6 +719,149 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
       Нет активных Lot No для отображения
     </div>
   );
+
+  const renderDetailContainerRow = (container: UnfinishedContainer) => {
+    const meta = unfinishedStatusMeta[container.status];
+    return (
+      <div
+        key={`${container.sheetDate}|${container.id}`}
+        className="tv-lot-detail-row"
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 'clamp(8px,.9vw,16px)',
+          padding: 'clamp(10px,1.1vh,16px) clamp(12px,1.2vw,20px)',
+          borderRadius: 12,
+          background: 'rgba(255,255,255,.035)',
+          border: '1px solid rgba(255,255,255,.09)',
+          borderLeft: `5px solid ${meta.color}`,
+        }}
+      >
+        <span
+          style={{
+            padding: 'clamp(5px,.7vh,8px) clamp(9px,.9vw,14px)',
+            borderRadius: 8,
+            background: meta.bg,
+            border: `1px solid ${meta.border}`,
+            color: meta.color,
+            font: "900 clamp(11px,.9vw,14px)/1 'Manrope'",
+            textTransform: 'uppercase',
+            letterSpacing: .6,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {meta.label}
+        </span>
+        <span style={{ flex: '1 1 200px', minWidth: 0, font: "800 clamp(17px,1.5vw,24px)/1.1 'JetBrains Mono'", color: '#fff', letterSpacing: -.3, wordBreak: 'break-all' }}>
+          {container.id || '—'}
+        </span>
+        <span
+          style={{
+            padding: 'clamp(4px,.55vh,7px) clamp(8px,.85vw,12px)',
+            borderRadius: 8,
+            background: container.materialType ? 'rgba(77,168,255,.12)' : 'rgba(255,255,255,.05)',
+            border: `1px solid ${container.materialType ? 'rgba(77,168,255,.26)' : 'rgba(255,255,255,.12)'}`,
+            color: container.materialType ? '#9ec5ff' : 'rgba(255,255,255,.5)',
+            font: "800 clamp(12px,1vw,16px)/1 'Manrope'",
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {container.materialType || 'Тип не указан'}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 'clamp(8px,1vw,16px)', font: "700 clamp(11px,.95vw,15px)/1 'Manrope'", color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap' }}>
+          <span style={{ color: 'rgba(255,255,255,.82)' }}>{container.sheetDate || '—'}</span>
+          {container.eta && <span>ETA {container.eta}</span>}
+          {container.zone && <span style={{ color: '#9ec5ff', fontWeight: 800 }}>{container.zone}</span>}
+          {container.startTime && <span style={{ color: meta.color, fontWeight: 800 }}>с {container.startTime}</span>}
+        </span>
+      </div>
+    );
+  };
+
+  const renderLotDetailModal = (lot: LotProgress) => {
+    const tone = getTone(lot.status, lot.percent);
+    const containers = lot.unfinishedContainers;
+    return (
+      <div
+        className="tv-lot-detail-overlay"
+        onClick={closeLotDetail}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 60,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 'clamp(14px,3vw,48px)',
+          background: 'rgba(6,9,15,.78)',
+        }}
+      >
+        <div
+          className="tv-lot-detail-card"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Незавершённые контейнеры лота ${lot.lot}`}
+          onClick={(event) => event.stopPropagation()}
+          style={{
+            width: 'min(940px,96vw)',
+            maxHeight: '86vh',
+            display: 'flex',
+            flexDirection: 'column',
+            borderRadius: 'clamp(14px,1.4vw,20px)',
+            background: 'linear-gradient(168deg,#1d2432 0%,#12151f 82%)',
+            border: `1px solid ${tone.border}`,
+            borderLeft: `7px solid ${tone.accent}`,
+            boxShadow: '0 30px 80px rgba(0,0,0,.55)',
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(10px,1.2vw,20px)', padding: 'clamp(14px,1.6vw,26px) clamp(16px,1.8vw,30px)', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ font: "900 clamp(11px,.9vw,14px)/1 'Manrope'", color: 'rgba(255,255,255,.5)', letterSpacing: 1.4, textTransform: 'uppercase' }}>Lot No</div>
+              <div title={lot.lot} style={{ marginTop: 6, font: "800 clamp(22px,2vw,34px)/1 'JetBrains Mono'", color: '#fff', letterSpacing: -.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {lot.lot}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+              <div style={{ font: "900 clamp(11px,.9vw,14px)/1 'Manrope'", color: 'rgba(255,255,255,.5)', letterSpacing: 1, textTransform: 'uppercase' }}>Осталось</div>
+              <div style={{ marginTop: 6, font: "900 clamp(24px,2.2vw,36px)/1 'Saira'", color: tone.color, fontVariantNumeric: 'tabular-nums' }}>
+                {lot.unfinished} <span style={{ color: 'rgba(255,255,255,.55)', fontSize: '.6em' }}>из {lot.total}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={closeLotDetail}
+              aria-label="Закрыть"
+              style={{
+                flex: 'none',
+                marginLeft: 'clamp(4px,.6vw,10px)',
+                padding: 'clamp(9px,1vh,13px) clamp(14px,1.3vw,22px)',
+                borderRadius: 10,
+                background: 'rgba(255,255,255,.06)',
+                border: '1px solid rgba(255,255,255,.16)',
+                color: '#fff',
+                font: "900 clamp(12px,1vw,15px)/1 'Manrope'",
+                textTransform: 'uppercase',
+                letterSpacing: .6,
+                cursor: 'pointer',
+              }}
+            >
+              Закрыть
+            </button>
+          </div>
+
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 'clamp(7px,.9vh,12px)', padding: 'clamp(12px,1.4vw,22px)' }}>
+            {containers.length > 0 ? containers.map(renderDetailContainerRow) : (
+              <div style={{ flex: 1, minHeight: 'clamp(120px,20vh,220px)', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: '#78f5ad', font: "800 clamp(16px,1.5vw,24px)/1.3 'Saira'", padding: 24 }}>
+                Все контейнеры по этому лоту выгружены
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderWsLegend = () => (
     <div
@@ -692,6 +921,21 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
     >
       <style>
         {`
+          .tv-lot-clickable {
+            transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
+          }
+
+          .tv-lot-clickable:hover,
+          .tv-lot-clickable:focus-visible {
+            background: rgba(255,255,255,.09) !important;
+            border-color: rgba(255,255,255,.24) !important;
+            transform: translateY(-1px);
+          }
+
+          .tv-lot-detail-row {
+            transition: background-color .15s ease;
+          }
+
           @media (max-height: 760px) {
             .tv-lot-screen {
               padding: 14px 16px !important;
@@ -796,6 +1040,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
           )}
         </>
       )}
+      {selectedLot && renderLotDetailModal(selectedLot)}
     </div>
   );
 };
