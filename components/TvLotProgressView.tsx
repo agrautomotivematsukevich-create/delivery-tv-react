@@ -656,15 +656,8 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
           outline: 'none',
         }}
       >
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 'clamp(3px,.4vh,6px)' }}>
-          <div title={lot.lot} style={{ font: "800 clamp(28px,2.15vw,39px)/1 'JetBrains Mono'", color: '#fff', letterSpacing: -1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-            {middleEllipsis(lot.lot, 24)}
-          </div>
-          {clickable && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(4px,.4vw,7px)', color: tone.color, font: "800 clamp(11px,.9vw,15px)/1 'Manrope'", letterSpacing: .3, whiteSpace: 'nowrap' }}>
-              Осталось {lot.unfinished}<span style={{ opacity: .72 }}>· подробнее ▸</span>
-            </div>
-          )}
+        <div title={lot.lot} style={{ font: "800 clamp(28px,2.15vw,39px)/1 'JetBrains Mono'", color: '#fff', letterSpacing: -1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          {middleEllipsis(lot.lot, 24)}
         </div>
         {renderProgressBar(lot, tone)}
         <div style={{ font: "900 clamp(26px,2.15vw,36px)/1 'Saira'", color: '#fff', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
