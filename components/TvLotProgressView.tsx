@@ -34,6 +34,7 @@ interface LotProgress {
   lot: string;
   ws: string[];
   wsSegments: WsSegment[];
+  wsSummary: WsSummaryRow[];
   done: number;
   total: number;
   inProgress: number;
@@ -51,6 +52,18 @@ interface WsSegment {
   count: number;
   percent: number;
   color: string;
+}
+
+// Per-W/S accepted vs not-accepted breakdown for the drill-down modal.
+// accepted = DONE containers (same as progress `done`); notAccepted = the unfinished list.
+// Summing all rows reproduces the lot's done / total, so the modal always matches the bar.
+interface WsSummaryRow {
+  key: WsGroupKey;
+  label: string;
+  color: string;
+  accepted: number;
+  notAccepted: number;
+  total: number;
 }
 
 type RowTone = {
@@ -147,6 +160,35 @@ const buildWsSegments = (wsCounts: Record<WsGroupKey, number>, total: number): W
     }))
     .filter((segment) => segment.count > 0)
 );
+
+const wsSummaryLabel = (key: WsGroupKey): string => (key === 'other' ? 'Без W/S' : WS_SEGMENT_META[key].label);
+
+// accepted per W/S = the same DONE tally the progress bar uses (doneWsCounts);
+// notAccepted per W/S = the unfinished containers grouped by their W/S column.
+const buildWsSummary = (
+  doneWsCounts: Record<WsGroupKey, number>,
+  unfinishedContainers: UnfinishedContainer[],
+): WsSummaryRow[] => {
+  const notAcceptedCounts = createEmptyWsCounts();
+  unfinishedContainers.forEach((container) => {
+    notAcceptedCounts[normalizeWsGroup(container.materialType)] += 1;
+  });
+
+  return (['welding', 'assembly', 'paint', 'other'] as WsGroupKey[])
+    .map((key) => {
+      const accepted = doneWsCounts[key];
+      const notAccepted = notAcceptedCounts[key];
+      return {
+        key,
+        label: wsSummaryLabel(key),
+        color: WS_SEGMENT_META[key].color,
+        accepted,
+        notAccepted,
+        total: accepted + notAccepted,
+      };
+    })
+    .filter((row) => row.total > 0);
+};
 
 const formatSheetName = (date: Date): string => {
   const day = String(date.getUTCDate()).padStart(2, '0');
@@ -391,6 +433,7 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
       return {
         ...lot,
         wsSegments: buildWsSegments(lot.doneWsCounts, lot.done),
+        wsSummary: buildWsSummary(lot.doneWsCounts, lot.unfinishedContainers),
         unfinished: lot.total - lot.done,
         unfinishedContainers: sortUnfinishedContainers(lot.unfinishedContainers),
         percent,
@@ -772,6 +815,64 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
     );
   };
 
+  const renderWsSummaryRow = (row: WsSummaryRow, isTotal: boolean) => {
+    const accent = isTotal ? 'rgba(255,255,255,.9)' : row.color;
+    return (
+      <div
+        key={isTotal ? '__total__' : row.key}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(120px,1.4fr) repeat(3, minmax(84px,1fr))',
+          alignItems: 'center',
+          gap: 'clamp(6px,.8vw,14px)',
+          padding: 'clamp(8px,1vh,13px) clamp(11px,1.1vw,18px)',
+          borderRadius: 11,
+          background: isTotal ? 'rgba(255,255,255,.07)' : 'rgba(255,255,255,.035)',
+          border: `1px solid ${isTotal ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.09)'}`,
+          borderLeft: `5px solid ${accent}`,
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 'clamp(6px,.7vw,10px)', minWidth: 0 }}>
+          {!isTotal && (
+            <span style={{ flex: 'none', width: 'clamp(9px,.7vw,12px)', height: 'clamp(9px,.7vw,12px)', borderRadius: 3, background: row.color, boxShadow: `0 0 10px ${row.color}` }} />
+          )}
+          <span style={{ font: `900 clamp(14px,1.2vw,19px)/1 'Manrope'`, color: isTotal ? '#fff' : 'rgba(255,255,255,.9)', textTransform: 'uppercase', letterSpacing: .6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {isTotal ? 'Итого' : row.label}
+          </span>
+        </span>
+        {([
+          { caption: 'Принято', value: row.accepted, color: '#78f5ad' },
+          { caption: 'Осталось', value: row.notAccepted, color: row.notAccepted > 0 ? '#f8d779' : 'rgba(255,255,255,.5)' },
+          { caption: 'Всего', value: row.total, color: '#fff' },
+        ] as const).map((cell) => (
+          <span key={cell.caption} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+            <span style={{ display: 'block', font: "900 clamp(9px,.7vw,11px)/1 'Manrope'", color: 'rgba(255,255,255,.42)', textTransform: 'uppercase', letterSpacing: .6 }}>{cell.caption}</span>
+            <span style={{ display: 'block', marginTop: 3, font: "900 clamp(20px,1.8vw,28px)/1 'Saira'", color: cell.color, fontVariantNumeric: 'tabular-nums' }}>{cell.value}</span>
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  const renderWsSummary = (lot: LotProgress) => {
+    if (lot.wsSummary.length === 0) return null;
+    const totalRow: WsSummaryRow = {
+      key: 'other',
+      label: 'Итого',
+      color: 'rgba(255,255,255,.9)',
+      accepted: lot.done,
+      notAccepted: lot.unfinished,
+      total: lot.total,
+    };
+    return (
+      <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 'clamp(5px,.7vh,9px)', padding: 'clamp(12px,1.4vw,22px) clamp(12px,1.4vw,22px) 0' }}>
+        <div style={{ font: "900 clamp(11px,.9vw,14px)/1 'Manrope'", color: 'rgba(255,255,255,.5)', letterSpacing: 1.4, textTransform: 'uppercase' }}>Сводка по W/S</div>
+        {lot.wsSummary.map((row) => renderWsSummaryRow(row, false))}
+        {lot.wsSummary.length > 1 && renderWsSummaryRow(totalRow, true)}
+      </div>
+    );
+  };
+
   const renderLotDetailModal = (lot: LotProgress) => {
     const tone = getTone(lot.status, lot.percent);
     const containers = lot.unfinishedContainers;
@@ -843,6 +944,8 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
               Закрыть
             </button>
           </div>
+
+          {renderWsSummary(lot)}
 
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 'clamp(7px,.9vh,12px)', padding: 'clamp(12px,1.4vw,22px)' }}>
             {containers.length > 0 ? containers.map(renderDetailContainerRow) : (
