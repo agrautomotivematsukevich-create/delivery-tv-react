@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { registerSW } from 'virtual:pwa-register';
+import { applyPwaUpdate, type UpdateServiceWorker } from '../utils/pwaUpdate';
 
 const UPDATE_REMIND_AFTER_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const TV_AUTO_RELOAD_DELAY_MS = 60 * 1000;
-
-type UpdateServiceWorker = (reloadPage?: boolean) => Promise<void>;
 
 interface PwaUpdateBannerProps {
   isBlocked: boolean;
@@ -84,19 +83,10 @@ const PwaUpdateBanner: React.FC<PwaUpdateBannerProps> = ({
     updateStartedRef.current = true;
     setIsUpdating(true);
 
-    window.setTimeout(() => {
-      window.location.reload();
-    }, 2000);
-
-    try {
-      if (updateServiceWorkerRef.current) {
-        await updateServiceWorkerRef.current(true);
-      } else {
-        window.location.reload();
-      }
-    } catch {
-      window.location.reload();
-    }
+    await applyPwaUpdate(
+      updateServiceWorkerRef.current,
+      () => window.location.reload(),
+    );
   }, []);
 
   useEffect(() => {
