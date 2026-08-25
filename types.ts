@@ -202,7 +202,11 @@ export interface TranslationSet {
   shift_on_track: string;
 }
 
-export type TaskActionResult = 'completed' | 'queued';
+export interface TaskActionResult {
+  status: 'completed' | 'queued';
+  zone?: string;
+  operator?: string;
+}
 
 export interface TaskAction {
   id: string;
@@ -210,6 +214,7 @@ export interface TaskAction {
   zone?: string | null;
   sheetDate?: string;
   sealPhotoUrl?: string; // Передаётся при финише для превью
+  occupiedZones?: Record<string, string>;
   onResolve?: (result?: TaskActionResult) => void;
   onReject?: (reason?: unknown) => void;
 }

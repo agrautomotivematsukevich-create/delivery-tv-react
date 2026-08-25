@@ -37,6 +37,41 @@ describe('operator task actions', () => {
     expect(payload.id).toBe('599AJE17-79GI17');
   });
 
+  it('sends one stable operationId with a task action', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('UPDATED', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await (api.taskAction as any)(
+      '599AJE17-79GI17', 'start', 'tv tv', 'G3', '', '', '', '25.08', 'operation-123',
+    );
+
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(payload.operationId).toBe('operation-123');
+  });
+
+  it('sends the same operationId with a photo upload', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: 'SUCCESS', url: 'https://drive.test/file-1',
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.uploadPhoto('data:image/jpeg;base64,YQ==', 'image/jpeg', 'test.jpg', {
+      containerId: '599AJE17-79GI17', photoType: 'container', operationId: 'operation-123',
+    } as any);
+
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(payload.operationId).toBe('operation-123');
+  });
+
+  it('explains which container occupies the selected zone', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      'ZONE_OCCUPIED:OTHER-CONTAINER', { status: 200 },
+    )));
+
+    await expect(api.taskAction('599AJE17-79GI17', 'start', 'tv tv', 'G5'))
+      .rejects.toThrow(/Зона G5.*OTHER-CONTAINER/i);
+  });
+
   it('rejects ID_NOT_FOUND even when Apps Script returns HTTP 200', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('ID_NOT_FOUND', { status: 200 })));
 
@@ -69,5 +104,19 @@ describe('operator task actions', () => {
     await offlineQueue.flush();
 
     expect(offlineQueue.count()).toBe(1);
+  });
+
+  it('assigns a stable operationId to an offline task before syncing it', async () => {
+    await offlineQueue.clear();
+    const fetchMock = vi.fn().mockResolvedValue(new Response('UPDATED', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await offlineQueue.enqueueTaskAction({
+      id: '599AJE17-79GI17', act: 'start_manual_10:17', op: 'tv tv', zone: 'G3', date: '25.08',
+    });
+
+    await offlineQueue.flush();
+
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(payload.operationId).toMatch(/^offline:/);
   });
 });

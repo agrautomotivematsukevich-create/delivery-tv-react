@@ -450,7 +450,7 @@ var ROUTES = {
   "get_dashboard_bundle":  { handler: handleGetDashboardBundle,  auth: true,  lock: false },
 
   // ── Authenticated writes (user token required) ──
-  "task_action":           { handler: handleTaskAction,         auth: true,  lock: true  },
+  "task_action":           { handler: handleTaskAction,         auth: true,  lock: false },
   "report_issue":          { handler: handleReportIssue,        auth: true,  lock: true  },
   "update_container_row":  { handler: handleUpdateContainerRow, auth: true,  lock: true  },
   "create_plan":           { handler: handleCreatePlan,         auth: true,  lock: true  },
@@ -1317,6 +1317,39 @@ function normalizeContainerId_(value) {
   return (value == null ? "" : value.toString()).trim();
 }
 
+var TERMINAL_ZONES_ = ["G3", "G4", "G5", "G6", "G7", "G8", "G9", "P70"];
+
+function validateStartZone_(containerId, act, zone, activeEntries) {
+  if ((act || "").toString().indexOf("start") !== 0) return "";
+  var normalizedZone = (zone || "").toString().trim().toUpperCase();
+  if (TERMINAL_ZONES_.indexOf(normalizedZone) === -1) return "INVALID_ZONE";
+
+  var normalizedId = normalizeContainerId_(containerId);
+  var entries = activeEntries || [];
+  for (var i = 0; i < entries.length; i++) {
+    var entry = entries[i] || {};
+    var C = entry.C || {};
+    var row = entry.cells || [];
+    var rowId = normalizeContainerId_(row[(C.CONTAINER_NO || 0) - 1]);
+    var rowZone = (row[(C.ZONE || 0) - 1] || "").toString().trim().toUpperCase();
+    var isActive = Boolean(row[(C.START_TIME || 0) - 1]) && !row[(C.END_TIME || 0) - 1];
+    if (isActive && rowId && rowId !== normalizedId && rowZone === normalizedZone) {
+      return "ZONE_OCCUPIED:" + rowId;
+    }
+  }
+  return "";
+}
+
+function taskOperationCacheKey_(containerId, act, operationId) {
+  var raw = [normalizeContainerId_(containerId), (act || "").toString().trim(), (operationId || "").toString().trim()].join("|");
+  return "taskop:" + raw.replace(/[^A-Za-z0-9_.|:-]/g, "_").slice(0, 220);
+}
+
+function isPreparedPlanEntryWriteSafe_(entry) {
+  return Boolean(entry && entry.C && entry.C.headerFound &&
+    (!entry.C.missing || entry.C.missing.length === 0));
+}
+
 // Resolve the sheet a write action should target. Prefers an explicit requestedDate. When the
 // client sends none (legacy), it searches the active set (current first, then previous) for the
 // container ID and returns the sheet that actually holds it — never blind-writes to "today".
@@ -1393,6 +1426,12 @@ function buildContainerRowSnapshot_(sheet, rowNumber, colMap) {
   var C = colMap || getPlanColumnsForSheet(sheet); // reuse caller's map when provided (V1/V2)
   var width = planReadCols_(sheet, C.W_AUDIT);
   var row = sheet.getRange(rowNumber, 1, 1, width).getDisplayValues()[0];
+  return buildContainerRowSnapshotFromValues_(sheet, rowNumber, C, row);
+}
+
+function buildContainerRowSnapshotFromValues_(sheet, rowNumber, C, row) {
+  var width = Math.max(row ? row.length : 0, C.W_AUDIT || 0);
+  row = row || [];
   padRow_(row, width);
   var at = function (col) { return col > 0 ? (row[col - 1] || "") : ""; };
   return {
@@ -2534,73 +2573,74 @@ function handleTaskAction(params, ss) {
   }
 
   var time = Utilities.formatDate(new Date(), TIMEZONE, "HH:mm");
-  // Route to the row's SOURCE sheet. Explicit date wins; otherwise find the container in the
-  // active set (current then previous) so a carried-over row is never blind-written to today.
-  var sheetName = resolveActionSheetName_(ss, id, requestedDate);
+  var sheetName = requestedDate;
+  var result = null;
+  var writeError = "";
+  var writeException = null;
+  var operationId = (params.operationId || "").toString().trim();
+  var duplicateOperation = false;
+  var operationCache = null;
+  var operationCacheKey = operationId ? taskOperationCacheKey_(id, act, operationId) : "";
+  var lock = LockService.getScriptLock();
+
+  // Only the conflict check and plan-cell write are serialized. Audit and cache work
+  // happen after release, so a slow audit sheet cannot hold every operator behind it.
+  if (!lock.tryLock(5000)) {
+    Logger.log("task_action BUSY " + act + " " + id);
+    return textOut("BUSY");
+  }
   try {
-    var sheet = ss.getSheetByName(sheetName);
-    if (!sheet) {
-      appendAuditEvent_(ss, {
-        params: params,
-        caller: caller,
-        action: "TASK_ACTION_FAILED",
-        entityType: "container",
-        entityId: id,
-        containerNo: id,
-        sheetName: sheetName,
-        sheetDate: sheetName,
-        details: { act: act, reason: "SHEET_NOT_FOUND" },
-        result: "failed",
-        error: "SHEET_NOT_FOUND"
-      });
-      return textOut("ID_NOT_FOUND");
+    if (operationCacheKey) {
+      try {
+        operationCache = CacheService.getScriptCache();
+        duplicateOperation = operationCache.get(operationCacheKey) === "UPDATED";
+      } catch (_cacheReadError) {}
     }
 
-    var _tWrite0 = Date.now();
-    var result = applyTaskAction(sheet, id, act, time, params);
-    var planWriteMs = Date.now() - _tWrite0;
-    if (result) {
-      invalidateActivePlanReadCache_(sheetName);
-
-      var auditEvents = buildContainerChangeAuditEvents_(params, caller, sheetName, result.rowNumber, act, result.oldSnapshot, result.newSnapshot);
-      if (auditEvents.length === 0) {
-        var base = buildContainerAuditBase_(params, caller, sheetName, result.rowNumber, result.newSnapshot || result.oldSnapshot);
-        base.action = "TASK_ACTION_NO_CHANGE";
-        base.entityType = "container";
-        base.entityId = id;
-        base.oldRowSnapshot = result.oldSnapshot;
-        base.newRowSnapshot = result.newSnapshot;
-        base.details = { act: act };
-        base.result = "success";
-        auditEvents.push(base);
+    if (!duplicateOperation) {
+      // Route to the row's SOURCE sheet under the same lock as validation/write.
+      sheetName = resolveActionSheetName_(ss, id, requestedDate);
+      var sheet = ss.getSheetByName(sheetName);
+      if (!sheet) {
+        writeError = "ID_NOT_FOUND";
+      } else {
+        var activeRows = act.indexOf("start") === 0 ? getActivePlanRows_(ss).rows : [];
+        var zoneError = validateStartZone_(id, act, params.zone, activeRows);
+        if (zoneError) {
+          writeError = zoneError;
+        } else {
+          var preparedEntry = null;
+          for (var activeIndex = 0; activeIndex < activeRows.length; activeIndex++) {
+            var candidate = activeRows[activeIndex];
+            if (isPreparedPlanEntryWriteSafe_(candidate) && candidate.sheetName === sheetName &&
+                normalizeContainerId_(candidate.cells[candidate.C.CONTAINER_NO - 1]) === id) {
+              preparedEntry = candidate;
+              break;
+            }
+          }
+          var _tWrite0 = Date.now();
+          result = applyTaskAction(sheet, id, act, time, params, preparedEntry);
+          var planWriteMs = Date.now() - _tWrite0;
+          if (!result) {
+            writeError = "ID_NOT_FOUND";
+          } else if (operationCache && operationCacheKey) {
+            try { operationCache.put(operationCacheKey, "UPDATED", 21600); } catch (_cacheWriteError) {}
+          }
+        }
       }
-
-      // Single batched setValues instead of one appendRow per changed field.
-      var _tAudit0 = Date.now();
-      appendAuditEventsBatch_(ss, auditEvents);
-      var auditBatchMs = Date.now() - _tAudit0;
-
-      Logger.log("task_action " + act + " " + id + " duration ms=" + (Date.now() - _t0));
-      Logger.log("task_action audit events=" + auditEvents.length + " auditBatchMs=" + auditBatchMs);
-      Logger.log("task_action planWriteMs=" + planWriteMs);
-      return textOut("UPDATED");
     }
-
-    appendAuditEvent_(ss, {
-      params: params,
-      caller: caller,
-      action: "TASK_ACTION_FAILED",
-      entityType: "container",
-      entityId: id,
-      containerNo: id,
-      sheetName: sheetName,
-      sheetDate: sheetName,
-      details: { act: act, reason: "ID_NOT_FOUND" },
-      result: "failed",
-      error: "ID_NOT_FOUND"
-    });
-    return textOut("ID_NOT_FOUND");
   } catch (e) {
+    writeException = e;
+  } finally {
+    lock.releaseLock();
+  }
+
+  if (duplicateOperation) {
+    Logger.log("task_action duplicate operationId " + operationId + " " + id);
+    return textOut("UPDATED");
+  }
+
+  if (writeException) {
     appendAuditEvent_(ss, {
       params: params,
       caller: caller,
@@ -2612,57 +2652,132 @@ function handleTaskAction(params, ss) {
       sheetDate: sheetName,
       details: { act: act },
       result: "failed",
-      error: e && e.stack ? e.stack : e.toString()
+      error: writeException && writeException.stack ? writeException.stack : writeException.toString()
     });
-    throw e;
+    throw writeException;
   }
+
+  if (writeError) {
+    appendAuditEvent_(ss, {
+      params: params,
+      caller: caller,
+      action: "TASK_ACTION_FAILED",
+      entityType: "container",
+      entityId: id,
+      containerNo: id,
+      sheetName: sheetName,
+      sheetDate: sheetName,
+      details: { act: act, reason: writeError.split(":")[0] },
+      result: "failed",
+      error: writeError
+    });
+    return textOut(writeError);
+  }
+
+  invalidateActivePlanReadCache_(sheetName);
+
+  var auditEvents = buildContainerChangeAuditEvents_(params, caller, sheetName, result.rowNumber, act, result.oldSnapshot, result.newSnapshot);
+  if (auditEvents.length === 0) {
+    var base = buildContainerAuditBase_(params, caller, sheetName, result.rowNumber, result.newSnapshot || result.oldSnapshot);
+    base.action = "TASK_ACTION_NO_CHANGE";
+    base.entityType = "container";
+    base.entityId = id;
+    base.oldRowSnapshot = result.oldSnapshot;
+    base.newRowSnapshot = result.newSnapshot;
+    base.details = { act: act };
+    base.result = "success";
+    auditEvents.push(base);
+  }
+
+  var _tAudit0 = Date.now();
+  appendAuditEventsBatch_(ss, auditEvents);
+  var auditBatchMs = Date.now() - _tAudit0;
+
+  Logger.log("task_action " + act + " " + id + " duration ms=" + (Date.now() - _t0));
+  Logger.log("task_action audit events=" + auditEvents.length + " auditBatchMs=" + auditBatchMs);
+  Logger.log("task_action planWriteMs=" + planWriteMs);
+  return textOut("UPDATED");
 }
 
-function applyTaskAction(sheet, id, act, time, params) {
+function applyTaskAction(sheet, id, act, time, params, preparedEntry) {
   // WRITE-SAFE: throws on UNKNOWN layout so a start/finish never lands in wrong columns.
-  var C = getPlanColumnsForSheetWriteSafe_(sheet);
-  logPlanHandlerDebug_("applyTaskAction", "task_action", sheet, C, { act: act, id: id });
-  var lr = sheet.getLastRow();
-  if (lr < 5) return null;
-  var data = sheet.getRange(5, C.CONTAINER_NO, lr - 4, 1).getValues();
+  var C = preparedEntry && preparedEntry.C
+    ? preparedEntry.C
+    : getPlanColumnsForSheetWriteSafe_(sheet);
+  var data;
+  var preparedRowNumber = 0;
+  if (preparedEntry && preparedEntry.cells && preparedEntry.rowNumber) {
+    data = [preparedEntry.cells];
+    preparedRowNumber = preparedEntry.rowNumber;
+  } else {
+    var lr = sheet.getLastRow();
+    if (lr < 5) return null;
+    // A single read supplies ID lookup and both audit snapshots. This removes two
+    // spreadsheet round-trips from every terminal action.
+    var width = planReadCols_(sheet, C.W_AUDIT);
+    var dataRange = sheet.getRange(5, 1, lr - 4, width);
+    data = dataRange.getDisplayValues ? dataRange.getDisplayValues() : dataRange.getValues();
+  }
   var actionTime = getActionTime(act, time);
 
-  // All writes are PER-CELL via the header-resolved map — never a range that could span
-  // the UNLOAD_DURATION / FACTORY_DOWNTIME formula columns (K/L in V2_LIVE, M/N in V2_FULL).
   for (var i = 0; i < data.length; i++) {
-    if (normalizeContainerId_(data[i][0]) === normalizeContainerId_(id)) {
-      var r = i + 5;
-      var oldSnapshot = buildContainerRowSnapshot_(sheet, r, C); // reuse C — skip a header re-scan
+    if (normalizeContainerId_(data[i][C.CONTAINER_NO - 1]) === normalizeContainerId_(id)) {
+      var r = preparedRowNumber || (i + 5);
+      var row = data[i].slice();
+      var oldSnapshot = buildContainerRowSnapshotFromValues_(sheet, r, C, row.slice());
+      var updates = [];
+      var queueUpdate = function(column, value) {
+        if (!column) return;
+        updates.push({ column: column, value: value });
+        row[column - 1] = value;
+      };
+
       if (act === "start" || act.indexOf("start_manual") === 0) {
-        sheet.getRange(r, C.START_TIME).setValue(actionTime);
-        if (params.zone)  sheet.getRange(r, C.ZONE).setValue(params.zone);
-        if (params.op)    sheet.getRange(r, C.WORKER).setValue(params.op);
-        if (params.pGen)  sheet.getRange(r, C.PHOTO_CONTAINER).setValue(params.pGen);
-        if (params.pSeal) sheet.getRange(r, C.PHOTO_SEAL).setValue(params.pSeal);
+        queueUpdate(C.START_TIME, actionTime);
+        if (params.zone)  queueUpdate(C.ZONE, params.zone.toString().trim().toUpperCase());
+        if (params.op)    queueUpdate(C.WORKER, params.op);
+        if (params.pGen)  queueUpdate(C.PHOTO_CONTAINER, params.pGen);
+        if (params.pSeal) queueUpdate(C.PHOTO_SEAL, params.pSeal);
       } else if (act === "undo_start") {
-        // Clear only action-related operational cells, one by one.
-        sheet.getRange(r, C.START_TIME).setValue("");
-        sheet.getRange(r, C.END_TIME).setValue("");
-        sheet.getRange(r, C.ZONE).setValue("");
-        sheet.getRange(r, C.WORKER).setValue("");
-        sheet.getRange(r, C.PHOTO_CONTAINER).setValue("");
-        sheet.getRange(r, C.PHOTO_SEAL).setValue("");
+        queueUpdate(C.START_TIME, "");
+        queueUpdate(C.END_TIME, "");
+        queueUpdate(C.ZONE, "");
+        queueUpdate(C.WORKER, "");
+        queueUpdate(C.PHOTO_CONTAINER, "");
+        queueUpdate(C.PHOTO_SEAL, "");
         // V1 Duration (J) is a plain value — clear it (legacy). In V2_LIVE/V2_FULL the
         // UNLOAD_DURATION and FACTORY_DOWNTIME columns are USER FORMULAS — never touched.
-        if (C.version === "V1" && C.UNLOAD_DURATION) sheet.getRange(r, C.UNLOAD_DURATION).setValue("");
+        if (C.version === "V1" && C.UNLOAD_DURATION) queueUpdate(C.UNLOAD_DURATION, "");
       } else if (act === "update_photo") {
-        if (params.pGen)   sheet.getRange(r, C.PHOTO_CONTAINER).setValue(params.pGen);
-        if (params.pSeal)  sheet.getRange(r, C.PHOTO_SEAL).setValue(params.pSeal);
-        if (params.pEmpty) sheet.getRange(r, C.PHOTO_UNLOADED).setValue(params.pEmpty);
+        if (params.pGen)   queueUpdate(C.PHOTO_CONTAINER, params.pGen);
+        if (params.pSeal)  queueUpdate(C.PHOTO_SEAL, params.pSeal);
+        if (params.pEmpty) queueUpdate(C.PHOTO_UNLOADED, params.pEmpty);
       } else {
-        sheet.getRange(r, C.END_TIME).setValue(actionTime);
-        if (params.pEmpty) sheet.getRange(r, C.PHOTO_UNLOADED).setValue(params.pEmpty);
+        queueUpdate(C.END_TIME, actionTime);
+        if (params.pEmpty) queueUpdate(C.PHOTO_UNLOADED, params.pEmpty);
       }
-      SpreadsheetApp.flush();
+
+      // Adjacent fields are committed together. Standard starts use only two
+      // writes (start time + zone/operator/photos). Formula gaps are never crossed.
+      updates.sort(function(a, b) { return a.column - b.column; });
+      var group = [];
+      var flushGroup = function() {
+        if (!group.length) return;
+        var values = [];
+        for (var g = 0; g < group.length; g++) values.push(group[g].value);
+        sheet.getRange(r, group[0].column, 1, group.length).setValues([values]);
+        group = [];
+      };
+      for (var u = 0; u < updates.length; u++) {
+        if (group.length && updates[u].column !== group[group.length - 1].column + 1) flushGroup();
+        group.push(updates[u]);
+      }
+      flushGroup();
+
       return {
         rowNumber: r,
         oldSnapshot: oldSnapshot,
-        newSnapshot: buildContainerRowSnapshot_(sheet, r, C) // reuse C — skip a header re-scan
+        newSnapshot: buildContainerRowSnapshotFromValues_(sheet, r, C, row)
       };
     }
   }
@@ -2758,6 +2873,23 @@ function handleUploadPhoto(params, ss) {
   var containerId = (params.containerId || params.id || "").toString().trim();
   var photoType = (params.photoType || "").toString().trim();
   var sheetName = (params.sheetDate || params.date || "").toString().trim();
+  var operationId = (params.operationId || "").toString().trim();
+  var uploadCache = null;
+  var uploadCacheKey = operationId
+    ? ("photoop:" + [operationId, containerId, photoType].join("|").replace(/[^A-Za-z0-9_.|:-]/g, "_").slice(0, 210))
+    : "";
+
+  if (uploadCacheKey) {
+    try {
+      uploadCache = CacheService.getScriptCache();
+      var cachedPhotoUrl = uploadCache.get(uploadCacheKey);
+      if (cachedPhotoUrl) {
+        Logger.log("upload_photo duplicate operationId " + operationId + " " + photoType);
+        return jsonOut({ status: "SUCCESS", url: cachedPhotoUrl });
+      }
+    } catch (_uploadCacheReadError) {}
+  }
+
   var logPhoto = function(action, result, entityId, details, newValue, error) {
     appendAuditLog(ss, {
       params: params,
@@ -2800,6 +2932,9 @@ function handleUploadPhoto(params, ss) {
     var uploadResult = createSharedUploadFileWithRetry(blob);
     var file = uploadResult.file;
     var fileUrl = file.getUrl();
+    if (uploadCache && uploadCacheKey) {
+      try { uploadCache.put(uploadCacheKey, fileUrl, 21600); } catch (_uploadCacheWriteError) {}
+    }
     var details = {
       filename: filename,
       mime: mimeType,

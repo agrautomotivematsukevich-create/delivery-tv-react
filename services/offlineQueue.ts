@@ -31,6 +31,7 @@ export interface TaskActionPayload {
   id: string;
   act: string;
   op: string;
+  operationId?: string;
   date?: string;
   zone?: string;
   pGen?: string;
@@ -114,11 +115,16 @@ export const offlineQueue = {
   _cachedCount: 0,
 
   async enqueueTaskAction(payload: TaskActionPayload): Promise<void> {
+    const queueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const action: QueuedAction = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: queueId,
       timestamp: Date.now(),
       type: 'task_action',
-      payload: { ...payload, id: normalizeContainerId(payload.id) },
+      payload: {
+        ...payload,
+        id: normalizeContainerId(payload.id),
+        operationId: payload.operationId || `offline:${queueId}`,
+      },
       retries: 0,
     };
     await add(action);

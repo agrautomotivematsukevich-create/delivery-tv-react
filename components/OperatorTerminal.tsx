@@ -7,18 +7,25 @@ import { elapsedMin, getMillisecondsUntilNextOperationalBoundary } from '../util
 import { useAppContext } from './AppContext';
 import { useEscape } from '../utils/useEscape';
 import { vibrate } from '../utils/haptics';
+import { applyOptimisticTaskAction, collectOccupiedTerminalZones, getTerminalInitialState } from '../utils/terminalState';
 
 interface OperatorTerminalProps {
   onClose: () => void;
-  onTaskAction: (task: Task, action: 'start' | 'finish') => Promise<TaskActionResult>;
+  onTaskAction: (
+    task: Task,
+    action: 'start' | 'finish',
+    occupiedZones: Record<string, string>,
+  ) => Promise<TaskActionResult>;
   t: TranslationSet;
+  initialTasks: Task[];
 }
 
-const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskAction, t }) => {
+const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskAction, t, initialTasks }) => {
   useEscape(onClose);
   const { addToast } = useAppContext();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialStateRef = useRef(getTerminalInitialState(initialTasks));
+  const [tasks, setTasks] = useState<Task[]>(initialStateRef.current.tasks);
+  const [loading, setLoading] = useState(initialStateRef.current.loading);
   const [search, setSearch] = useState('');
   const [undoingId, setUndoingId] = useState<string | null>(null);
   const [undoConfirm, setUndoConfirm] = useState<string | null>(null);
@@ -54,7 +61,7 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   }, []);
 
   useEffect(() => {
-    fetchQueue();
+    if (initialStateRef.current.needsFetch) fetchQueue();
     startPolling();
     const onVis = () => {
       if (document.hidden) stopPolling();
@@ -122,22 +129,18 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
     const startedAt = import.meta.env.DEV ? performance.now() : 0;
 
     try {
-      const result = await onTaskAction(task, action);
+      const occupiedZones = collectOccupiedTerminalZones(tasks, task.id);
+      const result = await onTaskAction(task, action, occupiedZones);
       // Optimistic update: move the container to its new state immediately so it does not
       // linger in the "Начать" list while the refetch resolves (and to keep the offline-
       // queued state visible, since the server won't reflect it yet).
       const nowHHMM = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', hour12: false });
-      if (action === 'start') {
-        setTasks(prev => prev.map(tk => tk.id === task.id
-          ? { ...tk, start_time: tk.start_time || nowHHMM, status: 'ACTIVE' } : tk));
-      } else if (action === 'finish') {
-        setTasks(prev => prev.map(tk => tk.id === task.id
-          ? { ...tk, end_time: tk.end_time || nowHHMM, status: 'DONE' } : tk));
-      }
-      // Reconcile with the server in the BACKGROUND — the optimistic update already shows the
-      // new state, so don't block the row (and modal close) on the refetch round-trip.
-      void fetchQueue();
-      if (result === 'queued') {
+      setTasks(prev => prev.map(tk => tk.id === task.id
+        ? applyOptimisticTaskAction(tk, action, result, nowHHMM)
+        : tk));
+      // The confirmed local snapshot is sufficient until the regular poll. Avoid an
+      // immediate 5–13s refetch competing with the next operator action.
+      if (result.status === 'queued') {
         addToast('Действие сохранено локально. Отправится при появлении сети.', 'info');
       } else {
         addToast('Действие успешно выполнено!', 'success');

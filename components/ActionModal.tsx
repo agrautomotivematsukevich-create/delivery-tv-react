@@ -7,6 +7,7 @@ import { useAppContext } from './AppContext';
 import { vibrate } from '../utils/haptics';
 import { AVAILABLE_ZONES } from '../utils/zones';
 import { useEscape } from '../utils/useEscape';
+import { createTerminalOperationId } from '../utils/terminalState';
 
 interface ActionModalProps {
   action: TaskAction;
@@ -48,6 +49,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const currentPhotoTarget = useRef<1 | 2>(1);
   const workerRef = useRef<Worker | null>(null);
+  const operationIdRef = useRef(createTerminalOperationId(action.id, action.type));
 
   useEffect(() => {
     workerRef.current = new Worker(new URL('../utils/ImageWorker.ts', import.meta.url), { type: 'module' });
@@ -120,6 +122,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
   const isFormValid = () => {
     if (isStart && !zone) return false;
+    if (isStart && zone && action.occupiedZones?.[zone]) return false;
     if (isLocalManual) return true;
     return isStart ? (!!photo1 && !!photo2) : !!photo1;
   };
@@ -127,19 +130,6 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
   const handleSubmit = async () => {
     if (!isFormValid()) return;
     const attemptedActionType = isLocalManual ? `${action.type}_manual_${manualTime}` : action.type;
-    api.auditEvent(action.type === 'start' ? 'UNLOAD_START_CLICK' : 'UNLOAD_END_CLICK', {
-      entityType: 'container',
-      entityId: action.id,
-      containerNo: action.id,
-      sheetDate: action.sheetDate || '',
-      details: {
-        actionType: attemptedActionType,
-        manual: isLocalManual,
-        zone: zone || '',
-        hasPhoto1: Boolean(photo1),
-        hasPhoto2: Boolean(photo2),
-      },
-    }, `action-submit:${action.id}:${attemptedActionType}`, 2000);
 
     if (!isOnline) {
       if (!isLocalManual) {
@@ -151,10 +141,17 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
 
       const actionType = attemptedActionType;
       const selectedZone = zone || '';
-      await offlineQueue.enqueueTaskAction({ id: action.id, act: actionType, op: user.name, zone: selectedZone, date: action.sheetDate });
+      await offlineQueue.enqueueTaskAction({
+        id: action.id,
+        act: actionType,
+        op: user.name,
+        zone: selectedZone,
+        date: action.sheetDate,
+        operationId: operationIdRef.current,
+      });
       setUploadStatus({ state: 'queued' });
       vibrate([100, 50, 100]);
-      setTimeout(() => onSuccess('queued'), 1500);
+      setTimeout(() => onSuccess({ status: 'queued', zone: selectedZone, operator: user.name }), 1500);
       return;
     }
 
@@ -177,12 +174,14 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
               photoType: 'container',
               sheetDate: action.sheetDate || '',
               actionType,
+              operationId: operationIdRef.current,
             }) : Promise.resolve(''),
             photo2 ? api.uploadPhoto(photo2.data, photo2.mime, photo2.name, {
               containerId: action.id,
               photoType: 'seal',
               sheetDate: action.sheetDate || '',
               actionType,
+              operationId: operationIdRef.current,
             }) : Promise.resolve(''),
           ]);
           urlGen = genUrl;
@@ -194,18 +193,28 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
             photoType: 'unloaded',
             sheetDate: action.sheetDate || '',
             actionType,
+            operationId: operationIdRef.current,
           });
         }
       }
 
       setUploadStatus({ state: 'uploading', step: 'Сохранение...', progress: 85 });
-      await api.taskAction(action.id, actionType, user.name, selectedZone, urlGen, urlSeal, urlEmpty, action.sheetDate || '');
+      await api.taskAction(
+        action.id,
+        actionType,
+        user.name,
+        selectedZone,
+        urlGen,
+        urlSeal,
+        urlEmpty,
+        action.sheetDate || '',
+        operationIdRef.current,
+      );
       setUploadStatus({ state: 'uploading', step: 'Готово!', progress: 100 });
       setTimeout(() => {
         setUploadStatus({ state: 'success' });
         vibrate([100, 50, 100]);
-        addToast('Задача успешно выполнена', 'success');
-        setTimeout(() => onSuccess('completed'), 300);
+        setTimeout(() => onSuccess({ status: 'completed', zone: selectedZone, operator: user.name }), 300);
       }, 150);
     } catch (error: unknown) {
       vibrate([200, 100, 200]);
@@ -339,7 +348,22 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
           <div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {AVAILABLE_ZONES.map(z => (
-                <button key={z} onClick={() => setZone(z)} className={`min-h-11 py-3 rounded-xl font-black text-xs border transition-all ${zone === z ? 'bg-[#1E7D7D] text-white' : 'bg-white/5 text-white/40 border-transparent'}`}>{z}</button>
+                <button
+                  key={z}
+                  type="button"
+                  disabled={Boolean(action.occupiedZones?.[z])}
+                  onClick={() => setZone(z)}
+                  title={action.occupiedZones?.[z] ? `Занята контейнером ${action.occupiedZones[z]}` : `Выбрать зону ${z}`}
+                  className={`min-h-11 py-3 rounded-xl font-black text-xs border transition-all ${
+                    action.occupiedZones?.[z]
+                      ? 'bg-red-950/50 text-red-300/70 border-red-500/30 cursor-not-allowed'
+                      : zone === z
+                        ? 'bg-[#1E7D7D] text-white'
+                        : 'bg-white/5 text-white/40 border-transparent'
+                  }`}
+                >
+                  {z}{action.occupiedZones?.[z] ? ' · ЗАНЯТА' : ''}
+                </button>
               ))}
             </div>
           </div>

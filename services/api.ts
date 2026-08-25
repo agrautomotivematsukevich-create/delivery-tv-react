@@ -357,6 +357,7 @@ type UploadPhotoContext = {
   photoType?: "container" | "seal" | "unloaded" | "issue" | string;
   sheetDate?: string;
   actionType?: string;
+  operationId?: string;
 };
 
 const _auditThrottle: Record<string, number> = {};
@@ -609,7 +610,7 @@ export const api = {
     }
   },
 
-  taskAction: async (id: string, act: string, user: string, zone: string | null = "", pGen: string = "", pSeal: string = "", pEmpty: string = "", dateStr: string = ""): Promise<void> => {
+  taskAction: async (id: string, act: string, user: string, zone: string | null = "", pGen: string = "", pSeal: string = "", pEmpty: string = "", dateStr: string = "", operationId: string = ""): Promise<void> => {
     const payload: Record<string, string> = {
       mode: "task_action",
       id: normalizeContainerId(id),
@@ -621,13 +622,20 @@ export const api = {
       pEmpty,
     };
     if (dateStr) payload.date = dateStr;
+    if (operationId) payload.operationId = operationId;
     const res = await authPost(payload, { timeout: 20000 });
     const result = (await res.text()).trim();
     if (result !== "UPDATED" && result !== "OK") {
+      if (result.startsWith("ZONE_OCCUPIED:")) {
+        const conflictId = result.slice("ZONE_OCCUPIED:".length) || "другим контейнером";
+        throw new Error(`Зона ${zone || ""} уже занята контейнером ${conflictId}. Выберите другую зону.`);
+      }
       const messages: Record<string, string> = {
         ID_NOT_FOUND: "Контейнер не найден в плане. Обновите Терминал и повторите действие.",
         INVALID_DATE: "Дата плана некорректна. Обновите Терминал и повторите действие.",
         INVALID_INPUT: "Сервер отклонил неполные данные действия.",
+        INVALID_ZONE: "Выбрана неизвестная зона. Обновите Терминал и выберите зону заново.",
+        BUSY: "Другой оператор сейчас сохраняет действие. Подождите несколько секунд и повторите.",
       };
       throw new Error(messages[result] || `Сервер отклонил действие: ${result || "EMPTY_RESPONSE"}`);
     }
@@ -649,6 +657,7 @@ export const api = {
             photoType: context.photoType || "",
             sheetDate: context.sheetDate || "",
             actionType: context.actionType || "",
+            operationId: context.operationId || "",
           },
           { timeout: 45000 }
         );

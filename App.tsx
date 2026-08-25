@@ -20,6 +20,12 @@ import { DashboardData, Task, TaskAction, TaskActionResult } from './types';
 import { useAppContext } from './components/AppContext';
 import { deepEqual } from './utils/deepEqual';
 import { getMillisecondsUntilNextOperationalBoundary, getOperationalDateInfo } from './utils/time';
+import {
+  createDashboardHealth,
+  DashboardHealth,
+  markDashboardFailure,
+  markDashboardSuccess,
+} from './utils/dashboardHealth';
 
 // Lazy-loaded heavy views
 const HistoryView          = React.lazy(() => import('./components/HistoryView'));
@@ -130,6 +136,8 @@ function App() {
   const [showIssueHistory, setShowIssueHistory] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [currentAction, setCurrentAction] = useState<TaskAction | null>(null);
+  const initialDashboardHealth = useMemo(() => createDashboardHealth(navigator.onLine), []);
+  const [dashboardHealth, setDashboardHealth] = useState<DashboardHealth>(initialDashboardHealth);
 
   const t = TRANSLATIONS[lang];
 
@@ -138,6 +146,13 @@ function App() {
   // Ref для хранения предыдущего allTasks (deepEqual проверка)
   const prevTasksRef = useRef<Task[]>([]);
   const lastDashboardRef = useRef<DashboardData | null>(dashboardData);
+  const dashboardHealthRef = useRef<DashboardHealth>(initialDashboardHealth);
+
+  const applyDashboardHealth = useCallback((next: DashboardHealth) => {
+    dashboardHealthRef.current = next;
+    setDashboardHealth(next);
+    setIsOffline(next.status === 'offline');
+  }, [setIsOffline]);
 
   useEffect(() => {
     lastDashboardRef.current = dashboardData;
@@ -182,8 +197,8 @@ function App() {
       // Single HTTP call: bundle auto-falls back to 2 parallel calls if backend
       // route is not deployed yet (api.fetchDashboardBundle handles that).
       const bundle = isTv1ReadOnlyAccess
-        ? { dashboard: await api.fetchDashboard().catch(() => null), tasks: [] as Task[] }
-        : await api.fetchDashboardBundle(todayStr).catch(() => null);
+        ? { dashboard: await api.fetchDashboard(), tasks: [] as Task[] }
+        : await api.fetchDashboardBundle(todayStr);
       const data = bundle?.dashboard ?? null;
       const tasks = bundle?.tasks ?? null;
       const carryoverDashboard = data ? getNightCarryoverDashboard(lastDashboardRef.current, data) : null;
@@ -196,7 +211,7 @@ function App() {
           return nextDashboard;
         });
         if (!carryoverDashboard) saveLastNonZeroDashboard(nextDashboard);
-        setIsOffline(false);
+        applyDashboardHealth(markDashboardSuccess(dashboardHealthRef.current));
         tvDiagnostics.markDataSuccess('dashboard');
       } else {
         console.error('[dashboard-offline]', {
@@ -206,7 +221,7 @@ function App() {
           hasCarryoverDashboard: !!carryoverDashboard,
           hasTasks: tasks !== null,
         });
-        setIsOffline(true);
+        applyDashboardHealth(markDashboardFailure(dashboardHealthRef.current, navigator.onLine));
       }
 
       // Защита от лишних ререндеров: сравниваем tasks через deepEqual
@@ -224,7 +239,7 @@ function App() {
         reason: 'refreshDashboard exception',
         error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : e,
       });
-      setIsOffline(true);
+      applyDashboardHealth(markDashboardFailure(dashboardHealthRef.current, navigator.onLine));
       tvDiagnostics.markError(e);
       return null;
     } finally {
@@ -232,7 +247,18 @@ function App() {
       setIsLoading(false);
       setIsTasksLoading(false);
     }
-  }, [isTv1ReadOnlyAccess, setDashboardData, setIsOffline]);
+  }, [applyDashboardHealth, isTv1ReadOnlyAccess, setDashboardData]);
+
+  useEffect(() => {
+    const onOffline = () => applyDashboardHealth(markDashboardFailure(dashboardHealthRef.current, false));
+    const onOnline = () => { void refreshDashboard(); };
+    window.addEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+    return () => {
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+    };
+  }, [applyDashboardHealth, refreshDashboard]);
 
   // 🚀 GATE 1: Первичная загрузка
   useEffect(() => {
@@ -266,6 +292,7 @@ function App() {
     if (location.pathname !== '/' || isTV2) return;
     if (isTv1Preview) return;
     if (((isTV && !isTv1ReadOnlyAccess) || isTV3) && !user) return;
+    if (showTerminal) return;
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const startPolling = () => {
@@ -287,12 +314,13 @@ function App() {
       stopPolling();
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [refreshDashboard, location.pathname, isTV2, isTV, isTV3, user, isTv1Preview, isTv1ReadOnlyAccess]);
+  }, [refreshDashboard, location.pathname, isTV2, isTV, isTV3, user, isTv1Preview, isTv1ReadOnlyAccess, showTerminal]);
 
   useEffect(() => {
     if (isTV2) return;
     if (isTv1Preview) return;
     if (((isTV && !isTv1ReadOnlyAccess) || isTV3) && !user) return;
+    if (showTerminal) return;
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const scheduleBoundaryRefresh = () => {
@@ -307,28 +335,32 @@ function App() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [refreshDashboard, isTV2, isTV, isTV3, user, isTv1Preview, isTv1ReadOnlyAccess]);
+  }, [refreshDashboard, isTV2, isTV, isTV3, user, isTv1Preview, isTv1ReadOnlyAccess, showTerminal]);
 
-  const handleTaskActionRequest = (task: Task, actionType: 'start' | 'finish') => {
+  const handleTaskActionRequest = (
+    task: Task,
+    actionType: 'start' | 'finish',
+    occupiedZones: Record<string, string>,
+  ) => {
     return new Promise<TaskActionResult>((resolve, reject) => {
       setCurrentAction({
         id: task.id,
         type: actionType,
         sheetDate: task.sheet_date,
         sealPhotoUrl: actionType === 'finish' ? task.photo_seal : undefined,
-        onResolve: (result: TaskActionResult = 'completed') => resolve(result),
+        occupiedZones,
+        onResolve: (result: TaskActionResult = { status: 'completed' }) => resolve(result),
         onReject: reject,
       });
     });
   };
 
-  const handleActionSuccess = (result: TaskActionResult = 'completed') => {
+  const handleActionSuccess = (result: TaskActionResult = { status: 'completed' }) => {
     if (currentAction?.onResolve) currentAction.onResolve(result);
     setCurrentAction(null);
-    // When the action came from the operator terminal, the terminal refetches its own
-    // get_operator_tasks — skip the heavier get_dashboard_bundle here so the terminal flow
-    // isn't competing for GAS quota/network. The dashboard refreshes when the terminal closes
-    // (see onClose below) and on its own 45s poll.
+    // The terminal applies the confirmed result immediately and owns its 45s reconciliation.
+    // Skip the heavier dashboard bundle so it cannot compete with the next operator action.
+    // The dashboard is refreshed when the terminal closes (see onClose below).
     if (!showTerminal) refreshDashboard();
   };
 
@@ -406,6 +438,14 @@ function App() {
       {isOffline && (
         <div className="fixed top-0 left-0 w-full bg-red-500 text-white text-center py-1 text-xs font-bold z-[100]">
           ⚠️ ПОТЕРЯНО СОЕДИНЕНИЕ С СЕРВЕРОМ (ОФФЛАЙН РЕЖИМ)
+        </div>
+      )}
+      {!isOffline && dashboardHealth.status === 'degraded' && (
+        <div className="fixed top-0 left-0 w-full bg-amber-500 text-black text-center py-1 text-xs font-bold z-[100]">
+          ДАННЫЕ ВРЕМЕННО НЕ ОБНОВИЛИСЬ · ПОКАЗАНО СОСТОЯНИЕ НА{' '}
+          {dashboardHealth.lastSuccessAt
+            ? new Date(dashboardHealth.lastSuccessAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+            : '—'}
         </div>
       )}
       <PwaUpdateBanner
@@ -486,7 +526,7 @@ function App() {
           </div>
 
           {showAuth && <AuthModal t={t} onClose={() => setShowAuth(false)} onLoginSuccess={(u) => { setUser(u); setShowAuth(false); }} />}
-          {showTerminal && <OperatorTerminal t={t} onClose={() => { setShowTerminal(false); refreshDashboard(); }} onTaskAction={handleTaskActionRequest} />}
+          {showTerminal && <OperatorTerminal initialTasks={allTasks} t={t} onClose={() => { setShowTerminal(false); refreshDashboard(); }} onTaskAction={handleTaskActionRequest} />}
           {showStats && <StatsModal t={t} onClose={() => setShowStats(false)} />}
           {showIssue && <IssueModal t={t} user={user} onClose={() => setShowIssue(false)} />}
           {showIssueHistory && <IssueHistoryModal t={t} onClose={() => setShowIssueHistory(false)} />}
