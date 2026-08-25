@@ -1313,12 +1313,16 @@ function invalidateActivePlanReadCache_(sheetName) {
   if (sheetName === names.current || sheetName === names.previous) invalidateTodayReadCache();
 }
 
+function normalizeContainerId_(value) {
+  return (value == null ? "" : value.toString()).trim();
+}
+
 // Resolve the sheet a write action should target. Prefers an explicit requestedDate. When the
 // client sends none (legacy), it searches the active set (current first, then previous) for the
 // container ID and returns the sheet that actually holds it — never blind-writes to "today".
 function resolveActionSheetName_(ss, containerId, requestedDate) {
   if (requestedDate) return requestedDate;
-  var id = (containerId || "").toString().trim();
+  var id = normalizeContainerId_(containerId);
   var names = getActivePlanSheetNames_();
   var order = [names.current, names.previous];
   for (var s = 0; s < order.length; s++) {
@@ -1333,7 +1337,7 @@ function resolveActionSheetName_(ss, containerId, requestedDate) {
     try {
       var ids = sheet.getRange(5, C.CONTAINER_NO, lr - 4, 1).getDisplayValues();
       for (var i = 0; i < ids.length; i++) {
-        if ((ids[i][0] || "").toString() === id) return name;
+        if (normalizeContainerId_(ids[i][0]) === id) return name;
       }
     } catch (e) { Logger.log("resolveActionSheetName_: skip '" + name + "': " + e); }
   }
@@ -2114,7 +2118,7 @@ function handleGetStats(params, ss) {
     var entry = active.rows[i];
     var C = entry.C;
     var row = entry.cells;
-    var id = row[C.CONTAINER_NO - 1];
+    var id = normalizeContainerId_(row[C.CONTAINER_NO - 1]);
     if (!id) continue;
     var status = deriveStatus(row[C.START_TIME - 1], row[C.END_TIME - 1]);
     var timeDisplay = row[C.ETA - 1];
@@ -2493,7 +2497,7 @@ function handleGetIssues(params, ss) {
 
 function handleTaskAction(params, ss) {
   var _t0 = Date.now();
-  var id  = (params.id || "").trim();
+  var id  = normalizeContainerId_(params.id);
   var act = (params.act || "").trim();
   var requestedDate = (params.date || "").toString().trim();
   var caller = params._caller || null;
@@ -2626,7 +2630,7 @@ function applyTaskAction(sheet, id, act, time, params) {
   // All writes are PER-CELL via the header-resolved map — never a range that could span
   // the UNLOAD_DURATION / FACTORY_DOWNTIME formula columns (K/L in V2_LIVE, M/N in V2_FULL).
   for (var i = 0; i < data.length; i++) {
-    if (data[i][0] && data[i][0].toString() === id) {
+    if (normalizeContainerId_(data[i][0]) === normalizeContainerId_(id)) {
       var r = i + 5;
       var oldSnapshot = buildContainerRowSnapshot_(sheet, r, C); // reuse C — skip a header re-scan
       if (act === "start" || act.indexOf("start_manual") === 0) {

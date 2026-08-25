@@ -6,6 +6,7 @@
  */
 
 import { getAuditClientPayload, getToken } from './api';
+import { normalizeContainerId } from '../utils/containerId';
 
 const FLUSH_TIMEOUT_MS = 30000;
 function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
@@ -117,7 +118,7 @@ export const offlineQueue = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       timestamp: Date.now(),
       type: 'task_action',
-      payload,
+      payload: { ...payload, id: normalizeContainerId(payload.id) },
       retries: 0,
     };
     await add(action);
@@ -220,7 +221,7 @@ export const offlineQueue = {
             });
             const txt = await res.text();
 
-            if (txt.includes('UPDATED') || txt.includes('OK') || txt.includes('ID_NOT_FOUND')) {
+            if (txt.includes('UPDATED') || txt.includes('OK')) {
               await remove(item.id);
             } else if (txt.includes('AUTH_REQUIRED')) {
               // Token expired — stop flushing, user needs to re-login

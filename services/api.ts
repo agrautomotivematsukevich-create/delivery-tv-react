@@ -1,6 +1,7 @@
 import { SCRIPT_URL } from "../constants";
 import { DashboardData, Task, Issue, TaskInput, PlanRow, LotContainer, PendingUser } from "../types";
 import { getOperationalSheetName } from "../utils/time";
+import { normalizeContainerId } from "../utils/containerId";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TOKEN MANAGEMENT
@@ -397,7 +398,9 @@ export const api = {
       const res = await authRead(mode);
       if (!res) return [];
       const data = await res.json();
-      return Array.isArray(data) ? data : [];
+      return Array.isArray(data)
+        ? data.map((task: Task) => ({ ...task, id: normalizeContainerId(task.id) }))
+        : [];
     });
   },
 
@@ -609,7 +612,7 @@ export const api = {
   taskAction: async (id: string, act: string, user: string, zone: string | null = "", pGen: string = "", pSeal: string = "", pEmpty: string = "", dateStr: string = ""): Promise<void> => {
     const payload: Record<string, string> = {
       mode: "task_action",
-      id,
+      id: normalizeContainerId(id),
       act,
       op: user,
       zone: zone || "",
@@ -618,7 +621,16 @@ export const api = {
       pEmpty,
     };
     if (dateStr) payload.date = dateStr;
-    await authPost(payload, { timeout: 20000 });
+    const res = await authPost(payload, { timeout: 20000 });
+    const result = (await res.text()).trim();
+    if (result !== "UPDATED" && result !== "OK") {
+      const messages: Record<string, string> = {
+        ID_NOT_FOUND: "Контейнер не найден в плане. Обновите Терминал и повторите действие.",
+        INVALID_DATE: "Дата плана некорректна. Обновите Терминал и повторите действие.",
+        INVALID_INPUT: "Сервер отклонил неполные данные действия.",
+      };
+      throw new Error(messages[result] || `Сервер отклонил действие: ${result || "EMPTY_RESPONSE"}`);
+    }
     // Bust client task caches so the immediate refetch returns fresh post-action state.
     invalidateTaskCaches();
   },
