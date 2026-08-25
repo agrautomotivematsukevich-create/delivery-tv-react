@@ -18,9 +18,10 @@ interface OperatorTerminalProps {
   ) => Promise<TaskActionResult>;
   t: TranslationSet;
   initialTasks: Task[];
+  userLogin: string;
 }
 
-const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskAction, t, initialTasks }) => {
+const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskAction, t, initialTasks, userLogin }) => {
   useEscape(onClose);
   const { addToast } = useAppContext();
   const initialStateRef = useRef(getTerminalInitialState(initialTasks));
@@ -104,6 +105,10 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
   }, []);
 
   useEffect(() => {
+    void api.warmTerminalEdgeSession(userLogin);
+  }, [userLogin]);
+
+  useEffect(() => {
     const check = () => setPendingCount(offlineQueue.count());
     check();
     const id = setInterval(check, 5000);
@@ -142,6 +147,8 @@ const OperatorTerminal: React.FC<OperatorTerminalProps> = ({ onClose, onTaskActi
       // immediate 5–13s refetch competing with the next operator action.
       if (result.status === 'queued') {
         addToast('Действие сохранено локально. Отправится при появлении сети.', 'info');
+      } else if (result.status === 'accepted') {
+        addToast('Действие принято сервером AGM. Синхронизация с Google продолжится автоматически.', 'info');
       } else {
         addToast('Действие успешно выполнено!', 'success');
       }

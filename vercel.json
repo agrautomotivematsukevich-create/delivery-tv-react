@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/edge/:path*",
+      "destination": "https://staff24-server.tail77821b.ts.net/:path*"
+    },
+    {
       "source": "/((?!api|_next|assets|icon-|manifest|robots|sitemap|agr-).*)",
       "destination": "/index.html"
     }

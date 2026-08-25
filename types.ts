@@ -203,7 +203,7 @@ export interface TranslationSet {
 }
 
 export interface TaskActionResult {
-  status: 'completed' | 'queued';
+  status: 'completed' | 'accepted' | 'queued';
   zone?: string;
   operator?: string;
 }

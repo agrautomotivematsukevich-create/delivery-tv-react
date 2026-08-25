@@ -20,7 +20,7 @@ interface ActionModalProps {
 type UploadStatus =
   | { state: 'idle' }
   | { state: 'uploading'; step: string; progress: number }
-  | { state: 'success' }
+  | { state: 'success'; via: 'edge' | 'google' }
   | { state: 'queued' }
   | { state: 'error'; message: string };
 
@@ -162,6 +162,49 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       const actionType = attemptedActionType;
       const selectedZone = zone || '';
 
+      const edgePhotos = isLocalManual ? [] : [
+        ...(photo1 ? [{
+          type: isStart ? 'container' as const : 'unloaded' as const,
+          image: photo1.data,
+          mimeType: photo1.mime,
+          filename: photo1.name,
+        }] : []),
+        ...(isStart && photo2 ? [{
+          type: 'seal' as const,
+          image: photo2.data,
+          mimeType: photo2.mime,
+          filename: photo2.name,
+        }] : []),
+      ];
+      setUploadStatus({ state: 'uploading', step: 'Сервер AGM...', progress: 20 });
+      const edgeResult = await api.submitTerminalOperation({
+        containerId: action.id,
+        action: actionType,
+        operator: user.name,
+        login: user.user,
+        zone: selectedZone,
+        sheetDate: action.sheetDate || '',
+        operationId: operationIdRef.current,
+        photos: edgePhotos,
+      });
+      if (edgeResult) {
+        setUploadStatus({
+          state: 'uploading',
+          step: edgeResult.status === 'synced' ? 'Готово!' : 'Принято сервером',
+          progress: 100,
+        });
+        setTimeout(() => {
+          setUploadStatus({ state: 'success', via: edgeResult.status === 'synced' ? 'google' : 'edge' });
+          vibrate([100, 50, 100]);
+          setTimeout(() => onSuccess({
+            status: edgeResult.status === 'synced' ? 'completed' : 'accepted',
+            zone: selectedZone,
+            operator: user.name,
+          }), 300);
+        }, 150);
+        return;
+      }
+
       if (!isLocalManual) {
         if (isStart) {
           // Upload both photos IN PARALLEL — each is a ~80KB POST that can take several
@@ -212,7 +255,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
       );
       setUploadStatus({ state: 'uploading', step: 'Готово!', progress: 100 });
       setTimeout(() => {
-        setUploadStatus({ state: 'success' });
+        setUploadStatus({ state: 'success', via: 'google' });
         vibrate([100, 50, 100]);
         setTimeout(() => onSuccess({ status: 'completed', zone: selectedZone, operator: user.name }), 300);
       }, 150);
@@ -298,7 +341,9 @@ const ActionModal: React.FC<ActionModalProps> = ({ action, user, t, onClose, onS
                 <div className="w-24 h-24 rounded-full bg-emerald-500/20 flex items-center justify-center">
                   <CheckCircle className="w-16 h-16 text-emerald-500" />
                 </div>
-                <div className="text-3xl font-black text-white uppercase">Успешно!</div>
+                <div className="text-3xl font-black text-white uppercase">
+                  {uploadStatus.state === 'success' && uploadStatus.via === 'edge' ? 'Принято!' : 'Успешно!'}
+                </div>
               </div>
             )}
             {isQueued && (

@@ -526,7 +526,7 @@ function App() {
           </div>
 
           {showAuth && <AuthModal t={t} onClose={() => setShowAuth(false)} onLoginSuccess={(u) => { setUser(u); setShowAuth(false); }} />}
-          {showTerminal && <OperatorTerminal initialTasks={allTasks} t={t} onClose={() => { setShowTerminal(false); refreshDashboard(); }} onTaskAction={handleTaskActionRequest} />}
+          {showTerminal && <OperatorTerminal initialTasks={allTasks} userLogin={user?.user || ''} t={t} onClose={() => { setShowTerminal(false); refreshDashboard(); }} onTaskAction={handleTaskActionRequest} />}
           {showStats && <StatsModal t={t} onClose={() => setShowStats(false)} />}
           {showIssue && <IssueModal t={t} user={user} onClose={() => setShowIssue(false)} />}
           {showIssueHistory && <IssueHistoryModal t={t} onClose={() => setShowIssueHistory(false)} />}

@@ -1,0 +1,14 @@
+{
+  "name": "agr-terminal-edge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Durable AGM terminal edge gateway with Google Apps Script fallback compatibility",
+  "main": "src/index.cjs",
+  "scripts": {
+    "start": "node src/index.cjs",
+    "test": "node --test test/server.node.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

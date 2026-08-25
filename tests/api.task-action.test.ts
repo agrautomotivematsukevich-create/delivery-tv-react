@@ -63,6 +63,100 @@ describe('operator task actions', () => {
     expect(payload.operationId).toBe('operation-123');
   });
 
+  it('submits one atomic terminal operation with all photos to the edge server', async () => {
+    const submitTerminalOperation = (api as unknown as {
+      submitTerminalOperation?: (
+        input: Record<string, unknown>,
+        options: Record<string, unknown>,
+      ) => Promise<unknown>;
+    }).submitTerminalOperation;
+    expect(submitTerminalOperation).toBeTypeOf('function');
+    if (!submitTerminalOperation) return;
+
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: 'accepted', operationId: 'operation-123',
+    }), { status: 202, headers: { 'Content-Type': 'application/json' } }));
+
+    const result = await submitTerminalOperation({
+      containerId: '599AJE17-79GI17',
+      action: 'start',
+      operator: 'tv tv',
+      login: 'tv1',
+      zone: 'G3',
+      sheetDate: '25.08',
+      operationId: 'operation-123',
+      photos: [
+        { type: 'container', image: 'data:image/jpeg;base64,YQ==', mimeType: 'image/jpeg', filename: 'general.jpg' },
+        { type: 'seal', image: 'data:image/jpeg;base64,Yg==', mimeType: 'image/jpeg', filename: 'seal.jpg' },
+      ],
+    }, {
+      endpoint: 'https://edge.test/v1',
+      fetchImpl: fetchMock,
+      timeoutMs: 1000,
+    });
+
+    expect(result).toEqual({ status: 'accepted', operationId: 'operation-123' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://edge.test/v1/operations');
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(payload.token).toBe('test-token');
+    expect(payload.operationId).toBe('operation-123');
+    expect(payload.photos).toHaveLength(2);
+  });
+
+  it('checks the operation status before falling back after an ambiguous edge failure', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('connection lost after upload'))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: 'accepted', operationId: 'operation-123',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    const result = await api.submitTerminalOperation({
+      containerId: '599AJE17-79GI17',
+      action: 'finish',
+      operator: 'tv tv',
+      login: 'tv1',
+      zone: 'G3',
+      sheetDate: '25.08',
+      operationId: 'operation-123',
+      photos: [
+        { type: 'unloaded', image: 'data:image/jpeg;base64,YQ==', mimeType: 'image/jpeg', filename: 'empty.jpg' },
+      ],
+    }, {
+      endpoint: 'https://edge.test/v1',
+      fetchImpl: fetchMock,
+      timeoutMs: 1000,
+    });
+
+    expect(result).toEqual({ status: 'accepted', operationId: 'operation-123' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://edge.test/v1/operations/operation-123');
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      method: 'GET', headers: { Authorization: 'Bearer test-token' },
+    });
+  });
+
+  it('warms an authenticated edge session before an operator action', async () => {
+    const warmTerminalEdgeSession = (api as unknown as {
+      warmTerminalEdgeSession?: (login: string, options: Record<string, unknown>) => Promise<boolean>;
+    }).warmTerminalEdgeSession;
+    expect(warmTerminalEdgeSession).toBeTypeOf('function');
+    if (!warmTerminalEdgeSession) return;
+
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }));
+
+    await expect(warmTerminalEdgeSession('tv1', {
+      endpoint: 'https://edge.test/v1', fetchImpl: fetchMock, timeoutMs: 1000,
+    })).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://edge.test/v1/session');
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      token: 'test-token', login: 'tv1',
+    });
+  });
+
   it('explains which container occupies the selected zone', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
       'ZONE_OCCUPIED:OTHER-CONTAINER', { status: 200 },

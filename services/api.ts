@@ -136,6 +136,7 @@ const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: 
 const _cache: Record<string, { data: unknown; ts: number }> = {};
 const _inflight: Record<string, Promise<unknown>> = {};
 const CACHE_MAX_ENTRIES = 50;
+let _edgeSessionReadyUntil = 0;
 
 function pruneCache(): void {
   const keys = Object.keys(_cache);
@@ -358,6 +359,35 @@ type UploadPhotoContext = {
   sheetDate?: string;
   actionType?: string;
   operationId?: string;
+};
+
+export type EdgeTerminalPhoto = {
+  type: 'container' | 'seal' | 'unloaded';
+  image: string;
+  mimeType: string;
+  filename: string;
+};
+
+export type EdgeTerminalOperation = {
+  containerId: string;
+  action: string;
+  operator: string;
+  login: string;
+  zone: string;
+  sheetDate: string;
+  operationId: string;
+  photos: EdgeTerminalPhoto[];
+};
+
+export type EdgeTerminalResult = {
+  status: 'accepted' | 'synced';
+  operationId: string;
+};
+
+type EdgeTerminalOptions = {
+  endpoint?: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
 };
 
 const _auditThrottle: Record<string, number> = {};
@@ -607,6 +637,85 @@ export const api = {
     } catch (e: unknown) {
       if (e instanceof Error && e.message === "AUTH_EXPIRED") throw e;
       return false;
+    }
+  },
+
+  warmTerminalEdgeSession: async (
+    login: string,
+    options: EdgeTerminalOptions = {},
+  ): Promise<boolean> => {
+    const endpoint = (options.endpoint || import.meta.env.VITE_EDGE_API_URL || '').replace(/\/$/, '');
+    const token = getToken();
+    const normalizedLogin = login.trim();
+    if (!endpoint || !token || !normalizedLogin) return false;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 15000);
+    try {
+      const response = await (options.fetchImpl || fetch)(`${endpoint}/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, login: normalizedLogin }),
+        signal: controller.signal,
+      });
+      if (!response.ok) return false;
+      const result = await response.json() as { ok?: boolean };
+      const ready = result.ok === true;
+      _edgeSessionReadyUntil = ready ? Date.now() + 55 * 60 * 1000 : 0;
+      return ready;
+    } catch {
+      _edgeSessionReadyUntil = 0;
+      return false;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  },
+
+  submitTerminalOperation: async (
+    input: EdgeTerminalOperation,
+    options: EdgeTerminalOptions = {},
+  ): Promise<EdgeTerminalResult | null> => {
+    const endpoint = (options.endpoint || import.meta.env.VITE_EDGE_API_URL || '').replace(/\/$/, '');
+    const token = getToken();
+    if (!endpoint || !token) return null;
+    if (!options.endpoint && _edgeSessionReadyUntil <= Date.now()) return null;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 1500);
+    try {
+      const response = await (options.fetchImpl || fetch)(`${endpoint}/operations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...input, token }),
+        signal: controller.signal,
+      });
+      if (!response.ok) return null;
+      const result = await response.json() as EdgeTerminalResult;
+      if ((result.status !== 'accepted' && result.status !== 'synced') || !result.operationId) return null;
+      return result;
+    } catch {
+      const statusController = new AbortController();
+      const statusTimeoutId = setTimeout(() => statusController.abort(), Math.min(options.timeoutMs ?? 1500, 1000));
+      try {
+        const statusResponse = await (options.fetchImpl || fetch)(
+          `${endpoint}/operations/${encodeURIComponent(input.operationId)}`,
+          {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${token}` },
+            signal: statusController.signal,
+          },
+        );
+        if (!statusResponse.ok) return null;
+        const statusResult = await statusResponse.json() as EdgeTerminalResult;
+        if ((statusResult.status !== 'accepted' && statusResult.status !== 'synced') || !statusResult.operationId) return null;
+        return statusResult;
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(statusTimeoutId);
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
   },
 
