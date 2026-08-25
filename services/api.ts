@@ -390,6 +390,8 @@ type EdgeTerminalOptions = {
   timeoutMs?: number;
 };
 
+const DEFAULT_TERMINAL_EDGE_ENDPOINT = '/edge/v1';
+
 const _auditThrottle: Record<string, number> = {};
 
 export const api = {
@@ -644,7 +646,9 @@ export const api = {
     login: string,
     options: EdgeTerminalOptions = {},
   ): Promise<boolean> => {
-    const endpoint = (options.endpoint || import.meta.env.VITE_EDGE_API_URL || '').replace(/\/$/, '');
+    const endpoint = (options.endpoint
+      || import.meta.env.VITE_EDGE_API_URL
+      || DEFAULT_TERMINAL_EDGE_ENDPOINT).replace(/\/$/, '');
     const token = getToken();
     const normalizedLogin = login.trim();
     if (!endpoint || !token || !normalizedLogin) return false;
@@ -675,7 +679,9 @@ export const api = {
     input: EdgeTerminalOperation,
     options: EdgeTerminalOptions = {},
   ): Promise<EdgeTerminalResult | null> => {
-    const endpoint = (options.endpoint || import.meta.env.VITE_EDGE_API_URL || '').replace(/\/$/, '');
+    const endpoint = (options.endpoint
+      || import.meta.env.VITE_EDGE_API_URL
+      || DEFAULT_TERMINAL_EDGE_ENDPOINT).replace(/\/$/, '');
     const token = getToken();
     if (!endpoint || !token) return null;
     if (!options.endpoint && _edgeSessionReadyUntil <= Date.now()) return null;

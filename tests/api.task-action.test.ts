@@ -157,6 +157,19 @@ describe('operator task actions', () => {
     });
   });
 
+  it('uses the same-origin edge proxy by default', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }));
+
+    await expect(api.warmTerminalEdgeSession('tv1', {
+      fetchImpl: fetchMock,
+      timeoutMs: 1000,
+    })).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('/edge/v1/session');
+  });
+
   it('explains which container occupies the selected zone', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
       'ZONE_OCCUPIED:OTHER-CONTAINER', { status: 200 },

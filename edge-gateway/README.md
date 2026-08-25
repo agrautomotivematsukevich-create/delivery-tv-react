@@ -4,8 +4,20 @@ Isolated write-behind gateway for Terminal start/finish operations. It durably s
 operation (including compressed photos), responds with `accepted`, and synchronizes photos plus
 `task_action` to the existing Google Apps Script using the same `operationId`.
 
-The production frontend keeps Google Apps Script as its fallback. The edge endpoint is restricted
-to the AGM public egress IP, so a phone on mobile data receives `EDGE_NETWORK_REQUIRED` and uses the
-direct Google path.
+Production requests use the same-origin `/edge/v1` path. Vercel proxies it to a persistent Tailscale
+Funnel, while the Node service listens only on `127.0.0.1`. The gateway accepts only configured AGM
+IPv4 addresses or IPv6 prefixes and trusts the client address asserted by Cloudflare or Vercel—not a
+generic `X-Forwarded-For` header.
+
+The rollout is additionally restricted by `PILOT_LOGINS` and `PILOT_CONTAINERS`. If session warming,
+network validation, or the edge request fails, the production frontend keeps the existing direct
+Google Apps Script path as its fallback.
+
+Deployment requirements:
+
+- Node.js 20 or newer and PM2 for `src/index.cjs`.
+- A local `config/.env` based on `.env.example`; never commit the real file.
+- A persistent `tailscale funnel --bg` proxy to the configured localhost port.
+- `npm test` before replacing the service files or restarting only `agr-terminal-edge`.
 
 Runtime data and `config/.env` are intentionally excluded from Git. Run `npm test` before deployment.
