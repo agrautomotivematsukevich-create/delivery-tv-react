@@ -391,3 +391,42 @@ test('accepts an AGM IPv6 address covered by the configured network prefix', asy
     }
   }
 });
+
+test('reports safe request metadata without logging query secrets', async () => {
+  const logDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-edge-access-log-test-'));
+  const entries = [];
+  const logServer = createEdgeServer({
+    dataDir: logDataDir,
+    encryptionKey: Buffer.alloc(32, 1),
+    allowedOrigins: ['https://agrdashboard.vercel.app'],
+    allowedClientIps: ['203.0.113.10'],
+    trustProxy: true,
+    autoStartWorker: false,
+    requestLogger: (entry) => entries.push(entry),
+  });
+
+  try {
+    await new Promise((resolve) => logServer.listen(0, '127.0.0.1', resolve));
+    const logBaseUrl = `http://127.0.0.1:${logServer.address().port}/v1`;
+    const response = await fetch(`${logBaseUrl}/health?token=must-not-be-logged`, {
+      headers: {
+        Origin: 'https://agrdashboard.vercel.app',
+        'X-Vercel-Forwarded-For': '203.0.113.10',
+      },
+    });
+    await response.json();
+
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].method, 'GET');
+    assert.equal(entries[0].path, '/v1/health');
+    assert.equal(entries[0].clientIp, '203.0.113.10');
+    assert.equal(entries[0].statusCode, 200);
+    assert.equal(typeof entries[0].durationMs, 'number');
+    assert.equal(JSON.stringify(entries[0]).includes('must-not-be-logged'), false);
+  } finally {
+    await new Promise((resolve) => logServer.close(resolve));
+    if (path.resolve(logDataDir).startsWith(path.resolve(os.tmpdir()))) {
+      fs.rmSync(logDataDir, { recursive: true, force: true });
+    }
+  }
+});

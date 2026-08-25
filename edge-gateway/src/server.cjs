@@ -217,6 +217,7 @@ function createEdgeServer(options = {}) {
   const gasUrl = options.gasUrl || '';
   const fetchImpl = options.fetchImpl || fetch;
   const workerIntervalMs = options.workerIntervalMs || 1000;
+  const requestLogger = typeof options.requestLogger === 'function' ? options.requestLogger : null;
   const validateSession = options.validateSession || (async (token) => {
     if (!gasUrl) return { ok: false, tasks: [] };
     try {
@@ -335,15 +336,33 @@ function createEdgeServer(options = {}) {
   }
 
   const server = http.createServer(async (req, res) => {
+    const requestStartedAt = Date.now();
+    const requestPath = new URL(req.url, 'http://edge.local').pathname;
+    const clientIp = normalizeIp(trustProxy
+      ? (req.headers['cf-connecting-ip']
+        || firstForwardedIp(req.headers['x-vercel-forwarded-for']))
+      : req.socket.remoteAddress);
+    if (requestLogger) {
+      res.once('finish', () => {
+        try {
+          requestLogger({
+            at: new Date().toISOString(),
+            method: req.method,
+            path: requestPath,
+            clientIp,
+            statusCode: res.statusCode,
+            durationMs: Date.now() - requestStartedAt,
+          });
+        } catch {
+          // Observability must never interrupt a terminal operation.
+        }
+      });
+    }
     const origin = req.headers.origin || '';
     if (origin && !allowedOrigins.has(origin)) {
       json(res, 403, { error: 'ORIGIN_NOT_ALLOWED' }, '', allowedOrigins);
       return;
     }
-    const clientIp = normalizeIp(trustProxy
-      ? (req.headers['cf-connecting-ip']
-        || firstForwardedIp(req.headers['x-vercel-forwarded-for']))
-      : req.socket.remoteAddress);
     const hasNetworkAllowlist = allowedClientIps.size > 0 || allowedClientCidrs.length > 0;
     const clientAllowed = allowedClientIps.has(clientIp)
       || allowedClientCidrs.some((cidr) => cidrContains(cidr, clientIp));

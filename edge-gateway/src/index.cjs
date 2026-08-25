@@ -27,6 +27,7 @@ const server = createEdgeServer({
   trustProxy: process.env.TRUST_PROXY === 'true',
   workerIntervalMs: Number(process.env.WORKER_INTERVAL_MS || 1000),
   autoStartWorker: true,
+  requestLogger: (entry) => console.log(JSON.stringify({ type: 'edge_request', ...entry })),
 });
 
 server.listen(port, host, () => {
