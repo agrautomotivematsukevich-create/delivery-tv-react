@@ -657,7 +657,7 @@ export const api = {
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 15000);
+    const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 25000);
     try {
       const response = await (options.fetchImpl || fetch)(`${endpoint}/session`, {
         method: 'POST',

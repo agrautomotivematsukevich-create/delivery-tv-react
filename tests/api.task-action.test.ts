@@ -170,6 +170,28 @@ describe('operator task actions', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/edge/v1/session');
   });
 
+  it('keeps the default edge warm-up alive for slow Google session validation', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn((_url: string, options?: RequestInit) => new Promise<Response>((resolve, reject) => {
+        const completion = setTimeout(() => resolve(new Response(JSON.stringify({ ok: true }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        })), 20_000);
+        options?.signal?.addEventListener('abort', () => {
+          clearTimeout(completion);
+          reject(new DOMException('Aborted', 'AbortError'));
+        }, { once: true });
+      }));
+
+      const warming = api.warmTerminalEdgeSession('another-operator', { fetchImpl: fetchMock });
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      await expect(warming).resolves.toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('warms the edge session for any authenticated operator', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
       status: 200, headers: { 'Content-Type': 'application/json' },
