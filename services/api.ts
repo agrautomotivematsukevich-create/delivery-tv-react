@@ -391,6 +391,7 @@ type EdgeTerminalOptions = {
 };
 
 const DEFAULT_TERMINAL_EDGE_ENDPOINT = '/edge/v1';
+const TERMINAL_EDGE_PILOT_LOGINS = new Set(['tv1']);
 
 const _auditThrottle: Record<string, number> = {};
 
@@ -646,12 +647,19 @@ export const api = {
     login: string,
     options: EdgeTerminalOptions = {},
   ): Promise<boolean> => {
+    const normalizedLogin = login.trim();
+    if (!TERMINAL_EDGE_PILOT_LOGINS.has(normalizedLogin)) {
+      _edgeSessionReadyUntil = 0;
+      return false;
+    }
     const endpoint = (options.endpoint
       || import.meta.env.VITE_EDGE_API_URL
       || DEFAULT_TERMINAL_EDGE_ENDPOINT).replace(/\/$/, '');
     const token = getToken();
-    const normalizedLogin = login.trim();
-    if (!endpoint || !token || !normalizedLogin) return false;
+    if (!endpoint || !token) {
+      _edgeSessionReadyUntil = 0;
+      return false;
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 15000);
@@ -662,7 +670,10 @@ export const api = {
         body: JSON.stringify({ token, login: normalizedLogin }),
         signal: controller.signal,
       });
-      if (!response.ok) return false;
+      if (!response.ok) {
+        _edgeSessionReadyUntil = 0;
+        return false;
+      }
       const result = await response.json() as { ok?: boolean };
       const ready = result.ok === true;
       _edgeSessionReadyUntil = ready ? Date.now() + 55 * 60 * 1000 : 0;
@@ -679,6 +690,7 @@ export const api = {
     input: EdgeTerminalOperation,
     options: EdgeTerminalOptions = {},
   ): Promise<EdgeTerminalResult | null> => {
+    if (!TERMINAL_EDGE_PILOT_LOGINS.has(input.login.trim())) return null;
     const endpoint = (options.endpoint
       || import.meta.env.VITE_EDGE_API_URL
       || DEFAULT_TERMINAL_EDGE_ENDPOINT).replace(/\/$/, '');

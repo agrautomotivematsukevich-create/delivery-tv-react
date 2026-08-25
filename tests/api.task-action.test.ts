@@ -170,6 +170,36 @@ describe('operator task actions', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/edge/v1/session');
   });
 
+  it('does not contact the edge proxy for a login outside the pilot', async () => {
+    const fetchMock = vi.fn();
+
+    await expect(api.warmTerminalEdgeSession('another-operator', {
+      fetchImpl: fetchMock,
+      timeoutMs: 1000,
+    })).resolves.toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not submit a non-pilot operation after a pilot session was warmed', async () => {
+    const warmFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }));
+    await api.warmTerminalEdgeSession('tv1', { fetchImpl: warmFetch, timeoutMs: 1000 });
+
+    const operationFetch = vi.fn();
+    await expect(api.submitTerminalOperation({
+      containerId: '599AJE17-79GI17',
+      action: 'start',
+      operator: 'another operator',
+      login: 'another-operator',
+      zone: 'G3',
+      sheetDate: '25.08',
+      operationId: 'non-pilot-operation',
+      photos: [],
+    }, { fetchImpl: operationFetch, timeoutMs: 1000 })).resolves.toBeNull();
+    expect(operationFetch).not.toHaveBeenCalled();
+  });
+
   it('explains which container occupies the selected zone', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
       'ZONE_OCCUPIED:OTHER-CONTAINER', { status: 200 },
