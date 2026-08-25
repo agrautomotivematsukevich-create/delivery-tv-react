@@ -170,23 +170,30 @@ describe('operator task actions', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/edge/v1/session');
   });
 
-  it('does not contact the edge proxy for a login outside the pilot', async () => {
-    const fetchMock = vi.fn();
+  it('warms the edge session for any authenticated operator', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }));
 
     await expect(api.warmTerminalEdgeSession('another-operator', {
       fetchImpl: fetchMock,
       timeoutMs: 1000,
-    })).resolves.toBe(false);
-    expect(fetchMock).not.toHaveBeenCalled();
+    })).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      token: 'test-token', login: 'another-operator',
+    });
   });
 
-  it('does not submit a non-pilot operation after a pilot session was warmed', async () => {
+  it('submits an operation for any authenticated operator after its session was warmed', async () => {
     const warmFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
       status: 200, headers: { 'Content-Type': 'application/json' },
     }));
-    await api.warmTerminalEdgeSession('tv1', { fetchImpl: warmFetch, timeoutMs: 1000 });
+    await api.warmTerminalEdgeSession('another-operator', { fetchImpl: warmFetch, timeoutMs: 1000 });
 
-    const operationFetch = vi.fn();
+    const operationFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: 'accepted', operationId: 'all-operators-operation',
+    }), { status: 202, headers: { 'Content-Type': 'application/json' } }));
     await expect(api.submitTerminalOperation({
       containerId: '599AJE17-79GI17',
       action: 'start',
@@ -194,10 +201,12 @@ describe('operator task actions', () => {
       login: 'another-operator',
       zone: 'G3',
       sheetDate: '25.08',
-      operationId: 'non-pilot-operation',
+      operationId: 'all-operators-operation',
       photos: [],
-    }, { fetchImpl: operationFetch, timeoutMs: 1000 })).resolves.toBeNull();
-    expect(operationFetch).not.toHaveBeenCalled();
+    }, { fetchImpl: operationFetch, timeoutMs: 1000 })).resolves.toEqual({
+      status: 'accepted', operationId: 'all-operators-operation',
+    });
+    expect(operationFetch).toHaveBeenCalledTimes(1);
   });
 
   it('explains which container occupies the selected zone', async () => {

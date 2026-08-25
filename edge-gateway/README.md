@@ -9,9 +9,11 @@ Funnel, while the Node service listens only on `127.0.0.1`. The gateway accepts 
 IPv4 addresses or IPv6 prefixes and trusts the client address asserted by Cloudflare or Vercel—not a
 generic `X-Forwarded-For` header.
 
-The rollout is additionally restricted by `PILOT_LOGINS` and `PILOT_CONTAINERS`. If session warming,
-network validation, or the edge request fails, the production frontend keeps the existing direct
-Google Apps Script path as its fallback.
+By default, every authenticated operator and container inside the AGM network uses the gateway.
+`PILOT_LOGINS` and `PILOT_CONTAINERS` can be populated to temporarily restrict a rollout; leaving
+them empty enables all users and containers. If session warming, network validation, or the edge
+request fails, the production frontend keeps the existing direct Google Apps Script path as its
+fallback.
 
 Deployment requirements:
 

@@ -391,7 +391,6 @@ type EdgeTerminalOptions = {
 };
 
 const DEFAULT_TERMINAL_EDGE_ENDPOINT = '/edge/v1';
-const TERMINAL_EDGE_PILOT_LOGINS = new Set(['tv1']);
 
 const _auditThrottle: Record<string, number> = {};
 
@@ -648,15 +647,11 @@ export const api = {
     options: EdgeTerminalOptions = {},
   ): Promise<boolean> => {
     const normalizedLogin = login.trim();
-    if (!TERMINAL_EDGE_PILOT_LOGINS.has(normalizedLogin)) {
-      _edgeSessionReadyUntil = 0;
-      return false;
-    }
     const endpoint = (options.endpoint
       || import.meta.env.VITE_EDGE_API_URL
       || DEFAULT_TERMINAL_EDGE_ENDPOINT).replace(/\/$/, '');
     const token = getToken();
-    if (!endpoint || !token) {
+    if (!endpoint || !token || !normalizedLogin) {
       _edgeSessionReadyUntil = 0;
       return false;
     }
@@ -690,7 +685,7 @@ export const api = {
     input: EdgeTerminalOperation,
     options: EdgeTerminalOptions = {},
   ): Promise<EdgeTerminalResult | null> => {
-    if (!TERMINAL_EDGE_PILOT_LOGINS.has(input.login.trim())) return null;
+    if (!input.login.trim()) return null;
     const endpoint = (options.endpoint
       || import.meta.env.VITE_EDGE_API_URL
       || DEFAULT_TERMINAL_EDGE_ENDPOINT).replace(/\/$/, '');
