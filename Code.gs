@@ -2745,6 +2745,7 @@ function applyTaskAction(sheet, id, act, time, params, preparedEntry) {
         queueUpdate(C.WORKER, "");
         queueUpdate(C.PHOTO_CONTAINER, "");
         queueUpdate(C.PHOTO_SEAL, "");
+        queueUpdate(C.PHOTO_UNLOADED, "");
         // V1 Duration (J) is a plain value — clear it (legacy). In V2_LIVE/V2_FULL the
         // UNLOAD_DURATION and FACTORY_DOWNTIME columns are USER FORMULAS — never touched.
         if (C.version === "V1" && C.UNLOAD_DURATION) queueUpdate(C.UNLOAD_DURATION, "");

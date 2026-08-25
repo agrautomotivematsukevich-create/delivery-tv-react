@@ -308,6 +308,45 @@ describe('Code.gs terminal action safety and latency', () => {
     expect(getLastRow).not.toHaveBeenCalled();
   });
 
+  it('clears the unloaded photo when an action is fully undone', () => {
+    const context = loadCodeGs();
+    const writes: Array<{ column: number; values: unknown[][] }> = [];
+    const C = {
+      version: 'V1', N: 1, LOT_NO: 2, WS: 3, PALLETS: 4, CONTAINER_NO: 5,
+      CARRIER: 0, DRIVER: 0, PHONE: 6, ETA: 7, START_TIME: 8, END_TIME: 9,
+      UNLOAD_DURATION: 10, FACTORY_DOWNTIME: 0, ZONE: 11, WORKER: 12,
+      PHOTO_CONTAINER: 13, PHOTO_SEAL: 14, PHOTO_UNLOADED: 15,
+      ARRIVAL_TIME: 16, SAP_STATUS: 17, LES_STATUS: 18, W_AUDIT: 18,
+    };
+    const row = Array(18).fill('');
+    row[C.CONTAINER_NO - 1] = '599AJE17-79GI17';
+    row[C.START_TIME - 1] = '13:03';
+    row[C.END_TIME - 1] = '13:05';
+    row[C.PHOTO_UNLOADED - 1] = 'https://drive.test/unloaded';
+    const sheet = {
+      getName: () => '25.08',
+      getMaxColumns: () => 18,
+      getRange: (_row: number, column: number) => ({
+        setValues: (values: unknown[][]) => writes.push({ column, values }),
+      }),
+    };
+
+    context.applyTaskAction(
+      sheet,
+      '599AJE17-79GI17',
+      'undo_start',
+      '13:06',
+      {},
+      { C, cells: row, rowNumber: 5, sheetName: '25.08' },
+    );
+
+    const writtenCells = writes.flatMap((write) => write.values[0].map((value, index) => ({
+      column: write.column + index,
+      value,
+    })));
+    expect(writtenCells).toContainEqual({ column: C.PHOTO_UNLOADED, value: '' });
+  });
+
   it('never reuses a read-safe fallback layout for a write', () => {
     const context = loadCodeGs();
     const isSafe = context.isPreparedPlanEntryWriteSafe_ || (() => true);
