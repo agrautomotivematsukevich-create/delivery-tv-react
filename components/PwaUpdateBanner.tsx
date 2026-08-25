@@ -84,6 +84,7 @@ const PwaUpdateBanner: React.FC<PwaUpdateBannerProps> = ({
     setIsUpdating(true);
 
     await applyPwaUpdate(
+      registrationRef.current,
       updateServiceWorkerRef.current,
       () => window.location.reload(),
     );
