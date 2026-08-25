@@ -110,7 +110,10 @@ const PwaUpdateBanner: React.FC<PwaUpdateBannerProps> = ({
   if (!shouldShow) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-[58] mx-auto w-auto max-w-md rounded-2xl border border-white/10 bg-[#191B25]/95 p-4 shadow-lg md:left-auto md:mx-0">
+    <div
+      data-update-flow="activation-gated"
+      className="fixed bottom-4 left-4 right-4 z-[58] mx-auto w-auto max-w-md rounded-2xl border border-white/10 bg-[#191B25]/95 p-4 shadow-lg md:left-auto md:mx-0"
+    >
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#1E7D7D]/20 text-cyan-100">
           <RefreshCw className={`h-4 w-4 ${isUpdating ? 'animate-spin' : ''}`} />
