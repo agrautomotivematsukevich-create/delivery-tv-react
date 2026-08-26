@@ -12,6 +12,12 @@ var TIMEZONE     = "Europe/Moscow";
 // getActivePlanSheetNames_/getActivePlanRows_. The old 07:50 cutoff is gone.
 var ALERT_EMAIL  = "MHReceiving@agr.auto";  // TODO: move to sheet config cell
 
+// Daily plan cells maintained by trusted users only. The additional editor is stored in
+// Apps Script Project Settings -> Script Properties -> PLAN_PROTECTED_EDITOR_EMAIL.
+var PLAN_PROTECTED_RANGES = ["N5:P100", "J5:K100"];
+var PLAN_PROTECTED_EDITOR_EMAIL = PropertiesService.getScriptProperties()
+  .getProperty("PLAN_PROTECTED_EDITOR_EMAIL") || "";
+
 var ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
 var MAX_PHOTO_BASE64_LEN = 7000000;  // ~5 MB decoded
 var UPLOAD_PHOTO_MAX_ATTEMPTS = 3;
@@ -25,6 +31,44 @@ var AUDIT_LOG_HEADERS = [
   "Device", "UserAgent", "ClientInfo", "Result", "Error"
 ];
 var AUDIT_JSON_CELL_MAX_LEN = 12000;
+
+function applyDailySheetProtections_(sheet, spreadsheet) {
+  var additionalEditor = String(PLAN_PROTECTED_EDITOR_EMAIL || "").trim().toLowerCase();
+  if (!additionalEditor || additionalEditor.indexOf("@") <= 0) {
+    throw new Error("PLAN_PROTECTED_EDITOR_EMAIL is not configured");
+  }
+
+  var owner = spreadsheet && spreadsheet.getOwner ? spreadsheet.getOwner() : null;
+  var ownerEmail = owner && owner.getEmail ? String(owner.getEmail() || "").trim().toLowerCase() : "";
+  if (!ownerEmail && typeof Session !== "undefined") {
+    ownerEmail = String(Session.getEffectiveUser().getEmail() || "").trim().toLowerCase();
+  }
+  if (!ownerEmail) throw new Error("Spreadsheet owner email is unavailable");
+
+  var allowedEditors = [ownerEmail];
+  if (additionalEditor !== ownerEmail) allowedEditors.push(additionalEditor);
+  var existing = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+
+  for (var i = 0; i < PLAN_PROTECTED_RANGES.length; i++) {
+    var a1 = PLAN_PROTECTED_RANGES[i];
+    var protection = null;
+    for (var p = 0; p < existing.length; p++) {
+      var protectedRange = existing[p].getRange ? existing[p].getRange() : null;
+      if (protectedRange && protectedRange.getA1Notation() === a1) {
+        protection = existing[p];
+        break;
+      }
+    }
+    if (!protection) protection = sheet.getRange(a1).protect();
+
+    protection.setDescription("AGR daily plan protected range " + a1);
+    protection.setWarningOnly(false);
+    var currentEditors = protection.getEditors();
+    if (currentEditors.length) protection.removeEditors(currentEditors);
+    protection.addEditors(allowedEditors);
+    if (protection.canDomainEdit()) protection.setDomainEdit(false);
+  }
+}
 
 // TV displays use a static API key instead of user tokens.
 // Value stored in Apps Script Project Settings → Script Properties → TV_API_KEY
@@ -348,6 +392,65 @@ function applyPlanV2Layout(sheet, headerRow) {
     .setValues([PLAN_V2_HEADERS]).setFontWeight("bold")
     .setBackground(PLAN_HEADER_BG).setFontColor(PLAN_HEADER_FONT);
   sheet.setFrozenRows(PLAN_DATA_START_ROW - 1);
+}
+
+function createDailyPlanSheet_(spreadsheet, sheetName) {
+  var sheet = spreadsheet.insertSheet(sheetName);
+  applyPlanV2Layout(sheet);
+  applyDailySheetProtections_(sheet, spreadsheet);
+  return sheet;
+}
+
+function isDailyPlanSheetName_(sheetName) {
+  return /^\d{2}\.\d{2}$/.test(String(sheetName || "").trim());
+}
+
+// Installable spreadsheet change trigger. A manually inserted/copied sheet is active
+// when INSERT_GRID fires, so no full-workbook scan is needed.
+function onDailySheetStructureChange(e) {
+  if (!e || e.changeType !== "INSERT_GRID") return;
+  var spreadsheet = e.source || SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet && spreadsheet.getActiveSheet ? spreadsheet.getActiveSheet() : null;
+  if (!sheet || !isDailyPlanSheetName_(sheet.getName())) return;
+  applyDailySheetProtections_(sheet, spreadsheet);
+}
+
+// Run once as the spreadsheet owner after PLAN_PROTECTED_EDITOR_EMAIL is configured.
+// It protects the active/current daily sheets immediately and installs the INSERT_GRID listener.
+function installDailySheetProtection() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var activeSheet = spreadsheet.getActiveSheet();
+  var protectedSheetNames = {};
+  if (activeSheet && isDailyPlanSheetName_(activeSheet.getName())) {
+    applyDailySheetProtections_(activeSheet, spreadsheet);
+    protectedSheetNames[activeSheet.getName()] = true;
+  }
+
+  var currentSheetName = Utilities.formatDate(new Date(), TIMEZONE, "dd.MM");
+  var currentSheet = spreadsheet.getSheetByName(currentSheetName);
+  if (currentSheet && !protectedSheetNames[currentSheetName]) {
+    applyDailySheetProtections_(currentSheet, spreadsheet);
+  }
+
+  var handlerName = "onDailySheetStructureChange";
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === handlerName) return "ALREADY_INSTALLED";
+  }
+
+  ScriptApp.newTrigger(handlerName).forSpreadsheet(spreadsheet).onChange().create();
+  return "INSTALLED";
+}
+
+function configureDailySheetProtection(editorEmail) {
+  var normalizedEmail = String(editorEmail || "").trim().toLowerCase();
+  if (!normalizedEmail || normalizedEmail.indexOf("@") <= 0) {
+    throw new Error("A valid protected range editor email is required");
+  }
+  PropertiesService.getScriptProperties()
+    .setProperty("PLAN_PROTECTED_EDITOR_EMAIL", normalizedEmail);
+  PLAN_PROTECTED_EDITOR_EMAIL = normalizedEmail;
+  return installDailySheetProtection();
 }
 
 // Manual read-only diagnostic, e.g. debugPlanColumns("28.06"). NOT wired to doGet/doPost.
@@ -3125,8 +3228,7 @@ function handleCreatePlan(params, ss) {
   var sheet = ss.getSheetByName(dateStr);
   if (!sheet) {
     // New sheets are created in the V2 layout (headers + freeze only — no formulas).
-    sheet = ss.insertSheet(dateStr);
-    applyPlanV2Layout(sheet);
+    sheet = createDailyPlanSheet_(ss, dateStr);
   }
 
   // Append rows using the header-resolved map. WRITE-SAFE so a mis-detected layout never
