@@ -23,7 +23,7 @@ function loadCodeGs(properties: Record<string, string> = {}): GasContext {
 }
 
 describe('Code.gs daily sheet protection', () => {
-  it('protects both ranges for only the spreadsheet owner and configured editor', () => {
+  it('leaves the unloading zone column N editable and protects the remaining ranges', () => {
     const context = loadCodeGs({
       PLAN_PROTECTED_EDITOR_EMAIL: 'trusted.editor@example.com',
     });
@@ -59,7 +59,8 @@ describe('Code.gs daily sheet protection', () => {
 
     context.applyDailySheetProtections_(sheet, spreadsheet);
 
-    expect(protectedRanges).toEqual(['N5:P100', 'J5:K100']);
+    expect(protectedRanges).toEqual(['O5:P100', 'J5:K100']);
+    expect(protectedRanges).not.toContain('N5:P100');
     expect(removeEditors).toHaveBeenCalledTimes(2);
     expect(addEditors).toHaveBeenNthCalledWith(
       1,
@@ -71,6 +72,46 @@ describe('Code.gs daily sheet protection', () => {
     );
     expect(setWarningOnly).toHaveBeenCalledWith(false);
     expect(setDomainEdit).toHaveBeenCalledWith(false);
+  });
+
+  it('removes the legacy N:P protection so column N becomes editable immediately', () => {
+    const context = loadCodeGs({
+      PLAN_PROTECTED_EDITOR_EMAIL: 'trusted.editor@example.com',
+    });
+    const removeLegacyProtection = vi.fn();
+    const legacyProtection = {
+      getRange: () => ({ getA1Notation: () => 'N5:P100' }),
+      getDescription: () => 'AGR daily plan protected range N5:P100',
+      remove: removeLegacyProtection,
+      setDescription: vi.fn(),
+      setWarningOnly: vi.fn(),
+      getEditors: () => [],
+      removeEditors: vi.fn(),
+      addEditors: vi.fn(),
+      canDomainEdit: () => false,
+    };
+    const replacementProtection = {
+      setDescription: vi.fn(),
+      setWarningOnly: vi.fn(),
+      getEditors: () => [],
+      removeEditors: vi.fn(),
+      addEditors: vi.fn(),
+      canDomainEdit: () => false,
+    };
+    const sheet = {
+      getProtections: () => [legacyProtection],
+      getRange: (a1: string) => ({
+        getA1Notation: () => a1,
+        protect: () => replacementProtection,
+      }),
+    };
+    const spreadsheet = {
+      getOwner: () => ({ getEmail: () => 'owner@example.com' }),
+    };
+
+    context.applyDailySheetProtections_(sheet, spreadsheet);
+
+    expect(removeLegacyProtection).toHaveBeenCalledTimes(1);
   });
 
   it('applies the layout and protections whenever a daily sheet is created', () => {

@@ -14,7 +14,8 @@ var ALERT_EMAIL  = "MHReceiving@agr.auto";  // TODO: move to sheet config cell
 
 // Daily plan cells maintained by trusted users only. The additional editor is stored in
 // Apps Script Project Settings -> Script Properties -> PLAN_PROTECTED_EDITOR_EMAIL.
-var PLAN_PROTECTED_RANGES = ["N5:P100", "J5:K100"];
+var PLAN_PROTECTED_RANGES = ["O5:P100", "J5:K100"];
+var PLAN_LEGACY_PROTECTED_RANGES = ["N5:P100"];
 var PLAN_PROTECTED_EDITOR_EMAIL = PropertiesService.getScriptProperties()
   .getProperty("PLAN_PROTECTED_EDITOR_EMAIL") || "";
 
@@ -48,6 +49,17 @@ function applyDailySheetProtections_(sheet, spreadsheet) {
   var allowedEditors = [ownerEmail];
   if (additionalEditor !== ownerEmail) allowedEditors.push(additionalEditor);
   var existing = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+
+  // Retire exact ranges managed by an older configuration before creating replacements.
+  // Removing N:P is required to make the operational Zone column N editable again.
+  for (var e = existing.length - 1; e >= 0; e--) {
+    var existingRange = existing[e].getRange ? existing[e].getRange() : null;
+    var existingA1 = existingRange ? existingRange.getA1Notation() : "";
+    if (PLAN_LEGACY_PROTECTED_RANGES.indexOf(existingA1) !== -1) {
+      existing[e].remove();
+      existing.splice(e, 1);
+    }
+  }
 
   for (var i = 0; i < PLAN_PROTECTED_RANGES.length; i++) {
     var a1 = PLAN_PROTECTED_RANGES[i];
