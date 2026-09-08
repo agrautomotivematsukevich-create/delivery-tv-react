@@ -89,11 +89,12 @@ type PreviewLotFixture = {
 
 const LOT_PLAN_REFRESH_MS = 180000;
 const LOT_LOOKBACK_DAYS = 7;
-const MIN_ROWS_PER_LOT = 3;
-const MAX_DESKTOP_ACTIVE_LOTS = 6;
-const MAX_COMPACT_ACTIVE_LOTS = 5;
+const LOT_PAGE_MS = 15000;
 const MAX_DONE_LOTS = 3;
 const LOT_NO_PATTERN = /^43115-[A-Z0-9]+$/;
+// The parent alternates dashboard/lots by unmounting this view. Resume with
+// the next page on return so overflow lots cannot starve between rotations.
+let nextLotPage = 0;
 
 const PREVIEW_LOT_FIXTURES: PreviewLotFixture[] = [
   { lot: '43115-CT13J20260410', ws: ['Welding', 'Assembly'], total: 3, done: 1, active: 1, dayOffset: 0 },
@@ -119,13 +120,6 @@ const normalizeLotNo = (value: string | undefined): string => {
 };
 
 const formatWs = (ws: string[]): string => (ws.length > 0 ? ws.join(' / ') : 'W/S не указан');
-
-const middleEllipsis = (value: string, maxLength = 26): string => {
-  if (value.length <= maxLength) return value;
-  const head = Math.ceil((maxLength - 3) * 0.58);
-  const tail = maxLength - 3 - head;
-  return `${value.slice(0, head)}...${value.slice(-tail)}`;
-};
 
 const normalizeWsGroup = (value: string | undefined): WsGroupKey => {
   const ws = (value || '').trim().toUpperCase();
@@ -426,7 +420,6 @@ const buildLotProgress = (rows: LotPlanRow[], tasks: Task[]): LotProgress[] => {
   });
 
   return Array.from(groups.values())
-    .filter((lot) => lot.total >= MIN_ROWS_PER_LOT)
     .map((lot) => {
       const percent = Math.round((lot.done / lot.total) * 100);
       const status = getStatus(lot.done, lot.total, lot.inProgress);
@@ -447,7 +440,11 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
   const [taskRows, setTaskRows] = useState<Task[]>([]);
   const [loading, setLoading] = useState(!preview);
   const [error, setError] = useState(false);
-  const [viewportHeight, setViewportHeight] = useState(() => (typeof window === 'undefined' ? 1080 : window.innerHeight));
+  const [viewport, setViewport] = useState(() => ({
+    width: typeof window === 'undefined' ? 1920 : window.innerWidth,
+    height: typeof window === 'undefined' ? 1080 : window.innerHeight,
+  }));
+  const [pageIndex, setPageIndex] = useState(() => nextLotPage);
   const [selectedLotNo, setSelectedLotNo] = useState<string | null>(null);
 
   useEffect(() => {
@@ -465,7 +462,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const onResize = () => setViewportHeight(window.innerHeight);
+    const onResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
     onResize();
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -574,10 +571,48 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
       .sort((a, b) => b.lastSequence - a.lastSequence)
   ), [lots]);
 
-  const maxVisibleActiveLots = viewportHeight >= 900 ? MAX_DESKTOP_ACTIVE_LOTS : MAX_COMPACT_ACTIVE_LOTS;
-  const visibleActiveLots = activeLots.slice(0, maxVisibleActiveLots);
-  const visibleClosedLots = closedLots.slice(0, MAX_DONE_LOTS);
-  const totalHiddenActive = Math.max(0, activeLots.length - visibleActiveLots.length);
+  const wideScreen = viewport.width >= 1600;
+  const screenPadding = wideScreen ? 24 : 16;
+  const latestClosedLots = closedLots.slice(0, MAX_DONE_LOTS);
+  const closedPageSize = wideScreen ? 3 : viewport.width >= 1000 ? 2 : 1;
+  // Fixed header/footer budgets keep numbers large; only row spacing changes.
+  // CSS Grid gaps work on the production TV's Chrome 83 (flex gaps do not).
+  const activeHeight = Math.max(1, viewport.height - screenPadding * 2 - 48 - (latestClosedLots.length ? 104 : 0));
+  const maxVisibleActiveLots = Math.max(1, Math.floor((activeHeight + 8) / (wideScreen ? 90 : 82)));
+  const activePageCount = Math.max(1, Math.ceil(activeLots.length / maxVisibleActiveLots));
+  const closedPageCount = Math.max(1, Math.ceil(latestClosedLots.length / closedPageSize));
+  const activePage = pageIndex % activePageCount;
+  const closedPage = pageIndex % closedPageCount;
+  const visibleActiveLots = activeLots.slice(activePage * maxVisibleActiveLots, (activePage + 1) * maxVisibleActiveLots);
+  const visibleClosedLots = latestClosedLots.slice(closedPage * closedPageSize, (closedPage + 1) * closedPageSize);
+  const activeRowHeight = Math.min(wideScreen ? 110 : 86, Math.floor((activeHeight - Math.max(0, visibleActiveLots.length - 1) * 8) / Math.max(1, visibleActiveLots.length)));
+  const hasMorePages = activePageCount > 1 || closedPageCount > 1;
+
+  useEffect(() => {
+    if (!loading && !error && hasMorePages) nextLotPage = pageIndex + 1;
+  }, [pageIndex, loading, error, hasMorePages]);
+
+  useEffect(() => {
+    if (loading || error || !hasMorePages || selectedLotNo) return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+    };
+    const start = () => {
+      if (timer === null && !document.hidden) {
+        // Synchronous display update only: no network request or overlapping work.
+        timer = setInterval(() => setPageIndex(index => index + 1), LOT_PAGE_MS);
+      }
+    };
+    const onVisibility = () => { stop(); start(); };
+    start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [loading, error, hasMorePages, selectedLotNo]);
 
   // Derive the open lot from the live `lots` list so the modal stays in sync with polling
   // (a lot that finishes while open flips to the "все выгружены" state instead of going stale).
@@ -685,11 +720,13 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
         {...interactiveProps}
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(330px,1.7fr) minmax(260px,2.5fr) clamp(82px,8vw,150px) clamp(76px,7vw,128px) clamp(108px,9vw,150px)',
+          gridTemplateColumns: wideScreen ? 'minmax(510px,1.6fr) minmax(140px,2fr) 150px 132px 170px' : 'minmax(400px,1.6fr) minmax(60px,1fr) 108px 112px 140px',
           alignItems: 'center',
-          gap: 'clamp(10px,1.25vw,22px)',
-          minHeight: 'clamp(78px,9.5vh,122px)',
-          padding: 'clamp(9px,1.1vw,18px) clamp(14px,1.35vw,26px)',
+          gap: wideScreen ? 18 : 12,
+          height: activeRowHeight,
+          minHeight: 0,
+          padding: wideScreen ? '8px 20px' : '6px 14px',
+          boxSizing: 'border-box',
           borderRadius: 'clamp(12px,1vw,16px)',
           background: tone.bg,
           border: `1px solid ${tone.border}`,
@@ -699,8 +736,8 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
           outline: 'none',
         }}
       >
-        <div title={lot.lot} style={{ font: "800 clamp(28px,2.15vw,39px)/1 'JetBrains Mono'", color: '#fff', letterSpacing: -1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-          {middleEllipsis(lot.lot, 24)}
+        <div title={lot.lot} style={{ font: `800 ${wideScreen ? 39 : 30}px/1.2 'JetBrains Mono',monospace`, color: '#fff', letterSpacing: -1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          {lot.lot}
         </div>
         {renderProgressBar(lot, tone)}
         <div style={{ font: "900 clamp(26px,2.15vw,36px)/1 'Saira'", color: '#fff', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
@@ -709,7 +746,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
         <div style={{ font: "900 clamp(36px,3.8vw,52px)/1 'Saira'", color: tone.color, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
           {lot.percent}%
         </div>
-        <div className="tv-lot-status-badge" style={{ justifySelf: 'end', padding: 'clamp(8px,1vh,11px) clamp(10px,1vw,15px)', minWidth: 'clamp(104px,8.5vw,132px)', borderRadius: 10, background: tone.badgeBg, border: `1px solid ${tone.badgeBorder}`, color: tone.badgeColor, font: "900 clamp(13px,1.05vw,16px)/1 'Manrope'", textAlign: 'center', textTransform: 'uppercase', letterSpacing: .8, whiteSpace: 'nowrap' }}>
+        <div className="tv-lot-status-badge" style={{ justifySelf: 'stretch', padding: '8px 6px', borderRadius: 10, background: tone.badgeBg, border: `1px solid ${tone.badgeBorder}`, color: tone.badgeColor, font: `800 ${wideScreen ? 22 : 18}px/1.1 'Manrope',sans-serif`, textAlign: 'center', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
           {statusLabel(lot.status)}
         </div>
       </div>
@@ -725,21 +762,22 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
         data-lot-row="closed"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(280px,1.4fr) minmax(260px,2.3fr) clamp(82px,7vw,116px) clamp(72px,6vw,96px)',
+          gridTemplateColumns: 'minmax(0,1fr) auto auto',
           alignItems: 'center',
-          gap: 'clamp(10px,1vw,16px)',
-          minHeight: 'clamp(44px,5.4vh,58px)',
-          padding: 'clamp(5px,.8vh,8px) clamp(12px,1.1vw,18px)',
+          gap: 12,
+          height: 64,
+          minWidth: 0,
+          padding: '8px 12px',
+          boxSizing: 'border-box',
           borderRadius: 12,
           background: tone.bg,
           border: `1px solid ${tone.border}`,
           overflow: 'hidden',
         }}
       >
-        <div title={lot.lot} style={{ font: "800 clamp(22px,1.65vw,30px)/1 'JetBrains Mono'", color: '#dff7e8', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-          {middleEllipsis(lot.lot, 22)}
+        <div title={lot.lot} style={{ font: "800 26px/1.2 'JetBrains Mono',monospace", color: '#dff7e8', letterSpacing: -.7, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          {lot.lot}
         </div>
-        {renderProgressBar(lot, tone)}
         <div style={{ font: "900 clamp(20px,1.45vw,25px)/1 'Saira'", color: '#fff', textAlign: 'right', whiteSpace: 'nowrap' }}>
           {lot.done} / {lot.total}
         </div>
@@ -965,22 +1003,22 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
       aria-label="W/S группы"
       style={{
         marginLeft: 'auto',
-        display: 'flex',
+        display: 'grid',
+        gridAutoFlow: 'column',
         alignItems: 'center',
-        gap: 'clamp(9px,.8vw,14px)',
+        gap: 14,
         padding: 'clamp(5px,.65vh,8px) clamp(9px,.9vw,14px)',
         borderRadius: 999,
         background: 'rgba(8,13,22,.52)',
         border: '1px solid rgba(255,255,255,.11)',
         boxShadow: '0 8px 24px rgba(0,0,0,.18), inset 0 0 0 1px rgba(255,255,255,.03)',
         color: 'rgba(255,255,255,.58)',
-        font: "900 clamp(10px,.75vw,13px)/1 'Manrope'",
+        font: `800 ${wideScreen ? 20 : 16}px/1 'Manrope',sans-serif`,
         letterSpacing: .8,
         textTransform: 'none',
         whiteSpace: 'nowrap',
       }}
     >
-      <span style={{ color: 'rgba(255,255,255,.5)', textTransform: 'uppercase' }}>W/S группы</span>
       {(['welding', 'assembly', 'paint'] as WsGroupKey[]).map((key) => (
         <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 'clamp(5px,.45vw,7px)', color: 'rgba(255,255,255,.76)' }}>
           <span
@@ -1007,10 +1045,11 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
         boxSizing: 'border-box',
         overflow: 'hidden',
         background: 'radial-gradient(1250px 720px at 88% -12%,rgba(0,230,118,.06),transparent 56%),radial-gradient(980px 620px at 0% 118%,rgba(77,168,255,.05),transparent 55%),linear-gradient(168deg,#1b2230 0%,#0f121b 78%)',
-        padding: 'clamp(12px,1.25vw,28px)',
-        display: 'flex',
+        padding: screenPadding,
+        display: loading || error ? 'flex' : 'grid',
+        gridTemplateRows: '40px minmax(0,1fr) auto',
         flexDirection: 'column',
-        gap: 'clamp(8px,1vh,14px)',
+        gap: 8,
         color: '#eaf0f7',
         fontFamily: "'Manrope',system-ui,sans-serif",
       }}
@@ -1032,68 +1071,6 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
             transition: background-color .15s ease;
           }
 
-          @media (max-height: 760px) {
-            .tv-lot-screen {
-              padding: 14px 16px !important;
-              gap: 10px !important;
-            }
-
-            .tv-lot-active-title {
-              height: auto !important;
-              min-height: 32px !important;
-              margin-bottom: 10px !important;
-            }
-
-            .tv-lot-ws-legend {
-              padding: 6px 10px !important;
-              gap: 10px !important;
-              margin-top: 2px !important;
-            }
-
-            .tv-lot-active-list {
-              gap: 10px !important;
-            }
-
-            .tv-lot-active-row {
-              min-height: 74px !important;
-              padding: 10px 14px !important;
-              gap: 12px !important;
-            }
-
-            .tv-lot-active-row .tv-lot-progress-track {
-              height: 24px !important;
-            }
-
-            .tv-lot-status-badge {
-              margin-left: 2px !important;
-              min-width: 104px !important;
-            }
-
-            .tv-lot-closed-section {
-              margin-top: 18px !important;
-              gap: 0 !important;
-            }
-
-            .tv-lot-closed-title {
-              height: auto !important;
-              min-height: 28px !important;
-              margin-bottom: 8px !important;
-            }
-
-            .tv-lot-closed-list {
-              gap: 6px !important;
-            }
-
-            .tv-lot-closed-row {
-              min-height: 36px !important;
-              padding: 6px 12px !important;
-              gap: 10px !important;
-            }
-
-            .tv-lot-closed-row .tv-lot-progress-track {
-              height: 22px !important;
-            }
-          }
         `}
       </style>
       {loading ? (
@@ -1108,28 +1085,29 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
         </div>
       ) : (
         <>
-          <div className="tv-lot-active-title" style={{ height: 'clamp(28px,3.8vh,40px)', display: 'flex', alignItems: 'center', gap: 'clamp(10px,1vw,16px)', color: '#9ec5ff', font: "900 clamp(15px,1.25vw,20px)/1 'JetBrains Mono'", letterSpacing: 2, textTransform: 'uppercase', flex: 'none' }}>
-            <span style={{ width: 5, height: 'clamp(18px,2.5vh,24px)', borderRadius: 3, background: '#4DA8FF' }} />
+          <div className="tv-lot-active-title" style={{ height: 40, display: 'flex', alignItems: 'center', color: '#9ec5ff', font: `800 ${wideScreen ? 22 : 18}px/1 'Manrope',sans-serif`, textTransform: 'uppercase', flex: 'none' }}>
+            <span style={{ width: 5, height: 24, marginRight: 12, borderRadius: 3, background: '#4DA8FF' }} />
             Активные Lot No
-            {totalHiddenActive > 0 && (
-              <span style={{ color: 'rgba(158,197,255,.72)', letterSpacing: 1 }}>
-                показано {visibleActiveLots.length} из {activeLots.length}
-              </span>
-            )}
+            <span className="tv-lot-page-info" style={{ marginLeft: 20, color: '#c6dcf7' }}>
+              {activePageCount > 1
+                ? `Страница ${activePage + 1} / ${activePageCount} · Всего ${activeLots.length}`
+                : `Всего ${activeLots.length}`}
+            </span>
             {renderWsLegend()}
           </div>
 
-          <div className="tv-lot-active-list" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 'clamp(8px,1vh,14px)' }}>
+          <div className="tv-lot-active-list" style={{ minHeight: 0, display: 'grid', gridAutoRows: visibleActiveLots.length ? activeRowHeight : '1fr', alignContent: visibleActiveLots.length ? 'start' : 'stretch', gap: 8 }}>
             {visibleActiveLots.length > 0 ? visibleActiveLots.map(renderLotRow) : renderEmptyState()}
           </div>
 
           {closedLots.length > 0 && (
-            <div className="tv-lot-closed-section" style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 'clamp(6px,.75vh,9px)' }}>
-              <div className="tv-lot-closed-title" style={{ height: 'clamp(24px,3.2vh,32px)', display: 'flex', alignItems: 'center', gap: 'clamp(10px,1vw,16px)', color: '#5ff0a6', font: "900 clamp(14px,1.1vw,17px)/1 'JetBrains Mono'", letterSpacing: 2, textTransform: 'uppercase' }}>
-                <span style={{ width: 5, height: 'clamp(17px,2.3vh,22px)', borderRadius: 3, background: '#00E676' }} />
-                Закрытые Lot No
+            <div className="tv-lot-closed-section" style={{ height: 96, display: 'grid', gridTemplateRows: '28px 64px', gap: 4 }}>
+              <div className="tv-lot-closed-title" style={{ height: 28, display: 'flex', alignItems: 'center', color: '#5ff0a6', font: "800 20px/1.2 'Manrope',sans-serif", textTransform: 'uppercase' }}>
+                <span style={{ width: 5, height: 22, marginRight: 12, borderRadius: 3, background: '#00E676' }} />
+                Последние закрытые Lot No
+                {closedPageCount > 1 && <span style={{ marginLeft: 20 }}>Страница {closedPage + 1} / {closedPageCount}</span>}
               </div>
-              <div className="tv-lot-closed-list" style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(5px,.75vh,8px)' }}>
+              <div className="tv-lot-closed-list" style={{ display: 'grid', gridTemplateColumns: `repeat(${closedPageSize},minmax(0,1fr))`, gap: 12 }}>
                 {visibleClosedLots.map(renderClosedRow)}
               </div>
             </div>
