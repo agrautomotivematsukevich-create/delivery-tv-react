@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { DashboardData, Task, TranslationSet } from '../types';
 import { calculateShiftFact, calculateShiftTargets, calculateTimeDiff, currentShift, ShiftName } from '../utils/business';
 import { elapsedMin } from '../utils/time';
+import { selectArrivedTasks } from '../utils/arrivals';
 import { AVAILABLE_ZONES, UNLOAD_TARGET } from '../utils/zones';
 
 interface TvCommandCenterLightProps {
@@ -157,12 +158,7 @@ const TvCommandCenterLight: React.FC<TvCommandCenterLightProps> = ({ data, allTa
     const targets = allTasks.length > 0 ? calculateShiftTargets(allTasks, facts, activeShift) : { ...safeData.shiftTargets, none: 0 };
     const percent = safeData.total > 0 ? Math.round((safeData.done / safeData.total) * 100) : 0;
 
-    const territoryTasks = allTasks
-      .filter((task) =>
-        task.arrival_time?.trim() &&
-        !task.start_time?.trim() &&
-        !task.end_time?.trim()
-      )
+    const territoryTasks = selectArrivedTasks(allTasks, safeData)
       .map((task) => ({
         id: task.id,
         time: task.arrival_time || '',

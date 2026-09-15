@@ -5,6 +5,7 @@ import { api } from '../services/api';
 import { parseHHMM, elapsedMin, formatWait } from '../utils/time';
 import { currentShift, calculateShiftFact, calculateShiftTargets, formatMinutes, calculateTimeDiff } from '../utils/business';
 import { AVAILABLE_ZONES, UNLOAD_TARGET } from '../utils/zones';
+import { selectArrivedTasks, type ArrivedTask } from '../utils/arrivals';
 
 // ── UnloadTimer ─────────────────────────────────────────────────────────────────
 const UnloadTimer: React.FC<{ startTime: string; sz?: number }> = memo(({ startTime, sz = 56 }) => {
@@ -421,7 +422,7 @@ const DockZonesGrid: React.FC<{ activeList: DashboardData['activeList']; allTask
 });
 
 // ── OnTerritoryBlock ────────────────────────────────────────────────────────────
-const OnTerritoryBlock: React.FC<{ arrivedTasks: Task[]; tvMode?: boolean }> = ({ arrivedTasks, tvMode }) => {
+const OnTerritoryBlock: React.FC<{ arrivedTasks: ArrivedTask[]; tvMode?: boolean }> = ({ arrivedTasks, tvMode }) => {
   const count = arrivedTasks.length;
   const hasAuto = count > 0;
   return (
@@ -523,12 +524,9 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
   const isVictory     = data.total > 0 && data.done === data.total;
   const isEmpty       = data.total === 0;
 
-  const arrivedTasks = allTasks.filter(
-    tk =>
-      tk.arrival_time && tk.arrival_time.trim() !== '' &&
-      (!tk.start_time || tk.start_time.trim() === '') &&
-      (!tk.end_time   || tk.end_time.trim()   === '')
-  );
+  // Real HH:MM arrivals only (dispatcher forecasts like "к 21:00" are not on site);
+  // the public TV has no tasks and takes the server list instead.
+  const arrivedTasks = selectArrivedTasks(allTasks, data);
 
   const getStatusClass = (s: string) => {
     if (s === 'ACTIVE') return 'text-accent-green border-accent-green bg-accent-green/10 shadow-[0_0_20px_rgba(0,230,118,0.4)]';

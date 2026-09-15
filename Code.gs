@@ -1308,6 +1308,18 @@ function parseTimeToMin(timeStr) {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
+// Arrival fact (column P). Dispatchers also write forecasts there ("к 21:00", "~к 19-20",
+// "18:00-19:00", "пр КТК"). Only a cell that STARTS with HH:MM and is not a range counts as
+// "the truck is on site"; the rest of the text ("17:58!") is ignored. Returns normalized HH:MM
+// or null. Mirrors isArrivalFact/normalizeArrivalTime in utils/arrivals.ts.
+function parseArrivalFact_(value) {
+  var text = String(value === null || value === undefined ? "" : value).trim();
+  var m = text.match(/^(\d{1,2}):(\d{2})(.*)$/);
+  if (!m) return null;
+  if (/^\s*[\d\-–—]/.test(m[3])) return null;
+  return m[1] + ":" + m[2];
+}
+
 function getActionTime(act, fallbackTime) {
   var m = (act || "").match(/_manual_(\d{1,2}:\d{2})$/);
   return m ? m[1] : fallbackTime;
@@ -1728,6 +1740,7 @@ function handleTvDashboard(params, ss) {
 
   var total = 0, done = 0, nextId = "---", nextTime = "";
   var activeList = [];
+  var arrivedList = [];
   var shiftMorning = 0, shiftEvening = 0, shiftNight = 0;
   var onTerritory = 0;
 
@@ -1750,7 +1763,8 @@ function handleTvDashboard(params, ss) {
     }
     else {
       if (nextId === "---") { nextId = row[C.CONTAINER_NO - 1]; nextTime = row[C.ETA - 1]; }
-      if (row[C.ARRIVAL_TIME - 1] && row[C.ARRIVAL_TIME - 1] !== "") onTerritory++;
+      var tvArrived = parseArrivalFact_(row[C.ARRIVAL_TIME - 1]);
+      if (tvArrived !== null) { onTerritory++; arrivedList.push({ id: row[C.CONTAINER_NO - 1], time: tvArrived }); }
     }
   }
 
@@ -1758,7 +1772,7 @@ function handleTvDashboard(params, ss) {
   return jsonOut({
     status: status, done: done, total: total, nextId: nextId, nextTime: nextTime,
     shiftCounts: { morning: shiftMorning, evening: shiftEvening, night: shiftNight },
-    onTerritory: onTerritory, activeList: activeList
+    onTerritory: onTerritory, activeList: activeList, arrivedList: arrivedList
   });
 }
 
@@ -2177,6 +2191,7 @@ function handleReadComplex(params, ss) {
 
   var total = 0, done = 0, nextId = "---", nextTime = "";
   var activeRows = [];
+  var arrivedRows = [];
   var onTerritory = 0;
 
   // 2. СЧЕТЧИКИ ДЛЯ СМЕН (ФАКТ И ПЛАН)
@@ -2203,7 +2218,8 @@ function handleReadComplex(params, ss) {
     else if (row[C.START_TIME - 1]) activeRows.push(row[C.CONTAINER_NO - 1] + "|" + row[C.START_TIME - 1] + "|0|" + row[C.WS - 1] + "|" + row[C.ZONE - 1]);
     else {
       if (nextId === "---") { nextId = row[C.CONTAINER_NO - 1]; nextTime = row[C.ETA - 1]; }
-      if (row[C.ARRIVAL_TIME - 1] && row[C.ARRIVAL_TIME - 1] !== "") onTerritory++;
+      var arrivedAt = parseArrivalFact_(row[C.ARRIVAL_TIME - 1]);
+      if (arrivedAt !== null) { onTerritory++; arrivedRows.push(row[C.CONTAINER_NO - 1] + "|" + arrivedAt); }
     }
 
     // --- СЧИТАЕМ БАЗОВЫЙ ПЛАН (По времени ETA — Ожидаемое время прибытия) ---
@@ -2253,6 +2269,9 @@ function handleReadComplex(params, ss) {
   if (activeRows.length > 0) body += "\n" + activeRows.join("\n");
 
   var out = body + "\n###MSG###";
+  // Public TV (?tv=1) has no task list, so the arrived containers travel here. Everything after
+  // ###MSG### is ignored by older clients; the contract before it is unchanged.
+  if (arrivedRows.length > 0) out += "\n###ARRIVED###\n" + arrivedRows.join("\n");
   try { cache.put(ck, out, TODAY_READ_CACHE_TTL); } catch (e) {}
   return textOut(out);
 }

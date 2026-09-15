@@ -314,6 +314,17 @@ export const parseDashboardData = (text: string): DashboardData | null => {
     
     const onTerritory = onTerritoryRaw ? (parseInt(onTerritoryRaw) || 0) : 0;
 
+    // Optional tail after ###MSG###: "###ARRIVED###\nID|HH:MM..." — arrived containers for the
+    // public TV, which has no task list. Absent on older backends.
+    const arrivedList: Array<{ id: string; time: string }> = [];
+    const arrivedSection = (parts[1] ?? "").split("###ARRIVED###")[1];
+    if (arrivedSection) {
+      for (const line of arrivedSection.replace(/\r/g, "").split("\n")) {
+        const p = line.trim().split("|");
+        if (p.length >= 2 && p[0]) arrivedList.push({ id: p[0], time: p[1] });
+      }
+    }
+
     return { 
       status: r1[0].trim(), 
       done, 
@@ -324,7 +335,8 @@ export const parseDashboardData = (text: string): DashboardData | null => {
       shiftCounts: shiftFacts, 
       shiftFacts,              
       shiftTargets,            
-      onTerritory 
+      onTerritory,
+      arrivedList,
     };
   } catch {
     return null;

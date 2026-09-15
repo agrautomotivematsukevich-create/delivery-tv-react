@@ -66,7 +66,9 @@ export interface DashboardData {
     zone: string;
   }>;
   onTerritory: number;
-  shiftCounts: ShiftCounts; 
+  // Arrived-and-waiting containers from the ###ARRIVED### tail; absent in old LKG snapshots.
+  arrivedList?: Array<{ id: string; time: string }>;
+  shiftCounts: ShiftCounts;
   shiftFacts: ShiftCounts;   // НОВОЕ: Готовый факт с сервера
   shiftTargets: ShiftCounts; // НОВОЕ: Готовые цели с сервера
 }
