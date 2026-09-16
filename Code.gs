@@ -1842,6 +1842,37 @@ function debugTvLotProgressDays_2906() {
   return out;
 }
 
+// CacheService rejects values over 100 KB (put() fails silently); the 7-day tv_lot_progress
+// payload is ~130 KB, so it is stored as a chunk list: <key>_n = chunk count, <key>_<i> = chunk.
+// Chunk size is in UTF-16 units; 45 000 keeps even all-Cyrillic text under the byte limit.
+var TV_LOT_PROGRESS_CACHE_TTL = 60;
+var TV_LOT_PROGRESS_CACHE_CHUNK = 45000;
+
+function cachePutChunked_(cache, key, value, ttl) {
+  var count = Math.max(1, Math.ceil(value.length / TV_LOT_PROGRESS_CACHE_CHUNK));
+  var values = {};
+  values[key + "_n"] = String(count);
+  for (var i = 0; i < count; i++) {
+    values[key + "_" + i] = value.substr(i * TV_LOT_PROGRESS_CACHE_CHUNK, TV_LOT_PROGRESS_CACHE_CHUNK);
+  }
+  cache.putAll(values, ttl);
+}
+
+function cacheGetChunked_(cache, key) {
+  var count = parseInt(cache.get(key + "_n"), 10);
+  if (!isFinite(count) || count <= 0) return null;
+  var keys = [];
+  for (var i = 0; i < count; i++) keys.push(key + "_" + i);
+  var chunks = cache.getAll(keys);
+  var out = "";
+  for (var j = 0; j < count; j++) {
+    var chunk = chunks[keys[j]];
+    if (chunk === undefined || chunk === null) return null; // partial expiry → treat as miss
+    out += chunk;
+  }
+  return out;
+}
+
 function handleTvLotProgress(params, ss) {
   var days = parseInt(params.days, 10);
   if (!isFinite(days) || days <= 0) days = TV_LOT_PROGRESS_DEFAULT_DAYS;
@@ -1852,7 +1883,8 @@ function handleTvLotProgress(params, ss) {
   var sheetNames = getTvLotProgressSheetNames_(days);
   var cacheKey = "tv_lot_progress_" + days + "_" + sheetNames.join("_");
   var cache = CacheService.getScriptCache();
-  var cached = cache.get(cacheKey);
+  var cached = null;
+  try { cached = cacheGetChunked_(cache, cacheKey); } catch (e) {}
   if (cached) {
     return ContentService.createTextOutput(cached)
       .setMimeType(ContentService.MimeType.JSON);
@@ -1918,7 +1950,7 @@ function handleTvLotProgress(params, ss) {
   }
 
   var payload = JSON.stringify({ planRows: planRows, tasks: tasks });
-  try { cache.put(cacheKey, payload, 60); } catch (e) {}
+  try { cachePutChunked_(cache, cacheKey, payload, TV_LOT_PROGRESS_CACHE_TTL); } catch (e) {}
   return ContentService.createTextOutput(payload)
     .setMimeType(ContentService.MimeType.JSON);
 }
