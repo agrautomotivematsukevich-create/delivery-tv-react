@@ -135,22 +135,56 @@ describe('Code.gs daily sheet protection', () => {
     expect(context.applyDailySheetProtections_).toHaveBeenCalledWith(sheet, spreadsheet);
   });
 
-  it('protects a manually inserted daily sheet from the installable change trigger', () => {
+  it('finds and protects a newly inserted daily sheet even when another sheet is active', () => {
     const context = loadCodeGs({
       PLAN_PROTECTED_EDITOR_EMAIL: 'trusted.editor@example.com',
     });
     expect(context.onDailySheetStructureChange).toBeTypeOf('function');
 
-    const sheet = { getName: () => '26.08' };
-    const spreadsheet = { getActiveSheet: () => sheet };
+    const dashboardSheet = { getName: () => 'DASHBOARD' };
+    const newDailySheet = {
+      getName: () => '28.08',
+      getProtections: () => [],
+    };
+    const spreadsheet = {
+      getActiveSheet: () => dashboardSheet,
+      getSheets: () => [dashboardSheet, newDailySheet],
+    };
     context.applyDailySheetProtections_ = vi.fn();
+    context.getDailyPlanProtectionWindowNames_ = () => ({ '28.08': true });
 
     context.onDailySheetStructureChange({
       changeType: 'INSERT_GRID',
       source: spreadsheet,
     });
 
-    expect(context.applyDailySheetProtections_).toHaveBeenCalledWith(sheet, spreadsheet);
+    expect(context.applyDailySheetProtections_).toHaveBeenCalledTimes(1);
+    expect(context.applyDailySheetProtections_).toHaveBeenCalledWith(newDailySheet, spreadsheet);
+  });
+
+  it('protects a daily sheet after it is renamed from a temporary name', () => {
+    const context = loadCodeGs({
+      PLAN_PROTECTED_EDITOR_EMAIL: 'trusted.editor@example.com',
+    });
+    const dashboardSheet = { getName: () => 'DASHBOARD' };
+    const renamedDailySheet = {
+      getName: () => '28.08',
+      getProtections: () => [],
+    };
+    const spreadsheet = {
+      getActiveSheet: () => dashboardSheet,
+      getSheets: () => [dashboardSheet, renamedDailySheet],
+    };
+    context.applyDailySheetProtections_ = vi.fn();
+    context.getDailyPlanProtectionWindowNames_ = () => ({ '28.08': true });
+
+    context.onDailySheetStructureChange({
+      changeType: 'OTHER',
+      source: spreadsheet,
+    });
+
+    expect(context.applyDailySheetProtections_).toHaveBeenCalledTimes(1);
+    expect(context.applyDailySheetProtections_).toHaveBeenCalledWith(renamedDailySheet, spreadsheet);
   });
 
   it('installs one spreadsheet change trigger for future daily sheets', () => {
@@ -167,6 +201,8 @@ describe('Code.gs daily sheet protection', () => {
     context.SpreadsheetApp.getActiveSpreadsheet = () => spreadsheet;
     context.Utilities = { formatDate: () => '26.08' };
     context.applyDailySheetProtections_ = vi.fn();
+    context.getDailyPlanProtectionWindowNames_ = () => ({ '26.08': true });
+    context.reconcileDailySheetProtections_ = vi.fn();
     const create = vi.fn();
     const onChange = vi.fn(() => ({ create }));
     const forSpreadsheet = vi.fn(() => ({ onChange }));
@@ -210,10 +246,14 @@ describe('Code.gs daily sheet protection', () => {
       PLAN_PROTECTED_EDITOR_EMAIL: 'trusted.editor@example.com',
     });
     const dashboardSheet = { getName: () => 'DASHBOARD' };
-    const todaySheet = { getName: () => '26.08' };
+    const todaySheet = {
+      getName: () => '26.08',
+      getProtections: () => [],
+    };
     const spreadsheet = {
       getActiveSheet: () => dashboardSheet,
       getSheetByName: (name: string) => name === '26.08' ? todaySheet : null,
+      getSheets: () => [dashboardSheet, todaySheet],
     };
     context.SpreadsheetApp.getActiveSpreadsheet = () => spreadsheet;
     context.Utilities = { formatDate: () => '26.08' };
@@ -225,5 +265,67 @@ describe('Code.gs daily sheet protection', () => {
     context.installDailySheetProtection();
 
     expect(context.applyDailySheetProtections_).toHaveBeenCalledWith(todaySheet, spreadsheet);
+  });
+
+  it('repairs every existing daily sheet when protection is installed again', () => {
+    const context = loadCodeGs({
+      PLAN_PROTECTED_EDITOR_EMAIL: 'trusted.editor@example.com',
+    });
+    const dashboardSheet = { getName: () => 'DASHBOARD' };
+    const todaySheet = {
+      getName: () => '28.08',
+      getProtections: () => [],
+    };
+    const futureSheet = {
+      getName: () => '29.08',
+      getProtections: () => [],
+    };
+    const spreadsheet = {
+      getActiveSheet: () => dashboardSheet,
+      getSheetByName: (name: string) => name === '28.08' ? todaySheet : null,
+      getSheets: () => [dashboardSheet, todaySheet, futureSheet],
+    };
+    context.SpreadsheetApp.getActiveSpreadsheet = () => spreadsheet;
+    context.Utilities = { formatDate: () => '28.08' };
+    context.applyDailySheetProtections_ = vi.fn();
+    context.getDailyPlanProtectionWindowNames_ = () => ({
+      '28.08': true,
+      '29.08': true,
+    });
+    context.ScriptApp = { getProjectTriggers: () => [{
+      getHandlerFunction: () => 'onDailySheetStructureChange',
+    }] };
+
+    context.installDailySheetProtection();
+
+    expect(context.applyDailySheetProtections_).toHaveBeenCalledTimes(2);
+    expect(context.applyDailySheetProtections_).toHaveBeenCalledWith(todaySheet, spreadsheet);
+    expect(context.applyDailySheetProtections_).toHaveBeenCalledWith(futureSheet, spreadsheet);
+  });
+
+  it('does not scan historical daily sheet protections during reconciliation', () => {
+    const context = loadCodeGs({
+      PLAN_PROTECTED_EDITOR_EMAIL: 'trusted.editor@example.com',
+    });
+    const historicalSheet = {
+      getName: () => '01.01',
+      getProtections: () => {
+        throw new Error('historical protections must not be read');
+      },
+    };
+    const currentSheet = {
+      getName: () => '28.08',
+      getProtections: () => [],
+    };
+    const spreadsheet = {
+      getActiveSheet: () => currentSheet,
+      getSheets: () => [historicalSheet, currentSheet],
+    };
+    context.getDailyPlanProtectionWindowNames_ = () => ({ '28.08': true });
+    context.applyDailySheetProtections_ = vi.fn();
+
+    expect(() => context.reconcileDailySheetProtections_(spreadsheet)).not.toThrow();
+    expect(context.applyDailySheetProtections_).toHaveBeenCalledTimes(1);
+    expect(context.applyDailySheetProtections_).toHaveBeenCalledWith(currentSheet, spreadsheet);
   });
 });

@@ -417,32 +417,63 @@ function isDailyPlanSheetName_(sheetName) {
   return /^\d{2}\.\d{2}$/.test(String(sheetName || "").trim());
 }
 
-// Installable spreadsheet change trigger. A manually inserted/copied sheet is active
-// when INSERT_GRID fires, so no full-workbook scan is needed.
+function dailySheetNeedsProtections_(sheet) {
+  var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+  var protectedRanges = {};
+  for (var i = 0; i < protections.length; i++) {
+    var range = protections[i].getRange ? protections[i].getRange() : null;
+    var a1 = range ? range.getA1Notation() : "";
+    if (PLAN_LEGACY_PROTECTED_RANGES.indexOf(a1) !== -1) return true;
+    if (a1) protectedRanges[a1] = true;
+  }
+  for (var p = 0; p < PLAN_PROTECTED_RANGES.length; p++) {
+    if (!protectedRanges[PLAN_PROTECTED_RANGES[p]]) return true;
+  }
+  return false;
+}
+
+function getDailyPlanProtectionWindowNames_(referenceDate) {
+  var anchor = referenceDate || new Date();
+  var names = {};
+  for (var offset = -2; offset <= 14; offset++) {
+    var date = new Date(anchor.getTime() + (offset * 24 * 60 * 60 * 1000));
+    names[Utilities.formatDate(date, TIMEZONE, "dd.MM")] = true;
+  }
+  return names;
+}
+
+function reconcileDailySheetProtections_(spreadsheet) {
+  var sheets = spreadsheet.getSheets();
+  var activeSheet = spreadsheet.getActiveSheet ? spreadsheet.getActiveSheet() : null;
+  var protectionWindowNames = getDailyPlanProtectionWindowNames_();
+  var protectedCount = 0;
+  for (var i = 0; i < sheets.length; i++) {
+    var sheet = sheets[i];
+    var sheetName = sheet.getName();
+    if (!isDailyPlanSheetName_(sheetName)) continue;
+    if (!protectionWindowNames[sheetName] && sheet !== activeSheet) continue;
+    if (!dailySheetNeedsProtections_(sheet)) continue;
+    applyDailySheetProtections_(sheet, spreadsheet);
+    protectedCount++;
+  }
+  return protectedCount;
+}
+
+// Installable spreadsheet change trigger. INSERT_GRID covers a sheet created with its final
+// DD.MM name; OTHER covers the common create/copy-then-rename flow. The active tab is not a
+// reliable indicator of which sheet changed, so reconcile the matching daily sheets instead.
 function onDailySheetStructureChange(e) {
-  if (!e || e.changeType !== "INSERT_GRID") return;
+  if (!e || ["INSERT_GRID", "OTHER"].indexOf(e.changeType) === -1) return;
   var spreadsheet = e.source || SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = spreadsheet && spreadsheet.getActiveSheet ? spreadsheet.getActiveSheet() : null;
-  if (!sheet || !isDailyPlanSheetName_(sheet.getName())) return;
-  applyDailySheetProtections_(sheet, spreadsheet);
+  if (!spreadsheet || !spreadsheet.getSheets) return;
+  reconcileDailySheetProtections_(spreadsheet);
 }
 
 // Run once as the spreadsheet owner after PLAN_PROTECTED_EDITOR_EMAIL is configured.
-// It protects the active/current daily sheets immediately and installs the INSERT_GRID listener.
+// It repairs all existing daily sheets and installs the structure-change listener.
 function installDailySheetProtection() {
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  var activeSheet = spreadsheet.getActiveSheet();
-  var protectedSheetNames = {};
-  if (activeSheet && isDailyPlanSheetName_(activeSheet.getName())) {
-    applyDailySheetProtections_(activeSheet, spreadsheet);
-    protectedSheetNames[activeSheet.getName()] = true;
-  }
-
-  var currentSheetName = Utilities.formatDate(new Date(), TIMEZONE, "dd.MM");
-  var currentSheet = spreadsheet.getSheetByName(currentSheetName);
-  if (currentSheet && !protectedSheetNames[currentSheetName]) {
-    applyDailySheetProtections_(currentSheet, spreadsheet);
-  }
+  reconcileDailySheetProtections_(spreadsheet);
 
   var handlerName = "onDailySheetStructureChange";
   var triggers = ScriptApp.getProjectTriggers();
