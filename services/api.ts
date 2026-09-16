@@ -138,6 +138,11 @@ const _inflight: Record<string, Promise<unknown>> = {};
 const CACHE_MAX_ENTRIES = 50;
 let _edgeSessionReadyUntil = 0;
 
+type TvLotProgressData = { planRows: Array<PlanRow & { sheetDate?: string; sequence?: number }>; tasks: Task[] };
+// Last successful tv_lot_progress payload per `days`; survives TvLotProgressView remounts.
+const _tvLotProgressLkg: Record<number, TvLotProgressData> = {};
+const TV_LOT_PROGRESS_RETRY_DELAY_MS = 1500;
+
 function pruneCache(): void {
   const keys = Object.keys(_cache);
   if (keys.length <= CACHE_MAX_ENTRIES) return;
@@ -493,10 +498,8 @@ export const api = {
     });
   },
 
-  fetchTvLotProgress: async (days = 7): Promise<{ planRows: Array<PlanRow & { sheetDate?: string; sequence?: number }>; tasks: Task[] }> => {
-    // Key includes the current calendar day so the cached lot window (tomorrow+today+prev) is
-    // dropped on a day rollover instead of being served stale for the TTL.
-    return cachedFetch(`tv_lot_progress_${days}_${getOperationalSheetName()}`, 60000, async () => {
+  fetchTvLotProgress: async (days = 7): Promise<TvLotProgressData> => {
+    const requestOnce = async (): Promise<TvLotProgressData> => {
       const res = await fetchWithTimeout(SCRIPT_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -509,7 +512,29 @@ export const api = {
         planRows: Array.isArray(data?.planRows) ? data.planRows : [],
         tasks: Array.isArray(data?.tasks) ? data.tasks : [],
       };
-    });
+    };
+    try {
+      // Key includes the current calendar day so the cached lot window (tomorrow+today+prev) is
+      // dropped on a day rollover instead of being served stale for the TTL.
+      const data = await cachedFetch(`tv_lot_progress_${days}_${getOperationalSheetName()}`, 60000, async () => {
+        try {
+          return await requestOnce();
+        } catch {
+          // Apps Script answers via a one-shot script.googleusercontent.com redirect that
+          // intermittently 404s after the script already ran; a fresh POST gets a fresh key.
+          await new Promise(resolve => setTimeout(resolve, TV_LOT_PROGRESS_RETRY_DELAY_MS));
+          return requestOnce();
+        }
+      });
+      _tvLotProgressLkg[days] = data;
+      return data;
+    } catch (err) {
+      // The ?tv=1 lots screen remounts every rotation, so its LKG has to live here:
+      // a failed refresh keeps the previous plan instead of a 3-minute error slot.
+      const lkg = _tvLotProgressLkg[days];
+      if (lkg) return lkg;
+      throw err;
+    }
   },
 
   fetchFullPlan: async (dateStr: string): Promise<PlanRow[]> => {
