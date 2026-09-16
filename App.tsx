@@ -26,6 +26,7 @@ import {
   markDashboardFailure,
   markDashboardSuccess,
 } from './utils/dashboardHealth';
+import TvRotationBar from './components/TvRotationBar';
 
 // Lazy-loaded heavy views
 const HistoryView          = React.lazy(() => import('./components/HistoryView'));
@@ -128,6 +129,8 @@ function App() {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [isTasksLoading, setIsTasksLoading] = useState(true);
   const [tv1Screen, setTv1Screen] = useState<Tv1Screen>('dashboard');
+  // Counts screen switches so the rotation bar restarts its fill on each one.
+  const [tv1Cycle, setTv1Cycle] = useState(0);
 
   const [showAuth, setShowAuth] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
@@ -171,8 +174,10 @@ function App() {
     }
 
     setTv1Screen('dashboard');
+    setTv1Cycle(0);
     const id = setInterval(() => {
       setTv1Screen((screen) => screen === 'dashboard' ? 'lots' : 'dashboard');
+      setTv1Cycle((cycle) => cycle + 1);
     }, tv1RotateMs);
 
     return () => clearInterval(id);
@@ -478,6 +483,7 @@ function App() {
       ) : isTV ? (
         <div className={`fixed inset-0 bg-[#191B25] flex flex-col transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} ${tv1Screen === 'lots' ? 'p-0 overflow-hidden' : 'p-5 overflow-y-auto overflow-x-hidden'}`}>
           {tv1Content}
+          {!tv1ScreenOverride && <TvRotationBar durationMs={tv1RotateMs} cycle={tv1Cycle} />}
         </div>
       ) : (
         <div className={`relative app-shell w-full flex flex-col bg-transparent transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-hidden ${isArrivalView ? 'app-shell--arrival-page' : ''}`}>

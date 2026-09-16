@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { filterTvLots } from '../utils/tvLots';
 import { AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 import { PlanRow, Task } from '../types';
@@ -553,7 +554,7 @@ const TvLotProgressView: React.FC<Props> = ({ preview = false, readOnly = false 
     };
   }, [fetchLotData, preview]);
 
-  const lots = useMemo(() => buildLotProgress(planRows, taskRows), [planRows, taskRows]);
+  const lots = useMemo(() => filterTvLots(buildLotProgress(planRows, taskRows)), [planRows, taskRows]);
   const activeLots = useMemo(() => (
     lots
       .filter((lot) => lot.status !== 'done')

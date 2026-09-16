@@ -94,19 +94,27 @@ async function checkFit(page) {
 }
 try {
   let page = await openScreen([...activeFixtures, ...closedFixtures]);
-  assert.deepEqual((await activeLabels(page)).sort(), activeFixtures.map(f => f[0]).sort(), 'All nine unfinished lots, including the eighth and single-container lot, must be visible');
+  const visibleFixtures = activeFixtures.filter(f => f[1] >= 6);
+  assert.deepEqual((await activeLabels(page)).sort(), visibleFixtures.map(f => f[0]).sort(), 'All eight unfinished lots with at least six containers must be visible; the single-container lot must be hidden');
+  const closedLabels = await page.locator('[data-lot-row="closed"] [title]').evaluateAll(nodes => nodes.map(n => n.title));
+  assert.ok(!closedLabels.includes('43115-CT13J20260509'), 'Closed lots with fewer than six containers must be hidden too');
   await checkFit(page);
   const fonts = await page.locator('[data-lot-row="active"] [title]').evaluateAll(nodes => nodes.map(n => parseFloat(getComputedStyle(n).fontSize)));
   assert.ok(fonts.every(size => size >= 38), 'Full-HD lot numbers must retain large type');
   await page.screenshot({ path: `${artifactDir}/nine-lots-1920x1080.png` });
   await page.close();
 
-  const twoRows = activeFixtures.map(f => f[0] === '43115-AQT13J20260708' ? [f[0], 2, 0, 0] : f);
-  page = await openScreen([...twoRows, ...closedFixtures]);
-  assert.ok((await activeLabels(page)).includes('43115-AQT13J20260708'), 'Two-container lots must remain visible');
+  const fiveRows = activeFixtures.map(f => f[0] === '43115-AQT13J20260708' ? [f[0], 5, 0, 0] : f);
+  page = await openScreen([...fiveRows, ...closedFixtures]);
+  assert.ok(!(await activeLabels(page)).includes('43115-AQT13J20260708'), 'Five-container lots must stay hidden');
   await page.close();
 
-  const overflow = [...activeFixtures, ...Array.from({ length: 14 }, (_, i) => [`43115-TEST202609${String(i + 1).padStart(2, '0')}`, 3, 0, 0])];
+  const sixRows = activeFixtures.map(f => f[0] === '43115-AQT13J20260708' ? [f[0], 6, 0, 0] : f);
+  page = await openScreen([...sixRows, ...closedFixtures]);
+  assert.ok((await activeLabels(page)).includes('43115-AQT13J20260708'), 'Six-container lots must be visible');
+  await page.close();
+
+  const overflow = [...visibleFixtures, ...Array.from({ length: 14 }, (_, i) => [`43115-TEST202609${String(i + 1).padStart(2, '0')}`, 6, 0, 0])];
   page = await openScreen([...overflow, ...closedFixtures]);
   const callsBeforeRotation = feedCalls;
   const seen = new Set();
@@ -132,7 +140,7 @@ try {
     await page.close();
   }
   assert.deepEqual(pageErrors, [], 'No browser runtime errors');
-  console.log('PASS: full-HD completeness, one/two-container lots, overflow rotation, network cadence and viewport fit');
+  console.log('PASS: full-HD completeness, six-container threshold, overflow rotation, network cadence and viewport fit');
 } finally {
   await browser.close();
   await viteServer?.close();
