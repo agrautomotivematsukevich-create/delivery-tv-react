@@ -288,3 +288,51 @@ describe('operator task actions', () => {
     expect(payload.operationId).toMatch(/^offline:/);
   });
 });
+
+describe('terminal edge submit timeout', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('localStorage', new MemoryStorage());
+    vi.stubGlobal('navigator', {
+      language: 'ru-RU',
+      onLine: true,
+      platform: 'test',
+      userAgent: 'Vitest',
+    });
+    setToken('test-token');
+  });
+
+  // Живой замер 21.09.2026 с телефона: приём операции с двумя фото идёт 6,5 с.
+  // При прежних 1500 мс вызов обрывался всегда и операция уходила прямым путём за 41 с.
+  it('waits long enough for the gateway to accept an operation with photos', async () => {
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve(new Response(JSON.stringify({
+        status: 'accepted', operationId: 'operation-slow',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })), 2500);
+      init?.signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(new DOMException('Aborted', 'AbortError'));
+      });
+    }));
+
+    const result = await api.submitTerminalOperation({
+      containerId: '599AJE17-79GI17',
+      action: 'start',
+      operator: 'tv tv',
+      login: 'tv1',
+      zone: 'G3',
+      sheetDate: '21.09',
+      operationId: 'operation-slow',
+      photos: [
+        { type: 'container', image: 'data:image/jpeg;base64,YQ==', mimeType: 'image/jpeg', filename: 'gen.jpg' },
+        { type: 'seal', image: 'data:image/jpeg;base64,YQ==', mimeType: 'image/jpeg', filename: 'seal.jpg' },
+      ],
+    }, {
+      endpoint: 'https://edge.test/v1',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    expect(result).toEqual({ status: 'accepted', operationId: 'operation-slow' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  }, 15000);
+});

@@ -730,8 +730,13 @@ export const api = {
     if (!endpoint || !token) return null;
     if (!options.endpoint && _edgeSessionReadyUntil <= Date.now()) return null;
 
+    // Замер 21.09.2026 с телефона на заводском Wi-Fi: приём операции с двумя фото
+    // занимает 4,4-6,5 с (транспорт через Vercel и туннель — 2,2 с в медиане). Прежние
+    // 1500 мс обрывали вызов всегда, и операция уходила прямым путём в Google за 41 с.
+    // Лимит держим у верхней границы замера, а не выше: при недоступном шлюзе оператор
+    // сначала выждет его целиком и только потом уйдёт на тот же сорокасекундный путь.
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 1500);
+    const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 8000);
     try {
       const response = await (options.fetchImpl || fetch)(`${endpoint}/operations`, {
         method: 'POST',
