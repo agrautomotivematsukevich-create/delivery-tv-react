@@ -430,3 +430,258 @@ test('reports safe request metadata without logging query secrets', async () => 
     }
   }
 });
+
+test('reuses a warmed session instead of asking Google again', async () => {
+  const reuseDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-edge-reuse-test-'));
+  let validationCalls = 0;
+  const reuseServer = createEdgeServer({
+    dataDir: reuseDataDir,
+    encryptionKey: Buffer.alloc(32, 9),
+    allowedOrigins: ['https://agrdashboard.vercel.app'],
+    autoStartWorker: false,
+    validateSession: async () => {
+      validationCalls += 1;
+      return { ok: true, tasks: [] };
+    },
+  });
+
+  try {
+    await new Promise((resolve) => reuseServer.listen(0, '127.0.0.1', resolve));
+    const reuseBaseUrl = `http://127.0.0.1:${reuseServer.address().port}/v1`;
+    const warm = () => fetch(`${reuseBaseUrl}/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://agrdashboard.vercel.app' },
+      body: JSON.stringify({ token: 'repeat-token' }),
+    });
+
+    for (let i = 0; i < 3; i += 1) {
+      assert.equal((await warm()).status, 200);
+    }
+    assert.equal(validationCalls, 1);
+  } finally {
+    await new Promise((resolve) => reuseServer.close(resolve));
+    if (path.resolve(reuseDataDir).startsWith(path.resolve(os.tmpdir()))) {
+      fs.rmSync(reuseDataDir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('collapses simultaneous warmups of the same token into one Google call', async () => {
+  const flightDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-edge-flight-test-'));
+  let validationCalls = 0;
+  const flightServer = createEdgeServer({
+    dataDir: flightDataDir,
+    encryptionKey: Buffer.alloc(32, 10),
+    allowedOrigins: ['https://agrdashboard.vercel.app'],
+    autoStartWorker: false,
+    validateSession: async () => {
+      validationCalls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      return { ok: true, tasks: [] };
+    },
+  });
+
+  try {
+    await new Promise((resolve) => flightServer.listen(0, '127.0.0.1', resolve));
+    const flightBaseUrl = `http://127.0.0.1:${flightServer.address().port}/v1`;
+    const responses = await Promise.all([1, 2, 3, 4].map(() => fetch(`${flightBaseUrl}/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://agrdashboard.vercel.app' },
+      body: JSON.stringify({ token: 'parallel-token' }),
+    })));
+
+    for (const response of responses) assert.equal(response.status, 200);
+    assert.equal(validationCalls, 1);
+  } finally {
+    await new Promise((resolve) => flightServer.close(resolve));
+    if (path.resolve(flightDataDir).startsWith(path.resolve(os.tmpdir()))) {
+      fs.rmSync(flightDataDir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('never caches a rejected token and keeps asking Google', async () => {
+  const denyDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-edge-deny-test-'));
+  let validationCalls = 0;
+  const denyServer = createEdgeServer({
+    dataDir: denyDataDir,
+    encryptionKey: Buffer.alloc(32, 11),
+    allowedOrigins: ['https://agrdashboard.vercel.app'],
+    autoStartWorker: false,
+    validateSession: async () => {
+      validationCalls += 1;
+      return { ok: false, tasks: [] };
+    },
+  });
+
+  try {
+    await new Promise((resolve) => denyServer.listen(0, '127.0.0.1', resolve));
+    const denyBaseUrl = `http://127.0.0.1:${denyServer.address().port}/v1`;
+    for (let i = 0; i < 2; i += 1) {
+      const response = await fetch(`${denyBaseUrl}/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'https://agrdashboard.vercel.app' },
+        body: JSON.stringify({ token: 'bad-token' }),
+      });
+      assert.equal(response.status, 401);
+      assert.deepEqual(await response.json(), { error: 'AUTH_REQUIRED' });
+    }
+    assert.equal(validationCalls, 2);
+  } finally {
+    await new Promise((resolve) => denyServer.close(resolve));
+    if (path.resolve(denyDataDir).startsWith(path.resolve(os.tmpdir()))) {
+      fs.rmSync(denyDataDir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('expires a warmed session once its lifetime is over', async () => {
+  const ttlDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-edge-ttl-test-'));
+  let validationCalls = 0;
+  const ttlServer = createEdgeServer({
+    dataDir: ttlDataDir,
+    encryptionKey: Buffer.alloc(32, 12),
+    allowedOrigins: ['https://agrdashboard.vercel.app'],
+    autoStartWorker: false,
+    sessionTtlMs: 60,
+    validateSession: async () => {
+      validationCalls += 1;
+      return { ok: true, tasks: [] };
+    },
+  });
+
+  try {
+    await new Promise((resolve) => ttlServer.listen(0, '127.0.0.1', resolve));
+    const ttlBaseUrl = `http://127.0.0.1:${ttlServer.address().port}/v1`;
+    const warm = () => fetch(`${ttlBaseUrl}/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://agrdashboard.vercel.app' },
+      body: JSON.stringify({ token: 'ttl-token' }),
+    });
+
+    assert.equal((await warm()).status, 200);
+    assert.equal(validationCalls, 1);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    assert.equal((await warm()).status, 200);
+    assert.equal(validationCalls, 2);
+  } finally {
+    await new Promise((resolve) => ttlServer.close(resolve));
+    if (path.resolve(ttlDataDir).startsWith(path.resolve(os.tmpdir()))) {
+      fs.rmSync(ttlDataDir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('waits out a slow Google answer instead of turning it into a refusal', async () => {
+  const slowDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-edge-slow-test-'));
+  // Apps Script отдаёт заголовки сразу, а тело — сильно позже. Именно это раньше
+  // обрывалось по таймауту и превращало рабочий вход в 401.
+  const lateBody = (delayMs) => async () => ({
+    ok: true,
+    status: 200,
+    text: () => new Promise((resolve) => setTimeout(
+      () => resolve(JSON.stringify([{ id: 'X1', status: 'WAIT', zone: '', start_time: '', end_time: '' }])),
+      delayMs,
+    )),
+  });
+
+  const warm = async (server) => {
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.address().port}/v1/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'https://agrdashboard.vercel.app' },
+        body: JSON.stringify({ token: 'slow-token' }),
+      });
+      return response.status;
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  };
+
+  try {
+    const patient = createEdgeServer({
+      dataDir: slowDataDir,
+      encryptionKey: Buffer.alloc(32, 13),
+      allowedOrigins: ['https://agrdashboard.vercel.app'],
+      autoStartWorker: false,
+      gasUrl: 'https://gas.test/exec',
+      sessionValidateTimeoutMs: 2000,
+      fetchImpl: lateBody(150),
+    });
+    assert.equal(await warm(patient), 200);
+
+    const impatient = createEdgeServer({
+      dataDir: slowDataDir,
+      encryptionKey: Buffer.alloc(32, 13),
+      allowedOrigins: ['https://agrdashboard.vercel.app'],
+      autoStartWorker: false,
+      gasUrl: 'https://gas.test/exec',
+      sessionValidateTimeoutMs: 60,
+      fetchImpl: lateBody(400),
+    });
+    assert.equal(await warm(impatient), 401);
+  } finally {
+    if (path.resolve(slowDataDir).startsWith(path.resolve(os.tmpdir()))) {
+      fs.rmSync(slowDataDir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('refreshes the cached task snapshot in the background without blocking', async () => {
+  const staleDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-edge-stale-test-'));
+  let validationCalls = 0;
+  // Первый снимок занимает зону G7, второй — освобождает её.
+  const snapshots = [
+    [{ id: 'OTHER-1', status: 'ACTIVE', zone: 'G7', start_time: '10:00', end_time: '' }],
+    [{ id: 'OTHER-1', status: 'DONE', zone: 'G7', start_time: '10:00', end_time: '10:20' }],
+  ];
+  const staleServer = createEdgeServer({
+    dataDir: staleDataDir,
+    encryptionKey: Buffer.alloc(32, 14),
+    allowedOrigins: ['https://agrdashboard.vercel.app'],
+    autoStartWorker: false,
+    taskRefreshMs: 1,
+    validateSession: async () => {
+      const tasks = snapshots[Math.min(validationCalls, snapshots.length - 1)];
+      validationCalls += 1;
+      return { ok: true, tasks };
+    },
+  });
+
+  try {
+    await new Promise((resolve) => staleServer.listen(0, '127.0.0.1', resolve));
+    const baseUrl = `http://127.0.0.1:${staleServer.address().port}/v1`;
+    const warm = () => fetch(`${baseUrl}/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://agrdashboard.vercel.app' },
+      body: JSON.stringify({ token: 'stale-token' }),
+    });
+
+    assert.equal((await warm()).status, 200);
+    assert.equal(validationCalls, 1);
+
+    // Второй вход отвечает мгновенно и запускает обновление снимка фоном.
+    const second = await warm();
+    assert.equal(second.status, 200);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(validationCalls, 2);
+
+    // Зона освободилась в новом снимке, значит старт в G7 больше не отбивается.
+    const response = await fetch(`${baseUrl}/operations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://agrdashboard.vercel.app' },
+      body: JSON.stringify({
+        containerId: 'MINE-1', action: 'start', operator: 'tv tv', login: 'tv1',
+        zone: 'G7', operationId: 'op-stale-1', token: 'stale-token',
+        photos: [{ type: 'container', image: 'data:image/jpeg;base64,YQ==', mimeType: 'image/jpeg', filename: 'a.jpg' }],
+      }),
+    });
+    assert.equal(response.status, 202);
+  } finally {
+    await new Promise((resolve) => staleServer.close(resolve));
+    if (path.resolve(staleDataDir).startsWith(path.resolve(os.tmpdir()))) {
+      fs.rmSync(staleDataDir, { recursive: true, force: true });
+    }
+  }
+});

@@ -218,14 +218,22 @@ function createEdgeServer(options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
   const workerIntervalMs = options.workerIntervalMs || 1000;
   const requestLogger = typeof options.requestLogger === 'function' ? options.requestLogger : null;
+  const sessionValidateTimeoutMs = options.sessionValidateTimeoutMs || 90000;
   const validateSession = options.validateSession || (async (token) => {
     if (!gasUrl) return { ok: false, tasks: [] };
     try {
-      const response = await postToGas(gasUrl, {
+      // Таймаут покрывает и чтение тела: Apps Script отдаёт заголовки рано, а ответ
+      // считает долго, поэтому ограничение только на fetch не срабатывало.
+      // Запас берём с большим верхом: живой get_operator_tasks идёт 30 с в медиане
+      // и до 55 с в пике, и обрыв раньше срока превращает рабочий вход в 401.
+      const deadline = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('GAS_TIMEOUT')), sessionValidateTimeoutMs).unref?.();
+      });
+      const response = await Promise.race([postToGas(gasUrl, {
         mode: 'get_operator_tasks',
         token,
-      }, fetchImpl, 20000);
-      const text = await response.text();
+      }, fetchImpl, sessionValidateTimeoutMs), deadline]);
+      const text = await Promise.race([response.text(), deadline]);
       if (text.includes('AUTH_REQUIRED') || text.includes('ADMIN_REQUIRED')) {
         return { ok: false, tasks: [] };
       }
@@ -235,9 +243,38 @@ function createEdgeServer(options = {}) {
       return { ok: false, tasks: [] };
     }
   });
+  // Проверка сеанса стоит один тяжёлый вызов Apps Script (медиана 30 с в бою),
+  // поэтому результат живёт смену, а не час, и обновляется фоном до истечения.
+  const sessionTtlMs = options.sessionTtlMs || 8 * 60 * 60 * 1000;
+  // Проверка токена может жить долго, а снимок заданий — нет: по нему считаются
+  // занятые зоны, и устаревший список даёт ложный ZONE_OCCUPIED. Обновляем его
+  // фоном, не заставляя оператора ждать.
+  const taskRefreshMs = options.taskRefreshMs || 10 * 60 * 1000;
   const sessions = new Map();
+  const sessionWarmups = new Map();
   let workerRunning = false;
   fs.mkdirSync(operationsDir, { recursive: true });
+
+  // Одна проверка на токен за раз: повторные входы ждут уже идущий вызов,
+  // а не заводят каждый свой — иначе retry оператора множит тридцатисекундные запросы.
+  function warmSession(token, digest) {
+    const running = sessionWarmups.get(digest);
+    if (running) return running;
+    const pending = (async () => {
+      const validated = await validateSession(token);
+      if (!validated || validated.ok !== true) return false;
+      const now = Date.now();
+      sessions.set(digest, {
+        expiresAt: now + sessionTtlMs,
+        tasksFetchedAt: now,
+        tasks: normalizeTasks(validated.tasks),
+      });
+      return true;
+    })();
+    const tracked = pending.finally(() => { sessionWarmups.delete(digest); });
+    sessionWarmups.set(digest, tracked);
+    return tracked;
+  }
 
   async function syncRecord(filePath, record) {
     const token = decryptToken(record, encryptionKey);
@@ -402,15 +439,21 @@ function createEdgeServer(options = {}) {
           json(res, 403, { error: 'NOT_IN_PILOT' }, origin, allowedOrigins);
           return;
         }
-        const validated = await validateSession(token);
-        if (!validated || validated.ok !== true) {
+        const digest = tokenDigest(token);
+        const cached = sessions.get(digest);
+        if (cached && cached.expiresAt > Date.now()) {
+          // Токен уже проверен — отвечаем сразу, список заданий подтягиваем фоном.
+          if (Date.now() - cached.tasksFetchedAt >= taskRefreshMs) {
+            cached.tasksFetchedAt = Date.now();
+            void warmSession(token, digest).catch(() => {});
+          }
+          json(res, 200, { ok: true }, origin, allowedOrigins);
+          return;
+        }
+        if (!(await warmSession(token, digest))) {
           json(res, 401, { error: 'AUTH_REQUIRED' }, origin, allowedOrigins);
           return;
         }
-        sessions.set(tokenDigest(token), {
-          expiresAt: Date.now() + 60 * 60 * 1000,
-          tasks: normalizeTasks(validated.tasks),
-        });
         json(res, 200, { ok: true }, origin, allowedOrigins);
         return;
       }
