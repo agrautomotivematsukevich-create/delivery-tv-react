@@ -500,7 +500,7 @@ function configureDailySheetProtection(editorEmail) {
 // Prints detected layout, header row, every resolved column and any missing required cols.
 function debugPlanColumns(sheetName) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(sheetName);
+  var sheet = findPlanSheet_(ss, sheetName);
   if (!sheet) { Logger.log("debugPlanColumns: sheet not found: " + sheetName); return "MISSING"; }
   var scan = planHeaderScan(sheet);
   var C = buildPlanColumnsFromHeaders_(sheet);
@@ -534,7 +534,7 @@ function debugPlanColumns_2806() {
 // Prints each resolved field with its display value and warns about SAP/LES problems.
 function debugPlanRow(sheetName, rowNumber) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(sheetName);
+  var sheet = findPlanSheet_(ss, sheetName);
   if (!sheet) { Logger.log("debugPlanRow: sheet not found: " + sheetName); return "MISSING"; }
   rowNumber = parseInt(rowNumber, 10);
   if (!rowNumber || rowNumber < 1 || rowNumber > sheet.getLastRow()) {
@@ -1402,6 +1402,34 @@ function isNightCarryover(now) {
 // the previous calendar-day sheet whose unloading has NOT finished (END_TIME empty). A row
 // always keeps its source sheet (sheetName/rowNumber) so writes land back where they came
 // from — finishing a carried-over 29.06 row at 30.06 00:30 writes into the 29.06 sheet.
+/**
+ * Лист дня по имени, устойчивый к «грязному» имени вкладки.
+ *
+ * 21.09.2026 расписание и задания не подтянулись: вкладку создали как "21.09 " —
+ * с пробелом на конце. getSheetByName сравнивает строго, лист не находился, и
+ * экран показывал пустой день, хотя план был заполнен.
+ *
+ * Строгое совпадение остаётся в приоритете; ослабленный поиск (без крайних
+ * пробелов, без учёта регистра) включается, только если строгий ничего не дал.
+ * Найденное расхождение пишем в лог: имя вкладки всё равно надо поправить
+ * руками, иначе оно так и останется кривым.
+ */
+function findPlanSheet_(ss, name) {
+  if (!ss || !name) return null;
+  var exact = ss.getSheetByName(name);
+  if (exact) return exact;
+  var target = String(name).replace(/\s+/g, " ").trim().toLowerCase();
+  if (!target) return null;
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    var actual = sheets[i].getName();
+    if (String(actual).replace(/\s+/g, " ").trim().toLowerCase() !== target) continue;
+    Logger.log("findPlanSheet_: имя вкладки '" + actual + "' отличается от ожидаемого '" + name + "' — поправить вручную");
+    return sheets[i];
+  }
+  return null;
+}
+
 function getActivePlanSheetNames_(now) {
   var info = getOperationalDateInfo(now);
   return { current: info.operationalSheetName, previous: info.previousSheetName };
@@ -1418,7 +1446,7 @@ function readActivePlanSheetRows_(ss, sheetName, options) {
   var out = [];
   if (!sheetName) return out;
   try {
-    var sheet = ss.getSheetByName(sheetName);
+    var sheet = findPlanSheet_(ss, sheetName);
     if (!sheet) { Logger.log("readActivePlanSheetRows_: sheet missing: " + sheetName); return out; }
     var lr = sheet.getLastRow();
     if (lr < 5) return out;
@@ -1519,7 +1547,7 @@ function resolveActionSheetName_(ss, containerId, requestedDate) {
   for (var s = 0; s < order.length; s++) {
     var name = order[s];
     if (!name) continue;
-    var sheet = ss.getSheetByName(name);
+    var sheet = findPlanSheet_(ss, name);
     if (!sheet) continue;
     var lr = sheet.getLastRow();
     if (lr < 5) continue;
@@ -1541,7 +1569,7 @@ function debugActivePlanSheets() {
   var names = getActivePlanSheetNames_();
   var lines = ["debugActivePlanSheets current=" + names.current + " previous=" + names.previous];
   [names.current, names.previous].forEach(function (name) {
-    var sheet = ss.getSheetByName(name);
+    var sheet = findPlanSheet_(ss, name);
     if (!sheet) { lines.push(name + ": MISSING"); return; }
     var C = getPlanColumnsForSheet(sheet);
     lines.push(name + ": exists layout=" + C.version + " lastRow=" + sheet.getLastRow() +
@@ -1897,7 +1925,7 @@ function handleTvLotProgress(params, ss) {
     var sheetName = sheetNames[dayIndex];
     // Per-sheet guard: one missing/empty/UNKNOWN/narrow day must not fail the whole screen.
     try {
-      var sheet = ss.getSheetByName(sheetName);
+      var sheet = findPlanSheet_(ss, sheetName);
       if (!sheet) continue;
 
       var lr = sheet.getLastRow();
@@ -2392,7 +2420,7 @@ function handleGetDashboardBundle(params, ss) {
 function handleGetHistory(params, ss) {
   var dateStr = (params.date || "").trim();
   if (!isValidDateFormat(dateStr)) return jsonOut([]);
-  var sheet = ss.getSheetByName(dateStr);
+  var sheet = findPlanSheet_(ss, dateStr);
   if (!sheet) return jsonOut([]);
   var lr = sheet.getLastRow();
   if (lr < 5) return jsonOut([]);
@@ -2487,7 +2515,7 @@ function handleUpdateAccounting(params, ss) {
 
   // Route SAP/LES to the row's SOURCE sheet (explicit date wins; else find it in the active set).
   var sheetName = resolveActionSheetName_(ss, id, requestedDate);
-  var sheet = ss.getSheetByName(sheetName);
+  var sheet = findPlanSheet_(ss, sheetName);
   if (!sheet) {
     appendAuditEvent_(ss, {
       params: params,
@@ -2609,7 +2637,7 @@ function handleUpdateAccounting(params, ss) {
 function handleGetFullPlan(params, ss) {
   var dateStr = (params.date || "").trim();
   if (!isValidDateFormat(dateStr)) return jsonOut([]);
-  var sheet = ss.getSheetByName(dateStr);
+  var sheet = findPlanSheet_(ss, dateStr);
   if (!sheet) return jsonOut([]);
   var lr = sheet.getLastRow();
   if (lr < 5) return jsonOut([]);
@@ -2797,7 +2825,7 @@ function handleTaskAction(params, ss) {
     if (!duplicateOperation) {
       // Route to the row's SOURCE sheet under the same lock as validation/write.
       sheetName = resolveActionSheetName_(ss, id, requestedDate);
-      var sheet = ss.getSheetByName(sheetName);
+      var sheet = findPlanSheet_(ss, sheetName);
       if (!sheet) {
         writeError = "ID_NOT_FOUND";
       } else {
@@ -3171,7 +3199,7 @@ function handleUpdateContainerRow(params, ss) {
     return textOut("INVALID_DATE");
   }
 
-  var sheet = ss.getSheetByName(dateStr);
+  var sheet = findPlanSheet_(ss, dateStr);
   if (!sheet) {
     appendAuditEvent_(ss, {
       params: params,
@@ -3319,7 +3347,7 @@ function handleCreatePlan(params, ss) {
     return textOut("INVALID_JSON");
   }
 
-  var sheet = ss.getSheetByName(dateStr);
+  var sheet = findPlanSheet_(ss, dateStr);
   if (!sheet) {
     // New sheets are created in the V2 layout (headers + freeze only — no formulas).
     sheet = createDailyPlanSheet_(ss, dateStr);
