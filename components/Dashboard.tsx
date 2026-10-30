@@ -580,7 +580,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
           {!isVictory && !isEmpty && (
             <div className={`${glass} p-5 flex flex-col overflow-hidden shrink-0`}>
               <div className="text-[10px] font-bold text-white/50 uppercase tracking-[2px] mb-1 shrink-0">{t.next}</div>
-              <div className="font-mono font-bold tracking-tighter bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent break-all leading-tight shrink-0"
+              <div className="font-mono font-bold tracking-tighter text-white break-all leading-tight shrink-0"
                 style={{ fontSize: 'clamp(2.5rem, 5vw, 4.5rem)' }}>
                 {data.nextId}
               </div>
@@ -704,7 +704,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
             {/* Карточка "Следующий" */}
             <div className={`${glass} p-4 sm:p-6 lg:p-8 flex flex-col justify-center`}>
               <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] mb-3">{t.next}</div>
-              <div className="font-mono text-4xl sm:text-5xl xl:text-6xl font-black tracking-tighter my-1 bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">
+              <div className="font-mono text-4xl sm:text-5xl xl:text-6xl font-black tracking-tighter my-1 text-white truncate">
                 {data.nextId}
               </div>
               <div className={`text-base sm:text-xl lg:text-2xl font-bold flex items-center gap-3 mt-2 w-fit px-3 sm:px-4 py-2 rounded-xl border ${isNextLate ? 'text-amber-400 bg-amber-400/10 border-amber-400/30' : 'text-accent-blue bg-accent-blue/10 border-accent-blue/20'}`}>
