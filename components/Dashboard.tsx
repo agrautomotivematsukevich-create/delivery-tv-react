@@ -528,6 +528,10 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
   // the public TV has no tasks and takes the server list instead.
   const arrivedTasks = selectArrivedTasks(allTasks, data);
 
+  // Опоздание — тревожный цвет, ожидание прибытия — спокойный
+  const nextDiff = calculateTimeDiff(data.nextTime, t);
+  const isNextLate = nextDiff.startsWith(t.delay_prefix);
+
   const getStatusClass = (s: string) => {
     if (s === 'ACTIVE') return 'text-accent-green border-accent-green bg-accent-green/10 shadow-[0_0_20px_rgba(0,230,118,0.4)]';
     if (s === 'PAUSE')  return 'text-accent-yellow border-accent-yellow bg-accent-yellow/10';
@@ -580,9 +584,9 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
                 style={{ fontSize: 'clamp(2.5rem, 5vw, 4.5rem)' }}>
                 {data.nextId}
               </div>
-              <div className="text-base text-accent-blue font-semibold flex items-center gap-2 mt-1 shrink-0">
+              <div className={`text-base ${isNextLate ? 'text-amber-400' : 'text-accent-blue'} font-semibold flex items-center gap-2 mt-1 shrink-0`}>
                 <Clock className="w-4 h-4 shrink-0" />
-                {calculateTimeDiff(data.nextTime, t)}
+                {nextDiff}
               </div>
               {/* Ограничение max-h-48 не даёт списку "на территории" вытеснять карточку "В работе" ниже */}
               <div className="overflow-y-auto custom-scrollbar pr-2 mt-2 max-h-48">
@@ -703,9 +707,9 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
               <div className="font-mono text-4xl sm:text-5xl xl:text-6xl font-black tracking-tighter my-1 bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent truncate">
                 {data.nextId}
               </div>
-              <div className="text-base sm:text-xl lg:text-2xl text-accent-blue font-bold flex items-center gap-3 mt-2 bg-accent-blue/10 w-fit px-3 sm:px-4 py-2 rounded-xl border border-accent-blue/20">
+              <div className={`text-base sm:text-xl lg:text-2xl font-bold flex items-center gap-3 mt-2 w-fit px-3 sm:px-4 py-2 rounded-xl border ${isNextLate ? 'text-amber-400 bg-amber-400/10 border-amber-400/30' : 'text-accent-blue bg-accent-blue/10 border-accent-blue/20'}`}>
                 <Clock className="w-5 h-5 animate-pulse" />
-                {calculateTimeDiff(data.nextTime, t)}
+                {nextDiff}
               </div>
             </div>
 
