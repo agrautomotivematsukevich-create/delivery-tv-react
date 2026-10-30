@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Lang, TranslationSet } from '../types';
-import { Globe, User as UserIcon, LogOut, ChevronDown, ScanBarcode, LogIn, AlertTriangle, History, LayoutDashboard, Archive, Truck, TrendingDown, Timer, Package, ShieldAlert, FileSpreadsheet } from 'lucide-react';
+import { Globe, User as UserIcon, LogOut, ChevronDown, ScanBarcode, LogIn, AlertTriangle, History, LayoutDashboard, Archive, Truck, TrendingDown, Timer, Package, ShieldAlert, FileSpreadsheet, BarChart3 } from 'lucide-react';
 
 interface HeaderProps {
   user: User | null;
@@ -56,7 +56,7 @@ const Header: React.FC<HeaderProps> = ({
           <span className="text-base md:text-xl font-extrabold tracking-tight text-white/80 group-hover:text-white transition-colors uppercase whitespace-nowrap hidden md:block">
             {title}
           </span>
-          <ChevronDown className="text-white/50 w-5 h-5 group-hover:text-white transition-colors" />
+          <BarChart3 className="text-white/50 w-5 h-5 group-hover:text-white transition-colors" />
         </div>
 
         <div className="md:hidden font-mono text-lg font-bold tabular-nums text-white/50 bg-white/5 px-3 py-1 rounded-lg border border-white/5">
