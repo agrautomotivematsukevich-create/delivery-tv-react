@@ -646,7 +646,8 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
   }
 
   return (
-    <div className="dashboard-root grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] gap-4 md:gap-6 lg:gap-8 flex-1 min-h-0">
+    // lg+: ряд ограничен высотой экрана — "Активные" сжимаются со своим скроллом, а зоны внизу не уходят за край (ТВ 1080p)
+    <div className="dashboard-root grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] lg:grid-rows-[minmax(0,1fr)] lg:h-full lg:min-h-[760px] gap-4 md:gap-6 lg:gap-8 flex-1 min-h-0">
       
       {/* ── ЛЕВАЯ КОЛОНКА (Общий прогресс + Смены) ── */}
       <div className={`${glass} relative flex flex-col p-4 sm:p-6 lg:p-8 overflow-hidden h-full min-w-0`}>
@@ -711,7 +712,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
             {/* Карточка "На территории" */}
             <div className={`${glass} p-4 sm:p-6 lg:p-8 flex flex-col`}>
                <div className="text-xs font-bold text-white/50 uppercase tracking-[2px] mb-3">Ожидают выгрузки</div>
-               <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+               <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 max-h-56">
                  <OnTerritoryBlock arrivedTasks={arrivedTasks} />
                </div>
             </div>
