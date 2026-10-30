@@ -528,7 +528,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, t, tvMode = false, allTasks
   const isNextLate = nextDiff.startsWith(t.delay_prefix);
 
   const getStatusClass = (s: string) => {
-    if (s === 'ACTIVE') return 'text-accent-green border-accent-green bg-accent-green/10 shadow-[0_0_20px_rgba(0,230,118,0.4)]';
+    if (s === 'ACTIVE') return 'text-accent-green border-accent-green/30 bg-accent-green/10';
     if (s === 'PAUSE')  return 'text-accent-yellow border-accent-yellow bg-accent-yellow/10';
     return 'bg-white/5 border-white/5 text-white/70';
   };
