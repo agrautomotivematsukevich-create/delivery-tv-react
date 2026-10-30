@@ -432,11 +432,6 @@ const OnTerritoryBlock: React.FC<{ arrivedTasks: ArrivedTask[]; tvMode?: boolean
       <div className="flex items-center gap-2.5 mb-1">
         <div className="relative shrink-0">
           <Truck className={`${tvMode ? 'w-5 h-5' : 'w-4 h-4'} ${hasAuto ? 'text-accent-blue' : 'text-white/50'}`} />
-          {hasAuto && (
-            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-accent-blue flex items-center justify-center shadow-[0_0_10px_rgba(45,212,191,0.5)]">
-              <span className="text-[7px] font-black text-white leading-none">{count}</span>
-            </span>
-          )}
         </div>
         {hasAuto ? (
           <div className="flex-1">
