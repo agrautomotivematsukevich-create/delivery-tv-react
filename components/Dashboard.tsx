@@ -440,12 +440,12 @@ const OnTerritoryBlock: React.FC<{ arrivedTasks: ArrivedTask[]; tvMode?: boolean
         </div>
         {hasAuto ? (
           <div className="flex-1">
-            <span className={`font-bold text-accent-blue uppercase tracking-wider ${tvMode ? 'text-xs' : 'text-[10px]'}`}>
+            <span className="font-bold text-accent-blue uppercase tracking-wider text-xs">
               На территории — ожидают выгрузки
             </span>
           </div>
         ) : (
-          <span className={`font-bold text-white/50 uppercase tracking-wider ${tvMode ? 'text-xs' : 'text-[10px]'}`}>
+          <span className="font-bold text-white/50 uppercase tracking-wider text-xs">
             Нет авто на площадке
           </span>
         )}
@@ -458,12 +458,12 @@ const OnTerritoryBlock: React.FC<{ arrivedTasks: ArrivedTask[]; tvMode?: boolean
         <div className="flex flex-col gap-1 mt-2">
           {arrivedTasks.map(task => (
             <div key={task.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-accent-blue/8 border border-accent-blue/15">
-              <span className="font-mono text-xs font-bold text-agr-light flex-1 truncate">{task.id}</span>
+              <span className="font-mono text-sm font-bold text-agr-light flex-1 truncate">{task.id}</span>
               {task.arrival_time && (
                 <div className="flex items-center gap-1 shrink-0">
-                  <Clock className="w-3 h-3 text-accent-blue" />
-                  <span className="font-mono text-[10px] font-bold text-accent-blue/80">{task.arrival_time}</span>
-                  <span className="text-[9px] text-white/50 ml-1">
+                  <Clock className="w-3.5 h-3.5 text-accent-blue" />
+                  <span className="font-mono text-sm font-bold text-white/85">{task.arrival_time}</span>
+                  <span className="text-xs text-white/60 ml-1">
                     ({Math.max(0, elapsedMin(task.arrival_time))} мин)
                   </span>
                 </div>
