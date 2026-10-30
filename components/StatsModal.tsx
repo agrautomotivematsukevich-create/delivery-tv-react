@@ -18,8 +18,7 @@ const StatsModal: React.FC<StatsModalProps> = ({ onClose, t }) => {
   useEffect(() => {
     api.fetchTasks('get_operator_tasks').then(data => {
       setTasks(data);
-      setLoading(false);
-    });
+    }).finally(() => setLoading(false));
   }, []);
 
   const doneCount = tasks.filter(x => x.status === 'DONE').length;
@@ -54,6 +53,12 @@ const StatsModal: React.FC<StatsModalProps> = ({ onClose, t }) => {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+           {/* get_operator_tasks требует входа: без него список пустой — объясняем, а не показываем голые нули */}
+           {(loading || tasks.length === 0) && (
+             <div className="mb-4 md:mb-6 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm md:text-base text-white/70">
+               {loading ? 'Загрузка…' : 'Нет данных. Список задач доступен после входа в систему.'}
+             </div>
+           )}
            <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-6 md:gap-8 h-full">
               
               {/* Summary Column */}
