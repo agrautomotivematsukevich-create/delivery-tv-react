@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../services/api';
+import { api, setToken, clearToken } from '../services/api';
 
 // Google Apps Script web apps answer through a 302 to a one-shot
 // script.googleusercontent.com/macros/echo?user_content_key=… URL. That hop intermittently
@@ -17,11 +17,33 @@ const lotPlan = (id: string) => new Response(JSON.stringify({
 describe('tv_lot_progress resilience', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    const storage = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+    });
+    setToken('test-session');
     vi.useFakeTimers();
     vi.stubGlobal('navigator', { language: 'ru-RU', onLine: true, platform: 'test', userAgent: 'Vitest' });
   });
   afterEach(() => {
+    clearToken();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it('does not request or return data after logout', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(lotPlan('TEST'));
+    vi.stubGlobal('fetch', fetchMock);
+    await api.fetchTvLotProgress(3);
+    clearToken();
+
+    await expect(api.fetchDashboard()).resolves.toBeNull();
+    await expect(api.fetchDashboardBundle('16.09')).resolves.toEqual({ dashboard: null, tasks: null });
+    await expect(api.fetchTvLotProgress(3)).rejects.toThrow('AUTH_REQUIRED');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ token: 'test-session' });
   });
 
   it('retries once after a transient 404 from the Google redirect host', async () => {

@@ -17,11 +17,13 @@ export function getToken(): string | null {
 }
 
 export function setToken(token: string): void {
+  if (token !== getToken()) clearReadCaches();
   localStorage.setItem(TOKEN_KEY, token);
 }
 
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+  clearReadCaches();
 }
 
 type DeviceType = "mobile" | "desktop" | "tablet" | "unknown";
@@ -141,6 +143,12 @@ let _edgeSessionReadyUntil = 0;
 type TvLotProgressData = { planRows: Array<PlanRow & { sheetDate?: string; sequence?: number }>; tasks: Task[] };
 // Last successful tv_lot_progress payload per `days`; survives TvLotProgressView remounts.
 const _tvLotProgressLkg: Record<number, TvLotProgressData> = {};
+function clearReadCaches(): void {
+  for (const key of Object.keys(_cache)) delete _cache[key];
+  for (const key of Object.keys(_inflight)) delete _inflight[key];
+  for (const key of Object.keys(_tvLotProgressLkg)) delete _tvLotProgressLkg[Number(key)];
+}
+
 const TV_LOT_PROGRESS_RETRY_DELAY_MS = 1500;
 
 function pruneCache(): void {
@@ -171,12 +179,13 @@ async function cachedFetch<T>(key: string, ttlMs: number, fn: () => Promise<T>):
   if (cached && Date.now() - cached.ts < ttlMs) return cached.data as T;
   if (_inflight[key]) return _inflight[key] as Promise<T>;
   const promise = fn().then(data => {
+    if (_inflight[key] !== promise) return data;
     _cache[key] = { data, ts: Date.now() };
     delete _inflight[key];
     pruneCache();
     return data;
   }).catch(err => {
-    delete _inflight[key];
+    if (_inflight[key] === promise) delete _inflight[key];
     throw err;
   });
   _inflight[key] = promise;
@@ -194,7 +203,7 @@ async function cachedFetch<T>(key: string, ttlMs: number, fn: () => Promise<T>):
 // cached by GAS infrastructure.
 // ══════════════════════════════════════════════════════════════════════════════
 
-async function authRead(mode: string, extraParams: Record<string, string> = {}): Promise<Response | null> {
+async function authRead(mode: string, extraParams: Record<string, string | number> = {}, timeout?: number): Promise<Response | null> {
   const token = getToken();
   if (!token) return null;
 
@@ -202,9 +211,12 @@ async function authRead(mode: string, extraParams: Record<string, string> = {}):
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify({ mode, token, ...extraParams, ...getAuditClientPayload() }),
+    timeout,
+    cache: "no-store",
   });
 
   const txt = await res.text();
+  if (token !== getToken()) throw new Error("SESSION_CHANGED");
   if (txt.includes("AUTH_REQUIRED") || txt.includes("ADMIN_REQUIRED")) {
     handleAuthError();
   }
@@ -428,15 +440,16 @@ export const api = {
   },
 
   fetchDashboard: async (): Promise<DashboardData | null> => {
+    if (!getToken()) return null;
     return cachedFetch("dashboard", 60000, async () => {
-      const res = await fetchWithTimeout(`${SCRIPT_URL}?nocache=${Date.now()}`, { timeout: 60000 });
+      const res = await authRead("", {}, 60000);
+      if (!res) return null;
       const text = await res.text();
       const parsed = parseDashboardData(text);
       if (!parsed) {
         console.error("[dashboard-offline]", {
           reason: "parseDashboardData returned null in fetchDashboard",
           payloadLength: text.length,
-          payloadStart: text.slice(0, 200),
         });
       }
       return parsed;
@@ -467,6 +480,8 @@ export const api = {
   // legacy calls when backend does not yet expose get_dashboard_bundle — this lets
   // frontend and backend roll out independently without breaking prod.
   fetchDashboardBundle: async (dateStr: string): Promise<{ dashboard: DashboardData | null; tasks: Task[] | null }> => {
+    if (!getToken()) return { dashboard: null, tasks: null };
+    const token = getToken();
     return cachedFetch(`bundle_${dateStr}`, 60000, async () => {
       try {
         const res = await authRead("get_dashboard_bundle", { date: dateStr });
@@ -484,7 +499,8 @@ export const api = {
           });
         }
         return { dashboard, tasks };
-      } catch {
+      } catch (error) {
+        if (token !== getToken()) throw error;
         console.error("[dashboard-offline]", {
           reason: "fetchDashboardBundle fallback path",
           dateStr,
@@ -499,13 +515,12 @@ export const api = {
   },
 
   fetchTvLotProgress: async (days = 7): Promise<TvLotProgressData> => {
+    const token = getToken();
+    if (!token) throw new Error("AUTH_REQUIRED");
+
     const requestOnce = async (): Promise<TvLotProgressData> => {
-      const res = await fetchWithTimeout(SCRIPT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ mode: "tv_lot_progress", days, ...getAuditClientPayload() }),
-        timeout: 60000,
-      });
+      const res = await authRead("tv_lot_progress", { days }, 60000);
+      if (!res) throw new Error("AUTH_REQUIRED");
       const data = await res.json();
       if (data?.error) throw new Error(data.error);
       return {
@@ -519,18 +534,22 @@ export const api = {
       const data = await cachedFetch(`tv_lot_progress_${days}_${getOperationalSheetName()}`, 60000, async () => {
         try {
           return await requestOnce();
-        } catch {
+        } catch (error) {
+          if (getToken() !== token) throw error;
           // Apps Script answers via a one-shot script.googleusercontent.com redirect that
           // intermittently 404s after the script already ran; a fresh POST gets a fresh key.
           await new Promise(resolve => setTimeout(resolve, TV_LOT_PROGRESS_RETRY_DELAY_MS));
+          if (getToken() !== token) throw new Error("SESSION_CHANGED");
           return requestOnce();
         }
       });
+      if (getToken() !== token) throw new Error("SESSION_CHANGED");
       _tvLotProgressLkg[days] = data;
       return data;
     } catch (err) {
       // The ?tv=1 lots screen remounts every rotation, so its LKG has to live here:
       // a failed refresh keeps the previous plan instead of a 3-minute error slot.
+      if (getToken() !== token) throw err;
       const lkg = _tvLotProgressLkg[days];
       if (lkg) return lkg;
       throw err;
@@ -606,7 +625,8 @@ export const api = {
       if (txt.startsWith("CORRECT")) {
         const parts = txt.split("|");
         const token = parts.length > 3 ? parts[3] : "";
-        if (token) setToken(token);
+        if (!token) return { success: false, error: "AUTH_REQUIRED" };
+        setToken(token);
         return {
           success: true,
           name: parts.length > 1 ? parts[1] : user,

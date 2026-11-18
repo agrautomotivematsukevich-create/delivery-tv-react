@@ -329,3 +329,29 @@ describe('Code.gs daily sheet protection', () => {
     expect(context.applyDailySheetProtections_).toHaveBeenCalledWith(currentSheet, spreadsheet);
   });
 });
+
+describe('Apps Script shipment route authorization', () => {
+  it.each(['', 'tv_lot_progress', 'get_dashboard_bundle'])('requires a user session for %j', mode => {
+    const context = loadCodeGs();
+    context.SpreadsheetApp.getActiveSpreadsheet = vi.fn();
+    context.appendAuditEvent_ = vi.fn();
+    context.verifyToken = vi.fn(token => token === 'test-session' ? { role: 'OPERATOR' } : null);
+    context.jsonOut = (data: unknown) => data;
+    const handler = vi.fn(() => ({ allowed: true }));
+    context.ROUTES[mode].handler = handler;
+
+    expect(context.doGet({ parameter: { mode } })).toEqual({ error: 'AUTH_REQUIRED' });
+    expect(context.doPost({ postData: { contents: JSON.stringify({ mode, token: 'invalid' }) } }))
+      .toEqual({ error: 'AUTH_REQUIRED' });
+    expect(handler).not.toHaveBeenCalled();
+    expect(context.dispatch({ mode, token: 'test-session' })).toEqual({ allowed: true });
+  });
+
+  it('rejects TV key routes without a configured key', () => {
+    const context = loadCodeGs();
+    context.SpreadsheetApp.getActiveSpreadsheet = vi.fn();
+    context.appendAuditEvent_ = vi.fn();
+    context.jsonOut = (data: unknown) => data;
+    expect(context.dispatch({ mode: 'tv_dashboard' })).toEqual({ error: 'INVALID_TV_KEY' });
+  });
+});

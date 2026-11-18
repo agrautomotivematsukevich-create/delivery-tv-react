@@ -3,11 +3,7 @@ import { api } from '../services/api';
 import { useAppContext } from './AppContext';
 import { User } from '../types';
 
-interface TVLoginScreenProps {
-  onSuccess: () => void;
-}
-
-const TVLoginScreen: React.FC<TVLoginScreenProps> = ({ onSuccess }) => {
+const TVLoginScreen: React.FC = () => {
   const { setUser } = useAppContext();
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
@@ -37,7 +33,6 @@ const TVLoginScreen: React.FC<TVLoginScreenProps> = ({ onSuccess }) => {
           lastName: nameParts.slice(1).join(' ') || '',
         };
         setUser(newUser);
-        onSuccess();
       } else {
         const messages: Record<string, string> = {
           WRONG_PASSWORD: 'Неверный логин или пароль',

@@ -47,6 +47,12 @@ let feedCalls = 0;
 const pageErrors = [];
 async function openScreen(fixtures, viewport = { width: 1920, height: 1080 }) {
   const page = await browser.newPage({ viewport });
+  await page.addInitScript(() => {
+    localStorage.setItem('warehouse_session_token', 'test-session');
+    localStorage.setItem('warehouse_user_info', JSON.stringify({
+      user: 'tester', name: 'Tester', role: 'OPERATOR',
+    }));
+  });
   await page.clock.install();
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/*', async route => {
@@ -54,6 +60,7 @@ async function openScreen(fixtures, viewport = { width: 1920, height: 1080 }) {
     let body;
     try { body = request.postDataJSON(); } catch { /* not JSON */ }
     if (body?.mode === 'tv_lot_progress') {
+      assert.equal(body.token, 'test-session');
       feedCalls++;
       return route.fulfill({ json: payloadFor(fixtures) });
     }
@@ -93,6 +100,25 @@ async function checkFit(page) {
   assert.deepEqual(issues, [], 'All rows and labels must fit without clipping');
 }
 try {
+  const guest = await browser.newPage({ serviceWorkers: 'block' });
+  const guestApiRequests = [];
+  await guest.route('**/*', route => {
+    const request = route.request();
+    if (request.url().endsWith('/test-api') || request.method() === 'POST') {
+      guestApiRequests.push(request.url());
+      return route.abort();
+    }
+    if (new URL(request.url()).origin === new URL(baseURL).origin) return route.continue();
+    return route.abort();
+  });
+  for (const path of ['/', '/history', '/?tv=1&screen=lots', '/?tv=2', '/?tv=3']) {
+    await guest.goto(baseURL + path);
+    await guest.locator('input[type="password"]').waitFor({ state: 'visible' });
+    assert.equal(await guest.locator('.tv-lot-screen').count(), 0);
+  }
+  assert.deepEqual(guestApiRequests, [], 'Guests must never request shipment data');
+  await guest.close();
+
   let page = await openScreen([...activeFixtures, ...closedFixtures]);
   const visibleFixtures = activeFixtures.filter(f => f[1] >= 6);
   assert.deepEqual((await activeLabels(page)).sort(), visibleFixtures.map(f => f[0]).sort(), 'All eight unfinished lots with at least six containers must be visible; the single-container lot must be hidden');

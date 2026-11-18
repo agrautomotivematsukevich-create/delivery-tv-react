@@ -19,25 +19,7 @@ export default defineConfig(({ mode }) => {
           injectRegister: false,
           registerType: 'prompt',
           workbox: {
-            cleanupOutdatedCaches: true,
-            runtimeCaching: [
-              {
-                // GAS responds through script.googleusercontent.com after redirect.
-                // Match both hosts and cache only successful responses.
-                urlPattern: /^https:\/\/script\.google(?:usercontent)?\.com\/.*/i,
-                handler: 'NetworkFirst',
-                options: {
-                  cacheName: 'api-cache-v2',
-                  expiration: {
-                    maxEntries: 100,
-                    maxAgeSeconds: 60 // match client cache TTL
-                  },
-                  cacheableResponse: {
-                    statuses: [200]
-                  }
-                }
-              }
-            ]
+            cleanupOutdatedCaches: true
           },
           manifest: {
             name: 'AGR Warehouse',

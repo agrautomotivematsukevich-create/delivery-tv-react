@@ -580,11 +580,9 @@ var ROUTES = {
   "tv_dashboard":          { handler: handleTvDashboard,        auth: "tv",  lock: false },
   "tv_lot_tracker":        { handler: handleTvLotTracker,       auth: "tv",  lock: false },
 
-  // ── Public read-only TV data, no user session and no mutations ──
-  "tv_lot_progress":       { handler: handleTvLotProgress,      auth: false, lock: false },
-
   // ── Authenticated reads (user token required) ──
-  "":                      { handler: handleReadComplex,        auth: false, lock: false },
+  "tv_lot_progress":       { handler: handleTvLotProgress,      auth: true, lock: false },
+  "":                      { handler: handleReadComplex,        auth: true, lock: false },
   "get_operator_tasks":    { handler: handleGetStats,           auth: true,  lock: false },
   "get_stats":             { handler: handleGetStats,           auth: true,  lock: false },
   "get_all_containers":    { handler: handleGetAllContainers,   auth: true,  lock: false },
@@ -632,7 +630,7 @@ function doPost(e) {
 
 function dispatch(params) {
   var mode  = (params.mode || "").toString().trim();
-  var route = ROUTES[mode];
+  var route = Object.prototype.hasOwnProperty.call(ROUTES, mode) ? ROUTES[mode] : null;
   var ss = null;
 
   if (!route) {
@@ -657,7 +655,7 @@ function dispatch(params) {
     // ── Auth check ──
     if (route.auth === "tv") {
       var providedKey = (params.key || "").toString().trim();
-      if (providedKey !== TV_API_KEY) {
+      if (!TV_API_KEY || providedKey !== TV_API_KEY) {
         appendAuditEvent_(ss, {
           params: params,
           action: "TV_KEY_INVALID",

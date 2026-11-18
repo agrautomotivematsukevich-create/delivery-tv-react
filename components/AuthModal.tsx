@@ -5,7 +5,7 @@ import { useEscape } from '../utils/useEscape';
 import { useAppContext } from './AppContext';
 
 interface AuthModalProps {
-  onClose: () => void;
+  onClose?: () => void;
   onLoginSuccess: (user: User) => void;
   t: TranslationSet;
 }
@@ -256,12 +256,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ onClose, onLoginSuccess, t }) => 
           >
             {mode === 'login' ? 'Регистрация' : 'Уже есть аккаунт? Войти'}
           </button>
-          <button
-            onClick={onClose}
-            className="text-white/40 hover:text-white transition-colors"
-          >
-            Отмена
-          </button>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-white/40 hover:text-white transition-colors"
+            >
+              Отмена
+            </button>
+          )}
         </div>
       </div>
     </div>

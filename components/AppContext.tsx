@@ -169,6 +169,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const setUser = useCallback((newUser: User | null) => {
     setUserState(newUser);
+    setDashboardData(null);
     if (newUser) {
       // Login: persist user info for session recovery after F5
       saveUserInfo(newUser);
@@ -181,6 +182,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const logout = useCallback(() => {
     setUserState(null);
+    setDashboardData(null);
     clearUserInfo();
     clearToken();
   }, []);
@@ -190,6 +192,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     onSessionExpired(() => {
       setUserState(null);
+      setDashboardData(null);
       clearUserInfo();
       clearToken();
       addToast('Сессия истекла. Пожалуйста, войдите заново.', 'error');

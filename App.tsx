@@ -13,7 +13,7 @@ import SplashScreen from './components/SplashScreen';
 import PageMeta from './components/PageMeta';
 import TVLoginScreen from './components/TVLoginScreen';
 import PwaUpdateBanner from './components/PwaUpdateBanner';
-import { api } from './services/api';
+import { api, getToken } from './services/api';
 import { tvDiagnostics } from './services/tvDiagnostics';
 import { TRANSLATIONS } from './constants';
 import { DashboardData, Task, TaskAction, TaskActionResult } from './types';
@@ -62,32 +62,10 @@ function isEmptyDashboardSnapshot(data: DashboardData): boolean {
   return data.total === 0 && data.done === 0 && data.activeList.length === 0 && data.onTerritory === 0;
 }
 
-function saveLastNonZeroDashboard(data: DashboardData): void {
-  if (data.total <= 0) return;
-  try {
-    localStorage.setItem(DASHBOARD_LKG_KEY, JSON.stringify({ savedAt: Date.now(), data }));
-  } catch {
-    // LKG persistence is best-effort; in-memory state still protects open TVs.
-  }
-}
-
-function loadRecentNonZeroDashboard(): DashboardData | null {
-  try {
-    const raw = localStorage.getItem(DASHBOARD_LKG_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { savedAt?: number; data?: DashboardData };
-    if (!parsed.savedAt || !parsed.data || parsed.data.total <= 0) return null;
-    if (Date.now() - parsed.savedAt > 12 * 60 * 60 * 1000) return null;
-    return parsed.data;
-  } catch {
-    return null;
-  }
-}
-
 function getNightCarryoverDashboard(prev: DashboardData | null, next: DashboardData): DashboardData | null {
   if (!isNightPlanCarryoverWindow() || !isEmptyDashboardSnapshot(next)) return null;
   if (prev && prev.total > 0) return prev;
-  return loadRecentNonZeroDashboard();
+  return null;
 }
 
 const ViewFallback = () => (
@@ -97,6 +75,29 @@ const ViewFallback = () => (
 );
 
 function App() {
+  const { user, setUser, lang } = useAppContext();
+  const params = new URLSearchParams(window.location.search);
+  const tvMode = params.get('tv');
+  const isPreview = import.meta.env.DEV && tvMode === '1' && params.get('preview') === '1';
+
+  useEffect(() => {
+    try {
+      localStorage.removeItem(DASHBOARD_LKG_KEY);
+    } catch {
+      // Storage can be unavailable in restricted browsers.
+    }
+    void window.caches?.delete('api-cache-v2').catch(() => {});
+  }, []);
+
+  if (!isPreview && (!user || !getToken())) {
+    if (tvMode === '1' || tvMode === '2' || tvMode === '3') return <TVLoginScreen />;
+    return <AuthModal t={TRANSLATIONS[lang]} onLoginSuccess={setUser} />;
+  }
+
+  return <AuthenticatedApp key={user?.user ?? 'preview'} />;
+}
+
+function AuthenticatedApp() {
   const { user, setUser, logout, dashboardData, setDashboardData, isOffline, setIsOffline, lang, setLang } = useAppContext();
   
   const location = useLocation();
@@ -121,7 +122,6 @@ function App() {
   }, []);
   const isAnyTV = isTV || isTV2 || isTV3;
   const isTv1ReadOnlyAccess = isTv1ReadOnlyScreen && !isTv1Preview;
-  const needsTvLogin = isAnyTV && !user && !isTv1Preview && !isTv1ReadOnlyScreen;
 
   const [isAppReady, setIsAppReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -195,6 +195,7 @@ function App() {
     // Защита: если предыдущий запрос ещё не завершился — пропускаем
     if (isFetchingRef.current) return null;
     isFetchingRef.current = true;
+    const token = getToken();
 
     try {
       const todayStr = getOperationalDateInfo().operationalSheetName;
@@ -204,6 +205,7 @@ function App() {
       const bundle = isTv1ReadOnlyAccess
         ? { dashboard: await api.fetchDashboard(), tasks: [] as Task[] }
         : await api.fetchDashboardBundle(todayStr);
+      if (token !== getToken()) return null;
       const data = bundle?.dashboard ?? null;
       const tasks = bundle?.tasks ?? null;
       const carryoverDashboard = data ? getNightCarryoverDashboard(lastDashboardRef.current, data) : null;
@@ -215,7 +217,6 @@ function App() {
           lastDashboardRef.current = nextDashboard;
           return nextDashboard;
         });
-        if (!carryoverDashboard) saveLastNonZeroDashboard(nextDashboard);
         applyDashboardHealth(markDashboardSuccess(dashboardHealthRef.current));
         tvDiagnostics.markDataSuccess('dashboard');
       } else {
@@ -274,12 +275,6 @@ function App() {
       return () => clearTimeout(timer);
     }
 
-    if (needsTvLogin) {
-      setIsLoading(false);
-      const timer = setTimeout(() => setIsAppReady(true), 500);
-      return () => clearTimeout(timer);
-    }
-
     if (isTV2) {
       const timer = setTimeout(() => setIsAppReady(true), 800);
       return () => clearTimeout(timer);
@@ -290,7 +285,7 @@ function App() {
       timer = setTimeout(() => setIsAppReady(true), 1200);
     });
     return () => clearTimeout(timer);
-  }, [refreshDashboard, isTV2, isTv1Preview, needsTvLogin]);
+  }, [refreshDashboard, isTV2, isTv1Preview]);
 
   // 🚀 GATE 2: Polling с защитой от наложения
   useEffect(() => {
@@ -461,14 +456,7 @@ function App() {
       <SplashScreen isLoaded={!isLoading} />
 
       {/* 🚀 ЛОГИКА ОТОБРАЖЕНИЯ ТВ ЭКРАНОВ */}
-      {needsTvLogin ? (
-        <div className={`fixed inset-0 bg-[#191B25] flex flex-col transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} z-50`}>
-          <TVLoginScreen onSuccess={() => {
-            setIsLoading(true);
-            refreshDashboard().then(() => setIsLoading(false));
-          }} />
-        </div>
-      ) : isTV2 ? (
+      {isTV2 ? (
         <div className={`fixed inset-0 bg-[#191B25] flex flex-col p-5 transition-opacity duration-700 ${isAppReady ? 'opacity-100' : 'opacity-0'} overflow-y-auto overflow-x-hidden`}>
           <Suspense fallback={<ViewFallback />}>
             <LotTrackerTV lot={tv2Lot} />
